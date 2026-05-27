@@ -1,0 +1,454 @@
+let activeDirHandle = null;
+
+/**
+ * Sets the active directory handle.
+ * @param {FileSystemDirectoryHandle} handle 
+ */
+export function setDirectoryHandle(handle) {
+  activeDirHandle = handle;
+}
+
+/**
+ * Gets the active directory handle.
+ * @returns {FileSystemDirectoryHandle|null}
+ */
+export function getDirectoryHandle() {
+  return activeDirHandle;
+}
+
+/**
+ * Checks if the application has a directory loaded.
+ * @returns {boolean}
+ */
+export function hasDirectoryAccess() {
+  return activeDirHandle !== null;
+}
+
+/**
+ * Verifies and requests read/write permissions for a directory handle.
+ * @param {FileSystemDirectoryHandle} handle 
+ * @param {string} mode 'read' or 'readwrite'
+ * @returns {Promise<boolean>}
+ */
+export async function verifyPermission(handle, mode = 'readwrite') {
+  if (!handle) return false;
+  const options = { mode };
+  // Check if permission was already granted
+  if ((await handle.queryPermission(options)) === 'granted') {
+    return true;
+  }
+  // Request permission
+  if ((await handle.requestPermission(options)) === 'granted') {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Navigates to a file path within a root handle, optionally creating it.
+ * @param {FileSystemDirectoryHandle} rootHandle 
+ * @param {string} pathStr relative path (e.g. 'expansion/settings/BookSettings.json')
+ * @param {object} options { create: boolean }
+ * @returns {Promise<FileSystemFileHandle>}
+ */
+async function getFileHandleFromPath(rootHandle, pathStr, options = { create: false }) {
+  const parts = pathStr.split('/');
+  let currentHandle = rootHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    currentHandle = await currentHandle.getDirectoryHandle(parts[i], { create: options.create });
+  }
+  return await currentHandle.getFileHandle(parts[parts.length - 1], { create: options.create });
+}
+
+/**
+ * Scans a folder recursively, loading JSON configurations.
+ */
+async function scanDir(dirHandle, pathArray = [], configs = {}) {
+  for await (const entry of dirHandle.values()) {
+    const currentPath = [...pathArray, entry.name];
+    if (entry.kind === 'directory') {
+      // Skip the backups directory during scanning
+      if (currentPath.length === 1 && entry.name.toLowerCase() === 'backups') {
+        continue;
+      }
+      await scanDir(entry, currentPath, configs);
+    } else if (entry.kind === 'file') {
+      const relPath = currentPath.join('/');
+      const isConfigPath = currentPath[0].toLowerCase() === 'expansion' || currentPath[0].toLowerCase() === 'expansionmod';
+      
+      if (isConfigPath && entry.name.toLowerCase().endsWith('.json')) {
+        try {
+          const file = await entry.getFile();
+          const rawText = await file.text();
+          const contentCleaned = rawText.replace(/^\uFEFF/, '');
+          let content;
+          try {
+            content = JSON.parse(contentCleaned);
+          } catch (err) {
+            // Clean comments and trailing commas
+            const cleanContent = contentCleaned
+              .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|\/\*[\s\S]*?\*\/|\/\/.*$/gm, (match, stringGroup) => {
+                return stringGroup ? stringGroup : '';
+              })
+              .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|,\s*([\]}])/g, (match, stringGroup, brace) => {
+                return stringGroup ? stringGroup : brace;
+              });
+            content = JSON.parse(cleanContent);
+          }
+          configs[relPath] = {
+            success: true,
+            content,
+            sizeBytes: file.size
+          };
+        } catch (e) {
+          configs[relPath] = {
+            success: false,
+            error: e.message,
+            sizeBytes: 0
+          };
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Reads all configuration files in the opened directory.
+ * @returns {Promise<{ configs: object, schemaReport: object|null }>}
+ */
+export async function getConfigs() {
+  if (!activeDirHandle) {
+    throw new Error('No directory selected');
+  }
+
+  const configs = {};
+  let schemaReport = null;
+
+  // 1. Scan for schema_report.json in root
+  try {
+    const schemaHandle = await activeDirHandle.getFileHandle('schema_report.json');
+    const file = await schemaHandle.getFile();
+    const text = await file.text();
+    schemaReport = JSON.parse(text);
+  } catch (e) {
+    // Ignore if not present
+  }
+
+  // 2. Scan folders recursively
+  // We can scan expansion and ExpansionMod if they exist
+  let hasExpansion = false;
+  let hasExpansionMod = false;
+
+  for await (const entry of activeDirHandle.values()) {
+    if (entry.kind === 'directory') {
+      if (entry.name.toLowerCase() === 'expansion') {
+        hasExpansion = true;
+        await scanDir(entry, ['expansion'], configs);
+      } else if (entry.name.toLowerCase() === 'expansionmod') {
+        hasExpansionMod = true;
+        await scanDir(entry, ['ExpansionMod'], configs);
+      }
+    }
+  }
+
+  // Fallback: What if they opened expansion/ or ExpansionMod/ directly?
+  if (!hasExpansion && !hasExpansionMod) {
+    // Check if the current folder itself looks like a mod folder directly (has settings/traders or Quests/AI)
+    let looksLikeModDir = false;
+    for await (const entry of activeDirHandle.values()) {
+      if (entry.kind === 'directory' && ['settings', 'traders', 'quests', 'ai', 'market', 'loadouts'].includes(entry.name.toLowerCase())) {
+        looksLikeModDir = true;
+        break;
+      }
+    }
+
+    if (looksLikeModDir) {
+      // We will read this folder directly as the root config folder.
+      // We prefix relative paths based on what folders exist.
+      // But to keep it simple and aligned, we scan and let scanDir resolve them, 
+      // mapping relative paths relative to activeDirHandle as-is.
+      for await (const entry of activeDirHandle.values()) {
+        if (entry.kind === 'directory' && entry.name.toLowerCase() !== 'backups') {
+          await scanDir(entry, [entry.name], configs);
+        }
+      }
+    }
+  }
+
+  return { configs, schemaReport };
+}
+
+/**
+ * Copies a source file to a target backup directory.
+ */
+async function backupFile(rootDirHandle, backupFolderHandle, filePath) {
+  try {
+    const fileHandle = await getFileHandleFromPath(rootDirHandle, filePath);
+    const file = await fileHandle.getFile();
+    
+    const parts = filePath.split('/');
+    let currentHandle = backupFolderHandle;
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentHandle = await currentHandle.getDirectoryHandle(parts[i], { create: true });
+    }
+    
+    const destFileHandle = await currentHandle.getFileHandle(parts[parts.length - 1], { create: true });
+    const writable = await destFileHandle.createWritable();
+    await writable.write(await file.arrayBuffer());
+    await writable.close();
+  } catch (err) {
+    // If the file does not exist yet (e.g. creating a new config), no backup is needed
+    if (err.name !== 'NotFoundError') {
+      console.error(`[BACKUP ERROR] Failed to backup ${filePath}:`, err);
+    }
+  }
+}
+
+/**
+ * Rotates backups: keeps max 3, deletes folders older than 72 hours.
+ */
+async function rotateBackups(rootDirHandle) {
+  try {
+    let backupsDirHandle;
+    try {
+      backupsDirHandle = await rootDirHandle.getDirectoryHandle('backups');
+    } catch (e) {
+      return;
+    }
+    
+    const folders = [];
+    const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    
+    for await (const entry of backupsDirHandle.values()) {
+      if (entry.kind === 'directory' && (entry.name.startsWith('backup_file_') || entry.name.startsWith('backup_all_'))) {
+        const parts = entry.name.split('_');
+        const timestamp = parseInt(parts[2], 10);
+        if (!isNaN(timestamp)) {
+          if (timestamp < threeDaysAgo) {
+            await backupsDirHandle.removeEntry(entry.name, { recursive: true });
+            console.log(`[BACKUP ROTATION] Deleted backup older than 3 days: ${entry.name}`);
+            continue;
+          }
+          folders.push({
+            name: entry.name,
+            timestamp: timestamp
+          });
+        }
+      }
+    }
+    
+    folders.sort((a, b) => a.timestamp - b.timestamp); // oldest first
+    
+    const maxBackups = 3;
+    if (folders.length > maxBackups) {
+      const toDelete = folders.slice(0, folders.length - maxBackups);
+      for (const folder of toDelete) {
+        await backupsDirHandle.removeEntry(folder.name, { recursive: true });
+        console.log(`[BACKUP ROTATION] Deleted old backup folder (limit 3 exceeded): ${folder.name}`);
+      }
+    }
+  } catch (err) {
+    console.error('[BACKUP ROTATION ERROR] Failed to rotate backups:', err);
+  }
+}
+
+/**
+ * Saves a single configuration file with automated backup.
+ * @param {string} filePath 
+ * @param {object} content 
+ * @returns {Promise<boolean>}
+ */
+export async function saveFile(filePath, content) {
+  if (!activeDirHandle) throw new Error('No directory selected');
+
+  const timestamp = Date.now();
+  const backupsDirHandle = await activeDirHandle.getDirectoryHandle('backups', { create: true });
+  const backupFolderHandle = await backupsDirHandle.getDirectoryHandle(`backup_file_${timestamp}`, { create: true });
+
+  // Backup the file first if it exists
+  await backupFile(activeDirHandle, backupFolderHandle, filePath);
+
+  // Write new content
+  const fileHandle = await getFileHandleFromPath(activeDirHandle, filePath, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(JSON.stringify(content, null, 4));
+  await writable.close();
+
+  // Rotate old backups
+  await rotateBackups(activeDirHandle);
+
+  return true;
+}
+
+/**
+ * Saves multiple configuration files (package export).
+ * @param {Array<{ filePath: string, content: object }>} files 
+ * @returns {Promise<boolean>}
+ */
+export async function saveAll(files) {
+  if (!activeDirHandle) throw new Error('No directory selected');
+
+  const timestamp = Date.now();
+  const backupsDirHandle = await activeDirHandle.getDirectoryHandle('backups', { create: true });
+  const backupFolderHandle = await backupsDirHandle.getDirectoryHandle(`backup_all_${timestamp}`, { create: true });
+
+  for (const file of files) {
+    // Backup the file first if it exists
+    await backupFile(activeDirHandle, backupFolderHandle, file.filePath);
+
+    // Write new content
+    const fileHandle = await getFileHandleFromPath(activeDirHandle, file.filePath, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(file.content, null, 4));
+    await writable.close();
+  }
+
+  // Rotate old backups
+  await rotateBackups(activeDirHandle);
+
+  return true;
+}
+
+/**
+ * Deletes a configuration file from disk.
+ * @param {string} filePath 
+ * @returns {Promise<boolean>}
+ */
+export async function deleteFile(filePath) {
+  if (!activeDirHandle) throw new Error('No directory selected');
+
+  const parts = filePath.split('/');
+  let currentHandle = activeDirHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    currentHandle = await currentHandle.getDirectoryHandle(parts[i]);
+  }
+  await currentHandle.removeEntry(parts[parts.length - 1]);
+
+  return true;
+}
+
+/**
+ * Cleans comments/commas, parses JSON, and saves as valid pretty JSON.
+ * @param {string} filePath 
+ * @returns {Promise<{ success: boolean, content: object }>}
+ */
+export async function fixSyntax(filePath) {
+  if (!activeDirHandle) throw new Error('No directory selected');
+
+  const fileHandle = await getFileHandleFromPath(activeDirHandle, filePath);
+  const file = await fileHandle.getFile();
+  const rawText = await file.text();
+  const contentCleaned = rawText.replace(/^\uFEFF/, '');
+
+  let parsed;
+  try {
+    parsed = JSON.parse(contentCleaned);
+  } catch (e) {
+    // Clean comments and trailing commas
+    const cleanContent = contentCleaned
+      .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|\/\*[\s\S]*?\*\/|\/\/.*$/gm, (match, stringGroup) => {
+        return stringGroup ? stringGroup : '';
+      })
+      .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|,\s*([\]}])/g, (match, stringGroup, brace) => {
+        return stringGroup ? stringGroup : brace;
+      });
+    parsed = JSON.parse(cleanContent);
+  }
+
+  // Save cleaned JSON back to disk
+  const writable = await fileHandle.createWritable();
+  await writable.write(JSON.stringify(parsed, null, 4));
+  await writable.close();
+
+  return { success: true, content: parsed };
+}
+
+/**
+ * Recursively scans a backup folder and lists all files inside it.
+ */
+async function collectFilesRecursively(dirHandle, pathArray = [], filesList = []) {
+  for await (const entry of dirHandle.values()) {
+    const currentPath = [...pathArray, entry.name];
+    if (entry.kind === 'directory') {
+      await collectFilesRecursively(entry, currentPath, filesList);
+    } else if (entry.kind === 'file') {
+      filesList.push(currentPath.join('/'));
+    }
+  }
+}
+
+/**
+ * Returns a list of all backup folders, their creation dates, and files list.
+ * @returns {Promise<Array>}
+ */
+export async function listBackups() {
+  if (!activeDirHandle) return [];
+
+  try {
+    let backupsDirHandle;
+    try {
+      backupsDirHandle = await activeDirHandle.getDirectoryHandle('backups');
+    } catch (e) {
+      return [];
+    }
+
+    const list = [];
+    for await (const entry of backupsDirHandle.values()) {
+      if (entry.kind === 'directory' && (entry.name.startsWith('backup_file_') || entry.name.startsWith('backup_all_'))) {
+        const parts = entry.name.split('_');
+        const timestamp = parseInt(parts[2], 10);
+        if (!isNaN(timestamp)) {
+          const filesList = [];
+          await collectFilesRecursively(entry, [], filesList);
+          list.push({
+            name: entry.name,
+            mtime: timestamp,
+            files: filesList
+          });
+        }
+      }
+    }
+
+    // Sort by mtime descending (newest first)
+    list.sort((a, b) => b.mtime - a.mtime);
+    return list;
+  } catch (err) {
+    console.error('Failed to list backups:', err);
+    return [];
+  }
+}
+
+/**
+ * Restores a backup.
+ */
+async function copyFolderContent(srcDirHandle, destDirHandle) {
+  for await (const entry of srcDirHandle.values()) {
+    if (entry.kind === 'directory') {
+      const newDestDir = await destDirHandle.getDirectoryHandle(entry.name, { create: true });
+      await copyFolderContent(entry, newDestDir);
+    } else if (entry.kind === 'file') {
+      const file = await entry.getFile();
+      const destFile = await destDirHandle.getFileHandle(entry.name, { create: true });
+      const writable = await destFile.createWritable();
+      await writable.write(await file.arrayBuffer());
+      await writable.close();
+    }
+  }
+}
+
+/**
+ * Restores all files from a backup folder back into the root configuration directory.
+ * @param {string} folderName 
+ * @returns {Promise<boolean>}
+ */
+export async function restoreBackup(folderName) {
+  if (!activeDirHandle) throw new Error('No directory selected');
+
+  const backupsDirHandle = await activeDirHandle.getDirectoryHandle('backups');
+  const backupFolderHandle = await backupsDirHandle.getDirectoryHandle(folderName);
+
+  await copyFolderContent(backupFolderHandle, activeDirHandle);
+  console.log(`[BACKUP RESTORE] Successfully restored backup: ${folderName}`);
+  
+  return true;
+}
