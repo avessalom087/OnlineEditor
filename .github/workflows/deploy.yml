@@ -17,11 +17,10 @@ jobs:
 
       - name: Install and Build 🔧
         run: |
-          cd online-editor
           npm ci
           npm run build
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: online-editor/dist # Путь к скомпилированной папке
+          folder: dist # Папка сборки в корне репозитория
