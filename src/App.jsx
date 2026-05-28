@@ -1025,15 +1025,15 @@ function AppContent() {
       )}
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <header className="header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '11px', letterSpacing: '3px', color: 'var(--text-secondary)', fontWeight: '700' }}>
+      <header className="header" style={{ flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+          <div style={{ flexShrink: 0 }}>
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '10px', letterSpacing: '3px', color: 'var(--text-secondary)', fontWeight: '700', whiteSpace: 'nowrap' }}>
               {t('header_station')}
             </div>
-            <h1 style={{ margin: '2px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '20px', fontWeight: '700', color: 'var(--text-glow)', letterSpacing: '1px', textShadow: '0 0 8px rgba(178,250,158,0.2)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ margin: '1px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', fontWeight: '700', color: 'var(--text-glow)', letterSpacing: '1px', textShadow: '0 0 8px rgba(178,250,158,0.2)', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
               {t('header_control_center')}
-              <span style={{ fontSize: '10px', color: 'var(--text-glow)', border: '1px solid var(--border-glow)', borderRadius: '3px', padding: '1px 5px', opacity: 0.7, letterSpacing: '1px', fontWeight: 'normal', textShadow: 'none' }}>
+              <span style={{ fontSize: '9px', color: 'var(--text-glow)', border: '1px solid var(--border-glow)', borderRadius: '3px', padding: '1px 4px', opacity: 0.7, letterSpacing: '1px', fontWeight: 'normal', textShadow: 'none', whiteSpace: 'nowrap' }}>
                 v1.2.0 (ONLINE)
               </span>
             </h1>
@@ -1044,18 +1044,20 @@ function AppContent() {
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '6px',
               background: 'var(--bg-tertiary)',
               border: '1px solid var(--border-color)',
-              padding: '4px 12px',
+              padding: '4px 10px',
               borderRadius: '2px',
-              fontSize: '12px',
-              marginLeft: '12px',
+              fontSize: '11px',
+              marginLeft: '8px',
               fontFamily: 'var(--font-mono)',
-              lineHeight: '1.2'
+              lineHeight: '1.2',
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}>
               <span style={{ color: 'var(--text-secondary)' }}>{t('header_dir')}</span>
-              <strong style={{ color: 'var(--text-glow)' }}>{folderName.toUpperCase()}</strong>
+              <strong style={{ color: 'var(--text-glow)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }} title={folderName.toUpperCase()}>{folderName.toUpperCase()}</strong>
               <button 
                 onClick={handleDisconnect} 
                 style={{
@@ -1066,9 +1068,10 @@ function AppContent() {
                   padding: '0 4px',
                   fontWeight: 'bold',
                   fontFamily: 'var(--font-heading)',
-                  marginLeft: '6px',
-                  fontSize: '11px',
-                  letterSpacing: '1px'
+                  marginLeft: '4px',
+                  fontSize: '10px',
+                  letterSpacing: '1px',
+                  whiteSpace: 'nowrap'
                 }}
                 title={t('header_disconnect')}
               >
@@ -1078,7 +1081,7 @@ function AppContent() {
           )}
 
           {/* Navigation tabs */}
-          <nav style={{ display: 'flex', marginLeft: '32px' }}>
+          <nav className="header-nav-tabs" style={{ display: 'flex', marginLeft: '12px', gap: '2px', overflowX: 'auto', flexShrink: 1, minWidth: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             <TabBtn id="dashboard"  label={t('tab_dashboard')} />
             <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy} />
             <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests} />
@@ -1090,24 +1093,24 @@ function AppContent() {
         </div>
 
         {/* Actions row */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
           {/* Unsaved indicator */}
           {dirtyFiles.size > 0 ? (
             <>
-              <span style={{ fontSize: '11px', color: 'var(--warning-color)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: 'var(--warning-color)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
                 <span className="pulse-dot" />
                 {t('header_unsaved')} ({dirtyFiles.size})
               </span>
-              <button onClick={handleSaveAll} className="btn btn-warning">
+              <button onClick={handleSaveAll} className="btn btn-warning" style={{ whiteSpace: 'nowrap' }}>
                 {t('header_export_package')}
               </button>
-              <button onClick={handleDiscardAll} className="btn btn-danger">
+              <button onClick={handleDiscardAll} className="btn btn-danger" style={{ whiteSpace: 'nowrap' }}>
                 {t('header_discard')}
               </button>
             </>
           ) : (
             !loading && (
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
                 {t('all_saved')}
               </span>
             )
@@ -1118,7 +1121,7 @@ function AppContent() {
             className="btn"
             onClick={() => setIsSearchOpen(true)}
             title="Global Search (Ctrl+K)"
-            style={{ padding: '8px 12px', fontSize: '14px' }}
+            style={{ padding: '8px 12px', fontSize: '14px', whiteSpace: 'nowrap' }}
           >
             🔍
           </button>
@@ -1127,14 +1130,14 @@ function AppContent() {
           <button
             className="btn btn-accent"
             onClick={() => setLang(prev => prev === 'ru' ? 'en' : 'ru')}
-            style={{ padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--font-mono)' }}
+            style={{ padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}
             title="Switch Language / Смена языка"
           >
             {lang === 'ru' ? '🇬🇧 EN' : '🇷🇺 RU'}
           </button>
 
           {/* Reload */}
-          <button onClick={fetchConfigs} className="btn" title={t('header_reload')}>
+          <button onClick={fetchConfigs} className="btn" title={t('header_reload')} style={{ whiteSpace: 'nowrap' }}>
             {t('header_reload')}
           </button>
 
@@ -1143,7 +1146,7 @@ function AppContent() {
             className="btn"
             onClick={() => setIsHotkeyOpen(true)}
             title={t('header_shortcuts')}
-            style={{ padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--font-mono)' }}
+            style={{ padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}
           >
             ?
           </button>

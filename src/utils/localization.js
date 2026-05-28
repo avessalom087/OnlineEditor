@@ -13,7 +13,7 @@ export const translations = {
 
     // Header & Tabs
     header_station: "EXPANSION // CONFIG_STATION",
-    header_control_center: "TACTICAL CONTROL CENTER",
+    header_control_center: "PROJECT ZERO TOOL",
     header_dir: "DIR:",
     header_disconnect: "× DISCONNECT",
     tab_dashboard: "Dashboard",
@@ -579,7 +579,7 @@ export const translations = {
 
     // Header & Tabs
     header_station: "EXPANSION // CONFIG_STATION",
-    header_control_center: "ЦЕНТР ТАКТИЧЕСКОГО УПРАВЛЕНИЯ",
+    header_control_center: "PROJECT ZERO TOOL",
     header_dir: "ПАПКА:",
     header_disconnect: "× ОТКЛЮЧИТЬ",
     tab_dashboard: "Панель управления",
