@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import { useToast } from './ToastManager';
 import { translateStrKey } from '../utils/strKeys';
+import { translations } from '../utils/localization';
+import { AutocompleteWorkerWrapper } from '../utils/autocompleteWorker';
 
 
 // ─── EditableCell ─────────────────────────────────────────────────────────────
@@ -69,8 +71,16 @@ function SortableHeader({ field, label, sortField, sortDir, onSort, style = {} }
 
 // ─── Main EconomyEditor ───────────────────────────────────────────────────────
 
-export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlItems = [], onShowConfirm }) {
+export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlItems = [], onShowConfirm, lang = 'ru' }) {
   const toast = useToast();
+
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
   // ─ Database helpers ────────────────────────────────────────────────────────
   const xmlItemsSet   = useMemo(() => {
     const items = Array.isArray(xmlItems) ? xmlItems : [];
@@ -165,12 +175,39 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
     return xmlItems.filter(item => item && typeof item === 'string' && !existingSet.has(item.toLowerCase()));
   }, [activeCategoryConfig, xmlItems]);
 
-  const filteredXmlItems = useMemo(() => {
-    if (!Array.isArray(availableXmlItems)) return [];
+  const [xmlFilteredItems, setXmlFilteredItems] = useState([]);
+  const [xmlWorker, setXmlWorker] = useState(null);
+
+  useEffect(() => {
+    if (availableXmlItems && availableXmlItems.length > 100) {
+      const w = new AutocompleteWorkerWrapper();
+      w.init(availableXmlItems);
+      setXmlWorker(w);
+      return () => {
+        w.terminate();
+      };
+    } else {
+      setXmlWorker(null);
+    }
+  }, [availableXmlItems]);
+
+  useEffect(() => {
     const query = typeof xmlSearchQuery === 'string' ? xmlSearchQuery.toLowerCase().trim() : '';
-    if (!query) return availableXmlItems;
-    return availableXmlItems.filter(item => item && typeof item === 'string' && item.toLowerCase().includes(query));
-  }, [availableXmlItems, xmlSearchQuery]);
+    if (!query) {
+      setXmlFilteredItems(availableXmlItems.slice(0, 200));
+    } else {
+      if (xmlWorker) {
+        xmlWorker.search(query, 200, (results) => {
+          setXmlFilteredItems(results);
+        });
+      } else {
+        const results = availableXmlItems.filter(item => 
+          item && typeof item === 'string' && item.toLowerCase().includes(query)
+        ).slice(0, 200);
+        setXmlFilteredItems(results);
+      }
+    }
+  }, [xmlSearchQuery, availableXmlItems, xmlWorker]);
 
   // ─ Autocomplete suggestions ───────────────────────────────────────────────
   const [suggestions,         setSuggestions]         = useState([]);
@@ -342,27 +379,27 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
     if (!activeCategoryConfig || !selectedCategoryPath) return;
     const lowerName = classname.toLowerCase();
     if (activeCategoryConfig.content.Items.some(i => i.ClassName.toLowerCase() === lowerName)) {
-      toast.error('Item classname already exists in this category!'); return;
+      toast.error(t('econ_toast_classname_exists')); return;
     }
     const newItem = { ClassName: classname, MaxPriceThreshold: 100, MinPriceThreshold: 50, SellPricePercent: -1.0, MaxStockThreshold: 100, MinStockThreshold: 1, QuantityPercent: -1, SpawnAttachments: [], Variants: [] };
     onChangeField(selectedCategoryPath, ['Items'], [...activeCategoryConfig.content.Items, newItem]);
-    toast.success(`Added item: ${classname}`);
+    toast.success(t('econ_toast_added', { classname }));
   };
 
   const handleRemoveItem = (index) => {
     if (!selectedCategoryPath || !activeCategoryConfig) return;
     const item = activeCategoryConfig.content.Items[index];
     onShowConfirm({
-      title: 'Remove Item',
-      body: `Remove "${item?.ClassName || 'this item'}" from the market list?`,
+      title: t('econ_remove_item_title'),
+      body: t('econ_remove_item_body', { classname: item?.ClassName || 'this item' }),
       severity: 'danger',
-      confirmLabel: 'REMOVE',
+      confirmLabel: t('econ_bulk_apply'),
       onConfirm: () => {
         const newList = [...activeCategoryConfig.content.Items];
         newList.splice(index, 1);
         onChangeField(selectedCategoryPath, ['Items'], newList);
         setSelectedItems(prev => { const next = new Set(prev); next.delete(index); return next; });
-        toast.warning('Item removed.');
+        toast.warning(t('econ_toast_removed'));
       }
     });
   };
@@ -380,39 +417,39 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
   const handleCopyItem = (item) => {
     const { originalIndex, ...rest } = item;
     setCopiedItem(rest);
-    toast.info(`Copied: ${item.ClassName}`);
+    toast.info(t('econ_toast_copied', { classname: item.ClassName }));
   };
 
   const handlePasteCopiedItem = () => {
     if (!copiedItem || !activeCategoryConfig || !selectedCategoryPath) return;
     const existing = activeCategoryConfig.content.Items;
     if (existing.some(i => i.ClassName.toLowerCase() === copiedItem.ClassName.toLowerCase())) {
-      toast.error(`"${copiedItem.ClassName}" already exists in this category.`); return;
+      toast.error(t('econ_toast_already_exists', { classname: copiedItem.ClassName })); return;
     }
     onChangeField(selectedCategoryPath, ['Items'], [...existing, { ...copiedItem }]);
-    toast.success(`Pasted: ${copiedItem.ClassName}`);
+    toast.success(t('econ_toast_pasted', { classname: copiedItem.ClassName }));
     setCopiedItem(null);
   };
 
   // B7: Import from another category
   const handleImportFromCategory = () => {
     if (!importFromCatPath || !activeCategoryConfig || !selectedCategoryPath) return;
-    if (importFromCatPath === selectedCategoryPath) { toast.error('Cannot import from the same category.'); return; }
+    if (importFromCatPath === selectedCategoryPath) { toast.error(t('econ_toast_import_same')); return; }
     const srcFile = configs[importFromCatPath];
-    if (!srcFile?.success || !Array.isArray(srcFile.content.Items)) { toast.error('Source category has no items.'); return; }
+    if (!srcFile?.success || !Array.isArray(srcFile.content.Items)) { toast.error(t('econ_toast_import_empty')); return; }
     const existing = new Set(activeCategoryConfig.content.Items.map(i => i.ClassName.toLowerCase()));
     const toAdd = srcFile.content.Items.filter(i => !existing.has(i.ClassName.toLowerCase()));
-    if (toAdd.length === 0) { toast.warning('All items from that category already exist here.'); return; }
+    if (toAdd.length === 0) { toast.warning(t('econ_toast_import_exists')); return; }
     onShowConfirm({
-      title: 'Import Items',
-      body: `Import ${toAdd.length} new item(s) from "${importFromCatPath.split('/').pop()}"?`,
+      title: t('econ_import_confirm_title'),
+      body: t('econ_import_confirm_body', { count: toAdd.length, category: importFromCatPath.split('/').pop() }),
       severity: 'warning',
-      confirmLabel: 'IMPORT',
+      confirmLabel: t('econ_bulk_apply'),
       onConfirm: () => {
         onChangeField(selectedCategoryPath, ['Items'], [...activeCategoryConfig.content.Items, ...toAdd.map(i => ({ ...i }))]);
         setShowImportPanel(false);
         setImportFromCatPath('');
-        toast.success(`Imported ${toAdd.length} items.`);
+        toast.success(t('econ_toast_imported', { count: toAdd.length }));
       }
     });
   };
@@ -423,7 +460,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
     const cur = activeTraderConfig.content.Currencies || [];
     if (cur.some(c => c.toLowerCase() === cn.toLowerCase())) return;
     onChangeField(selectedTraderPath, ['Currencies'], [...cur, cn.toLowerCase()]);
-    toast.success(`Currency added: ${cn}`);
+    toast.success(t('trader_currency_added', { classname: cn }));
   };
   const handleTraderRemoveCurrency = (idx) => {
     if (!activeTraderConfig || !selectedTraderPath) return;
@@ -431,15 +468,15 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
     const cn = cur[idx];
     cur.splice(idx, 1);
     onChangeField(selectedTraderPath, ['Currencies'], cur);
-    toast.warning(`Currency removed: ${cn}`);
+    toast.warning(t('trader_currency_removed', { classname: cn }));
   };
   const handleTraderAddCategory = (catName, overrideVal) => {
     if (!activeTraderConfig || !selectedTraderPath) return;
     const cats = activeTraderConfig.content.Categories || [];
-    if (cats.some(c => parseTraderCategory(c).name.toLowerCase() === catName.toLowerCase())) { toast.error('Category already added.'); return; }
+    if (cats.some(c => parseTraderCategory(c).name.toLowerCase() === catName.toLowerCase())) { toast.error(t('trader_cat_exists')); return; }
     const str = overrideVal === 3 ? catName : `${catName}:${overrideVal}`;
     onChangeField(selectedTraderPath, ['Categories'], [...cats, str]);
-    toast.success(`Category added: ${catName}`);
+    toast.success(t('trader_cat_added', { classname: catName }));
   };
   const handleTraderRemoveCategory = (idx) => {
     if (!activeTraderConfig || !selectedTraderPath) return;
@@ -702,12 +739,12 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     onClick={() => {
                       const op  = document.getElementById('bulk-op').value;
                       const val = parseFloat(document.getElementById('bulk-val').value);
-                      if (isNaN(val)) { toast.error('Enter a valid numeric value.'); return; }
+                      if (isNaN(val)) { toast.error(t('econ_toast_bulk_invalid_val')); return; }
                       onShowConfirm({
-                        title: 'Apply Bulk Action',
-                        body: `Apply bulk operation to ${selectedItems.size > 0 ? selectedItems.size + ' selected' : 'all'} items?`,
+                        title: t('econ_bulk_confirm_title'),
+                        body: t('econ_bulk_confirm_body', { count: selectedItems.size > 0 ? selectedItems.size : filteredItems.length }),
                         severity: 'warning',
-                        confirmLabel: 'APPLY',
+                        confirmLabel: t('econ_bulk_apply'),
                         onConfirm: () => {
                           const targetIndices = selectedItems.size > 0
                             ? new Set(selectedItems)
@@ -729,7 +766,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                           });
                           onChangeField(selectedCategoryPath, ['Items'], updatedItems);
                           setSelectedItems(new Set());
-                          toast.success('Bulk operation applied successfully.');
+                          toast.success(t('econ_toast_bulk_applied'));
                         }
                       });
                     }}
@@ -745,23 +782,23 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                   {searchAllMode && itemQuery.trim() ? (
                     <>
                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px', fontFamily: 'var(--font-mono)' }}>
-                        Found <strong style={{ color: 'var(--text-glow)' }}>{crossCatResults.length}</strong> result(s) across all categories for "{itemQuery}"
+                        {t('econ_cross_found', { count: crossCatResults.length, query: itemQuery })}
                       </div>
                       <div className="table-container">
                         <table className="table-tactical">
                           <thead>
                             <tr>
-                              <th style={{ width: '30%' }}>CLASSNAME</th>
-                              <th style={{ width: '25%' }}>CATEGORY</th>
-                              <th style={{ width: '12%', textAlign: 'center' }}>MIN PRICE</th>
-                              <th style={{ width: '12%', textAlign: 'center' }}>MAX PRICE</th>
-                              <th style={{ width: '12%', textAlign: 'center' }}>SELL %</th>
-                              <th style={{ width: '9%', textAlign: 'center' }}>GO TO</th>
+                              <th style={{ width: '30%' }}>{t('econ_th_classname')}</th>
+                              <th style={{ width: '25%' }}>{t('econ_th_category')}</th>
+                              <th style={{ width: '12%', textAlign: 'center' }}>{t('econ_th_minprice')}</th>
+                              <th style={{ width: '12%', textAlign: 'center' }}>{t('econ_th_maxprice')}</th>
+                              <th style={{ width: '12%', textAlign: 'center' }}>{t('econ_th_sellpct')}</th>
+                              <th style={{ width: '9%', textAlign: 'center' }}>{t('econ_th_goto')}</th>
                             </tr>
                           </thead>
                           <tbody>
                             {crossCatResults.length === 0 ? (
-                              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>No matches.</td></tr>
+                              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>{t('econ_cross_no_matches')}</td></tr>
                             ) : crossCatResults.map((item, idx) => (
                               <tr key={idx}>
                                 <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontSize: '13px' }}>{item.ClassName}</td>
@@ -790,23 +827,23 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                                 checked={filteredItems.length > 0 && selectedItems.size === filteredItems.length}
                                 onChange={toggleSelectAll}
                                 style={{ cursor: 'pointer', accentColor: 'var(--text-glow)' }}
-                                title="Select all"
+                                title={t('select_all')}
                               />
                             </th>
                             {/* B2: Sortable headers */}
-                            <SortableHeader field="ClassName"          label="CLASSNAME"  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '28%' }} />
-                            <SortableHeader field="MinPriceThreshold"  label="MIN PRICE"  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '11%', textAlign: 'center' }} />
-                            <SortableHeader field="MaxPriceThreshold"  label="MAX PRICE"  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '11%', textAlign: 'center' }} />
-                            <SortableHeader field="MinStockThreshold"  label="MIN STOCK"  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
-                            <SortableHeader field="MaxStockThreshold"  label="MAX STOCK"  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
-                            <SortableHeader field="SellPricePercent"   label="SELL %"     sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
-                            <th style={{ width: '10%', textAlign: 'center' }}>ACTIONS</th>
+                            <SortableHeader field="ClassName"          label={t('econ_th_classname')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '28%' }} />
+                            <SortableHeader field="MinPriceThreshold"  label={t('econ_th_minprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '11%', textAlign: 'center' }} />
+                            <SortableHeader field="MaxPriceThreshold"  label={t('econ_th_maxprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '11%', textAlign: 'center' }} />
+                            <SortableHeader field="MinStockThreshold"  label={t('econ_th_minstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
+                            <SortableHeader field="MaxStockThreshold"  label={t('econ_th_maxstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
+                            <SortableHeader field="SellPricePercent"   label={t('econ_th_sellpct')}     sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
+                            <th style={{ width: '10%', textAlign: 'center' }}>{t('econ_th_actions')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredItems.length === 0 ? (
                             <tr><td colSpan="8" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
-                              {itemQuery ? 'NO ITEMS MATCHING FILTER' : 'NO ITEMS. USE ADD ABOVE.'}
+                              {itemQuery ? t('econ_no_items_match') : t('econ_no_items_add')}
                             </td></tr>
                           ) : (
                             filteredItems.map((item) => {
@@ -973,7 +1010,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                   <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>// TRADER_MARKET_CATEGORIES</div>
                   <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     <table className="table-tactical">
-                      <thead><tr><th>CATEGORY NAME</th><th style={{ width: '30%', textAlign: 'center' }}>TRADE DIRECTION OVERRIDE</th><th style={{ width: '10%', textAlign: 'center' }}>ACTION</th></tr></thead>
+                      <thead><tr><th>{t('trader_th_category')}</th><th style={{ width: '30%', textAlign: 'center' }}>{t('trader_select_cat_override')}</th><th style={{ width: '10%', textAlign: 'center' }}>{t('trader_th_action')}</th></tr></thead>
                       <tbody>
                         {(activeTraderConfig.content.Categories || []).length === 0 ? (
                           <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>NO CATEGORIES ATTACHED.</td></tr>
@@ -1026,7 +1063,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                   </div>
                   <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     <table className="table-tactical">
-                      <thead><tr><th>ITEM CLASSNAME</th><th style={{ width: '30%', textAlign: 'center' }}>TRADE OVERRIDE</th><th style={{ width: '10%', textAlign: 'center' }}>ACTION</th></tr></thead>
+                      <thead><tr><th>{t('trader_th_item')}</th><th style={{ width: '30%', textAlign: 'center' }}>{t('trader_th_override')}</th><th style={{ width: '10%', textAlign: 'center' }}>{t('trader_th_action')}</th></tr></thead>
                       <tbody>
                         {filteredTraderItems.length === 0 ? (
                           <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>NO CUSTOM OVERRIDES</td></tr>
@@ -1124,18 +1161,18 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
             <div style={{ padding: '20px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Category Info */}
               <div style={{ fontSize: '12px', color: 'var(--text-primary)', background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '2px', border: '1px solid var(--border-color)' }}>
-                Target Category: <strong style={{ color: 'var(--text-glow)' }}>{selectedCategoryPath?.split('/').pop()}</strong><br />
-                Items missing from category: <strong>{availableXmlItems.length}</strong> (out of {Array.isArray(xmlItems) ? xmlItems.length : 0} total in types.xml database)
+                {t('xml_target_cat', { category: selectedCategoryPath?.split('/').pop() })}<br />
+                {t('xml_missing_items', { count: availableXmlItems.length, total: Array.isArray(xmlItems) ? xmlItems.length : 0 })}
               </div>
 
               {/* Default values configuration */}
               <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '14px', borderRadius: '2px' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', marginBottom: '8px', letterSpacing: '1px' }}>
-                  SET DEFAULT ITEM VALUES FOR IMPORTED ITEMS:
+                  {t('xml_set_defaults')}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>MIN PRICE</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_minprice')}</label>
                     <input 
                       type="number" 
                       value={defaultMinPrice} 
@@ -1144,7 +1181,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>MAX PRICE</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_maxprice')}</label>
                     <input 
                       type="number" 
                       value={defaultMaxPrice} 
@@ -1153,7 +1190,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>SELL %</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_sellpct')}</label>
                     <input 
                       type="number" 
                       value={defaultSellPercent} 
@@ -1162,7 +1199,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>MIN STOCK</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_minstock')}</label>
                     <input 
                       type="number" 
                       value={defaultMinStock} 
@@ -1171,7 +1208,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>MAX STOCK</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_maxstock')}</label>
                     <input 
                       type="number" 
                       value={defaultMaxStock} 
@@ -1187,7 +1224,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 <div style={{ position: 'relative', flex: 1 }}>
                   <input
                     type="text"
-                    placeholder="SEARCH MISSING ITEMS..."
+                    placeholder={t('xml_search_missing')}
                     value={xmlSearchQuery}
                     onChange={e => setXmlSearchQuery(e.target.value)}
                     style={{ fontSize: '12px', padding: '8px 12px 8px 30px' }}
@@ -1195,7 +1232,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                   <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '12px' }}>🔍</span>
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                  Matches: <strong>{filteredXmlItems.length}</strong>
+                  {t('xml_matches', { count: xmlFilteredItems.length })}
                 </div>
               </div>
 
@@ -1225,15 +1262,15 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                   <input
                     type="checkbox"
                     id="select-all-xml"
-                    checked={filteredXmlItems.length > 0 && filteredXmlItems.every(item => selectedXmlClassnames.has(item))}
+                    checked={xmlFilteredItems.length > 0 && xmlFilteredItems.every(item => selectedXmlClassnames.has(item))}
                     onChange={() => {
-                      const allSelected = filteredXmlItems.every(item => selectedXmlClassnames.has(item));
+                      const allSelected = xmlFilteredItems.every(item => selectedXmlClassnames.has(item));
                       setSelectedXmlClassnames(prev => {
                         const next = new Set(prev);
                         if (allSelected) {
-                          filteredXmlItems.forEach(item => next.delete(item));
+                          xmlFilteredItems.forEach(item => next.delete(item));
                         } else {
-                          filteredXmlItems.forEach(item => next.add(item));
+                          xmlFilteredItems.forEach(item => next.add(item));
                         }
                         return next;
                       });
@@ -1241,20 +1278,20 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     style={{ cursor: 'pointer' }}
                   />
                   <label htmlFor="select-all-xml" style={{ fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold', cursor: 'pointer', flex: 1 }}>
-                    SELECT ALL FILTERED ({filteredXmlItems.length})
+                    {t('xml_select_all', { count: xmlFilteredItems.length })}
                   </label>
                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    Total Selected: <strong>{selectedXmlClassnames.size}</strong>
+                    {t('xml_total_selected', { count: selectedXmlClassnames.size })}
                   </span>
                 </div>
 
-                {filteredXmlItems.length === 0 ? (
+                {xmlFilteredItems.length === 0 ? (
                   <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                    NO MISSING ITEMS MATCH YOUR SEARCH
+                    {t('xml_no_missing_matches')}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {filteredXmlItems.map(classname => {
+                    {xmlFilteredItems.map(classname => {
                       const isSelected = selectedXmlClassnames.has(classname);
                       return (
                         <div
@@ -1309,17 +1346,17 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 onClick={() => { setShowXmlImportModal(false); setSelectedXmlClassnames(new Set()); setXmlSearchQuery(''); }}
                 style={{ padding: '8px 16px' }}
               >
-                CANCEL
+                {t('modal_confirm_cancel')}
               </button>
               <button 
                 className="btn btn-accent" 
                 onClick={() => {
                   if (selectedXmlClassnames.size === 0) {
-                    toast.warning('No items selected for import.');
+                    toast.warning(t('econ_toast_xml_no_select'));
                     return;
                   }
                   if (defaultMinPrice > defaultMaxPrice) {
-                    toast.error('Min Price cannot be greater than Max Price.');
+                    toast.error(t('econ_toast_xml_price_error'));
                     return;
                   }
                   const itemsToAdd = Array.from(selectedXmlClassnames).map(cn => ({
@@ -1334,7 +1371,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     Variants: []
                   }));
                   onChangeField(selectedCategoryPath, ['Items'], [...activeCategoryConfig.content.Items, ...itemsToAdd]);
-                  toast.success(`Imported ${itemsToAdd.length} items to category.`);
+                  toast.success(t('econ_toast_xml_imported', { count: itemsToAdd.length }));
                   setShowXmlImportModal(false);
                   setSelectedXmlClassnames(new Set());
                   setXmlSearchQuery('');
@@ -1342,7 +1379,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 style={{ padding: '8px 20px', fontWeight: 'bold' }}
                 disabled={selectedXmlClassnames.size === 0}
               >
-                📥 IMPORT SELECTED ({selectedXmlClassnames.size})
+                📥 {t('xml_import_selected_btn', { count: selectedXmlClassnames.size })}
               </button>
             </div>
           </div>

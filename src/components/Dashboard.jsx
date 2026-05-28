@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { validateConfig } from '../utils/diagnostics';
 import { useToast } from './ToastManager';
 import * as fileService from '../services/fileService';
+import { translations } from '../utils/localization';
 
 function getDiffPaths(obj1, obj2, currentPath = []) {
   if (obj1 === obj2) return [];
@@ -47,9 +48,19 @@ export default function Dashboard({
   xmlItems = [],
   onUpdateXmlItems,
   fetchConfigs,
-  onShowConfirm
+  onShowConfirm,
+  lang = 'ru'
 }) {
   const toast = useToast();
+
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
+
   const [activeSubTab, setActiveSubTab] = useState('status');
   const [backups, setBackups] = useState([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
@@ -211,12 +222,12 @@ export default function Dashboard({
       {/* HUD Stats Cards Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
         {[
-          { title: 'Quests Configured', count: totalQuests, subtitle: 'ExpansionMod/Quests', color: 'var(--text-glow)' },
-          { title: 'Active NPCs', count: totalNPCs, subtitle: 'Interactive Spawns', color: '#a6f5a6' },
-          { title: 'Market Database', count: totalMarketItems, subtitle: 'Economy Items', color: '#ebd667' },
-          { title: 'AI Patrol Routes', count: totalPatrols, subtitle: 'AIPatrolSettings.json', color: '#cc4a4a' },
-          { title: 'Green / Safe Zones', count: totalSafeZones, subtitle: 'SafeZoneSettings.json', color: '#559655' },
-          { title: 'Total Configurations', count: totalFiles, subtitle: 'expansion & ExpansionMod', color: 'var(--text-primary)' }
+          { title: t('hud_quests'), count: totalQuests, subtitle: 'ExpansionMod/Quests', color: 'var(--text-glow)' },
+          { title: t('hud_npcs'), count: totalNPCs, subtitle: 'Interactive Spawns', color: '#a6f5a6' },
+          { title: t('hud_market'), count: totalMarketItems, subtitle: 'Economy Items', color: '#ebd667' },
+          { title: t('hud_patrols'), count: totalPatrols, subtitle: 'AIPatrolSettings.json', color: '#cc4a4a' },
+          { title: t('hud_safezones'), count: totalSafeZones, subtitle: 'SafeZoneSettings.json', color: '#559655' },
+          { title: t('hud_total_configs'), count: totalFiles, subtitle: 'expansion & ExpansionMod', color: 'var(--text-primary)' }
         ].map((stat, idx) => (
           <div 
             key={idx} 
@@ -247,9 +258,9 @@ export default function Dashboard({
       {/* Sub-Tabs Navigation */}
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
         {[
-          { id: 'status', label: 'SYSTEM STATUS', icon: '🖥️' },
-          { id: 'changelog', label: 'SESSION CHANGELOG', icon: '📊', count: dirtyFiles.length },
-          { id: 'backups', label: 'BACKUP EXPLORER', icon: '📂' }
+          { id: 'status', label: t('dash_sub_status'), icon: '🖥️' },
+          { id: 'changelog', label: t('dash_sub_changelog'), icon: '📊', count: dirtyFiles.length },
+          { id: 'backups', label: t('dash_sub_backups'), icon: '📂' }
         ].map(tab => (
           <button
             key={tab.id}
@@ -299,13 +310,13 @@ export default function Dashboard({
             <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px' }}>
               <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// PENDING_UNSAVED_CHANGES</div>
-                  <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>PACKAGE STATUS</h2>
+                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('status_pending_title')}</div>
+                  <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('status_package_title')}</h2>
                 </div>
                 {dirtyFiles.length > 0 && (
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="btn btn-warning" onClick={onSaveAll}>SAVE ALL</button>
-                    <button className="btn btn-danger" onClick={onDiscardAll}>DISCARD</button>
+                    <button className="btn btn-warning" onClick={onSaveAll}>{t('status_save_all_btn')}</button>
+                    <button className="btn btn-danger" onClick={onDiscardAll}>{t('status_discard_all_btn')}</button>
                   </div>
                 )}
               </div>
@@ -313,7 +324,7 @@ export default function Dashboard({
               {dirtyFiles.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', borderRadius: '2px' }}>
                   <span style={{ fontSize: '24px', display: 'block', marginBottom: '8px' }}>✓</span>
-                  <span>ALL CONFIGURATION FILES MATCH LOCAL DISK DATA</span>
+                  <span>{t('status_match_disk')}</span>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '400px', overflowY: 'auto' }}>
@@ -347,7 +358,7 @@ export default function Dashboard({
                           {df.filePath}
                         </div>
                         <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                          SIZE: {(df.sizeBytes / 1024).toFixed(2)} KB · MODIFIED
+                          {t('status_size')} {(df.sizeBytes / 1024).toFixed(2)} KB · {t('status_modified')}
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '6px' }}>
@@ -356,14 +367,14 @@ export default function Dashboard({
                           onClick={() => onSaveFile(df.filePath)}
                           style={{ padding: '4px 8px', fontSize: '10px' }}
                         >
-                          SAVE
+                          {t('status_save_btn')}
                         </button>
                         <button 
                           className="btn" 
                           onClick={() => onResetFile(df.filePath)}
                           style={{ padding: '4px 8px', fontSize: '10px' }}
                         >
-                          REVERT
+                          {t('status_revert_btn')}
                         </button>
                       </div>
                     </div>
@@ -376,8 +387,8 @@ export default function Dashboard({
             <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px' }}>
               <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// AUTO_FIX_DIAGNOSTICS</div>
-                  <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>VALIDATION & HEALING</h2>
+                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('status_diagnostics_title')}</div>
+                  <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('status_healing_title')}</h2>
                 </div>
                 {totalIssuesCount > 0 && (
                   <button 
@@ -385,7 +396,7 @@ export default function Dashboard({
                     onClick={onFixAllErrors}
                     style={{ textShadow: '0 0 4px rgba(0,0,0,0.5)' }}
                   >
-                    🛠 AUTO-FIX ALL ISSUES
+                    {t('status_fix_all_btn')}
                   </button>
                 )}
               </div>
@@ -393,7 +404,7 @@ export default function Dashboard({
               {totalIssuesCount === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', border: '1px dashed var(--border-color)', color: '#a6f5a6', borderRadius: '2px', background: 'rgba(74, 154, 74, 0.02)' }}>
                   <span style={{ fontSize: '24px', display: 'block', marginBottom: '8px' }}>✓</span>
-                  <span>SYSTEM HEALTHY: NO STRUCTURAL OR SYNTAX ISSUES DETECTED</span>
+                  <span>{t('status_healthy')}</span>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '400px', overflowY: 'auto' }}>
@@ -428,7 +439,7 @@ export default function Dashboard({
                           onClick={() => onFixSyntaxError(pe.filePath)}
                           style={{ padding: '2px 8px', fontSize: '9px' }}
                         >
-                          REPAIR SYNTAX
+                          {t('status_repair_syntax')}
                         </button>
                       </div>
                       <div style={{ 
@@ -502,7 +513,7 @@ export default function Dashboard({
                                 onClick={() => onFixStructuralError(warn.filePath, err)}
                                 style={{ padding: '2px 6px', fontSize: '9px' }}
                               >
-                                HEAL
+                                {t('status_heal_btn')}
                               </button>
                             )}
                           </div>
@@ -521,32 +532,32 @@ export default function Dashboard({
           <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px' }}>
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// SERVER_ITEM_DATABASE</div>
-                <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>SERVER ITEMS DATABASE (TYPES.XML)</h2>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('db_title')}</div>
+                <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('db_header')}</h2>
               </div>
               {xmlItems.length > 0 && (
                 <button 
                   className="btn btn-danger" 
                   onClick={() => {
-                    if (window.confirm("Are you sure you want to clear the imported types.xml database?")) {
+                    if (window.confirm(t('db_clear_confirm'))) {
                       localStorage.removeItem('dayz_editor_xml_items');
                       onUpdateXmlItems([]);
                     }
                   }}
                 >
-                  CLEAR DATABASE
+                  {t('db_clear_btn')}
                 </button>
               )}
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.5' }}>
-                Upload your DayZ server's <code>types.xml</code> file (containing vanilla and modded item definitions) to populate the autocomplete suggestions list across all editors (Market categories, Loadout designer, Trader overrides, and Quest objectives).
+                {t('db_desc')}
               </p>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
                 <label className="btn btn-accent" style={{ display: 'inline-block', cursor: 'pointer', padding: '10px 16px', margin: 0 }}>
-                  📁 CHOOSE TYPES.XML FILE
+                  {t('db_choose_btn')}
                   <input 
                     type="file" 
                     accept=".xml" 
@@ -584,7 +595,7 @@ export default function Dashboard({
                           }
 
                           if (newItems.length === 0) {
-                            alert('No <type name="..."> tags found in the uploaded XML file.');
+                            alert(t('db_no_tags'));
                             return;
                           }
 
@@ -595,9 +606,7 @@ export default function Dashboard({
 
                           if (xmlItems.length > 0) {
                             const mergeChoice = window.confirm(
-                              `An existing items database is already loaded (${xmlItems.length} items).\n\n` +
-                              `Click [OK] to MERGE (add new unique items and skip duplicates).\n` +
-                              `Click [Cancel] to OVERWRITE (completely replace the current database with this file).`
+                              t('db_merge_confirm', { count: xmlItems.length })
                             );
 
                             if (mergeChoice) {
@@ -624,21 +633,27 @@ export default function Dashboard({
 
                           if (mergedMode) {
                             alert(
-                              `Import Completed for ${file.name}:\n` +
-                              `- File parsed: ${newItems.length} unique items (${fileDuplicatesCount} internal duplicates ignored).\n` +
-                              `- Merged into database: +${mergeCount} new unique items.\n` +
-                              `- Ignored database duplicates: ${databaseDuplicatesCount} items.\n` +
-                              `- Consolidated database total: ${finalItems.length} items.`
+                              t('db_import_completed_merge', {
+                                file: file.name,
+                                parsed: newItems.length,
+                                internal: fileDuplicatesCount,
+                                merged: mergeCount,
+                                dbDupes: databaseDuplicatesCount,
+                                total: finalItems.length
+                              })
                             );
                           } else {
                             alert(
-                              `Import Completed for ${file.name}:\n` +
-                              `- File parsed: ${newItems.length} unique items (${fileDuplicatesCount} internal duplicates ignored).\n` +
-                              `- Consolidated database total: ${finalItems.length} items.`
+                              t('db_import_completed_overwrite', {
+                                file: file.name,
+                                parsed: newItems.length,
+                                internal: fileDuplicatesCount,
+                                total: finalItems.length
+                              })
                             );
                           }
                         } catch (err) {
-                          alert('Failed to parse types.xml: ' + err.message);
+                          alert(t('db_parse_failed', { error: err.message }));
                         }
                       };
                       reader.readAsText(file);
@@ -649,9 +664,9 @@ export default function Dashboard({
 
                 <div style={{ fontSize: '13px', color: xmlItems.length > 0 ? '#a6f5a6' : 'var(--text-secondary)' }}>
                   {xmlItems.length > 0 ? (
-                    <strong>✓ Active Database: {xmlItems.length} items loaded and ready.</strong>
+                    <strong>{t('db_active_db', { count: xmlItems.length })}</strong>
                   ) : (
-                    'No database loaded. Only scanned local files are used for autocomplete.'
+                    t('db_no_db')
                   )}
                 </div>
               </div>
@@ -672,17 +687,17 @@ export default function Dashboard({
           }}>
             <div style={{ color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', gap: '8px', marginBottom: '4px' }}>
               <span>▶</span>
-              <span>CONSOLE LOGS</span>
+              <span>{t('console_title')}</span>
             </div>
-            <div>[SYSTEM INITIALIZATION] OK · Loaded {totalFiles} configs.</div>
-            <div>[DIAGNOSTICS SERVICE] Inferred schemas successfully mapped. Auditing active...</div>
+            <div>{t('console_init_ok', { count: totalFiles })}</div>
+            <div>{t('console_diagnostics_active')}</div>
             {totalIssuesCount > 0 ? (
               <div style={{ color: 'var(--warning-color)' }}>
-                [DIAGNOSTICS] Warning: Found {syntaxErrors.length} syntax errors and {totalWarningsCount} structural warnings. Click "AUTO-FIX" to repair.
+                {t('console_warn_issues', { syntax: syntaxErrors.length, struct: totalWarningsCount })}
               </div>
             ) : (
               <div style={{ color: '#a6f5a6' }}>
-                [DIAGNOSTICS] System status green: 0 syntax issues, 0 schema mismatches.
+                {t('console_status_green')}
               </div>
             )}
           </div>
@@ -692,17 +707,17 @@ export default function Dashboard({
       {activeSubTab === 'changelog' && (
         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// SESSION_MUTATIONS_AUDIT</div>
-            <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>UNSAVED FIELD-LEVEL CHANGELOG</h2>
+            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('change_title')}</div>
+            <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('change_header')}</h2>
             <p style={{ fontSize: '13px', color: 'var(--text-primary)', marginTop: '8px', lineHeight: '1.4' }}>
-              This tab displays individual property mutations that currently exist only in memory. You can revert single changes to their disk state using the "Undo" button.
+              {t('change_desc')}
             </p>
           </div>
 
           {detailedChanges.length === 0 ? (
             <div style={{ padding: '60px 40px', textAlign: 'center', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', borderRadius: '2px' }}>
               <span style={{ fontSize: '32px', display: 'block', marginBottom: '12px' }}>✓</span>
-              <span>NO UNSAVED MODIFICATIONS IN THE CURRENT SESSION</span>
+              <span>{t('change_no_changes')}</span>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -727,10 +742,10 @@ export default function Dashboard({
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                          <th style={{ padding: '8px', width: '30%' }}>FIELD PATH</th>
-                          <th style={{ padding: '8px', width: '30%' }}>ORIGINAL VALUE</th>
-                          <th style={{ padding: '8px', width: '30%' }}>MODIFIED VALUE</th>
-                          <th style={{ padding: '8px', width: '10%', textAlign: 'right' }}>ACTION</th>
+                          <th style={{ padding: '8px', width: '30%' }}>{t('change_th_path')}</th>
+                          <th style={{ padding: '8px', width: '30%' }}>{t('change_th_orig')}</th>
+                          <th style={{ padding: '8px', width: '30%' }}>{t('change_th_mod')}</th>
+                          <th style={{ padding: '8px', width: '10%', textAlign: 'right' }}>{t('change_th_action')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -762,11 +777,11 @@ export default function Dashboard({
                                 className="btn"
                                 onClick={() => {
                                   onResetField(fileChange.filePath, d.path);
-                                  toast.info(`Reverted field: ${formatPath(d.path)}`);
+                                  toast.info(t('toast_reverted', { path: formatPath(d.path) }));
                                 }}
                                 style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--warning-color)', borderColor: 'var(--warning-color)' }}
                               >
-                                Undo
+                                {t('change_undo')}
                               </button>
                             </td>
                           </tr>
@@ -785,14 +800,14 @@ export default function Dashboard({
         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// BACKUP_ARCHIVE_EXPLORER</div>
-              <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>BACKUP EXPLORER</h2>
+              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('backup_title')}</div>
+              <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('backup_header')}</h2>
               <p style={{ fontSize: '13px', color: 'var(--text-primary)', marginTop: '8px', lineHeight: '1.4' }}>
-                Restore previous versions of configurations in one click. Restores overwrite active files on disk and prompt confirmation.
+                {t('backup_desc')}
               </p>
             </div>
             <button className="btn" onClick={loadBackups} disabled={loadingBackups}>
-              {loadingBackups ? 'REFRESHING...' : '↻ REFRESH'}
+              {loadingBackups ? t('backup_refreshing') : t('backup_refresh')}
             </button>
           </div>
 
@@ -804,7 +819,7 @@ export default function Dashboard({
                 borderTopColor: 'var(--text-glow)', borderRadius: '50%',
                 animation: 'spin 1s linear infinite', margin: '0 auto 16px auto',
               }} />
-              <span>RETRIEVING BACKUPS FROM DISK...</span>
+              <span>{t('backup_loading')}</span>
             </div>
           ) : errorBackups ? (
             <div style={{ padding: '40px', textAlign: 'center', color: 'var(--danger-color)', border: '1px dashed var(--danger-color)' }}>
@@ -812,7 +827,7 @@ export default function Dashboard({
             </div>
           ) : backups.length === 0 ? (
             <div style={{ padding: '60px 40px', textAlign: 'center', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', borderRadius: '2px' }}>
-              <span>NO RESTORE POINTS FOUND IN BACKUPS DIRECTORY</span>
+              <span>{t('backup_no_points')}</span>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
@@ -820,11 +835,11 @@ export default function Dashboard({
                 const isFull = backup.name.startsWith('backup_all_');
                 const relativeTime = (() => {
                   const diffMin = Math.round((Date.now() - backup.mtime) / 60000);
-                  if (diffMin < 1) return 'Just now';
-                  if (diffMin < 60) return `${diffMin} min ago`;
+                  if (diffMin < 1) return t('time_just_now');
+                  if (diffMin < 60) return t('time_min_ago', { count: diffMin });
                   const diffHrs = Math.round(diffMin / 60);
-                  if (diffHrs < 24) return `${diffHrs} hours ago`;
-                  return `${Math.round(diffHrs / 24)} days ago`;
+                  if (diffHrs < 24) return t('time_hours_ago', { count: diffHrs });
+                  return t('time_days_ago', { count: Math.round(diffHrs / 24) });
                 })();
                 const isExpanded = !!expandedBackups[backup.name];
 
@@ -854,7 +869,7 @@ export default function Dashboard({
                           borderRadius: '2px',
                           letterSpacing: '1px'
                         }}>
-                          {isFull ? 'FULL PACKAGE' : 'SINGLE FILE'}
+                          {isFull ? t('backup_full') : t('backup_single')}
                         </span>
                         <span style={{ fontSize: '11px', color: 'var(--text-dark)' }} title={new Date(backup.mtime).toLocaleString()}>
                           {relativeTime}
@@ -866,7 +881,7 @@ export default function Dashboard({
                     </div>
 
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Files in archive: <strong>{backup.files.length}</strong>
+                      {t('backup_files_in_archive', { count: backup.files.length })}
                     </div>
 
                     <div>
@@ -875,7 +890,7 @@ export default function Dashboard({
                         style={{ width: '100%', padding: '6px', fontSize: '11px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                         onClick={() => setExpandedBackups(prev => ({ ...prev, [backup.name]: !isExpanded }))}
                       >
-                        <span>{isExpanded ? '▼ HIDE FILES LIST' : '▶ SHOW FILES LIST'}</span>
+                        <span>{isExpanded ? t('backup_hide_files') : t('backup_show_files')}</span>
                         <span>{isExpanded ? '▲' : '▼'}</span>
                       </button>
 
@@ -909,25 +924,25 @@ export default function Dashboard({
                         style={{ width: '100%', padding: '8px', fontWeight: 'bold' }}
                         onClick={() => {
                           onShowConfirm({
-                            title: 'RESTORE BACKUP',
-                            body: `Are you sure you want to restore "${backup.name}"?\n\nThis will overwrite all active files on disk with the files from this backup.\n\nAny unsaved changes currently in memory will be lost.`,
+                            title: t('modal_confirm_restore_title'),
+                            body: t('modal_confirm_restore_body', { backup: backup.name }),
                             severity: 'danger',
-                            confirmLabel: 'RESTORE BACKUP',
-                            cancelLabel: 'CANCEL',
+                            confirmLabel: t('backup_restore_btn'),
+                            cancelLabel: t('modal_confirm_cancel'),
                             onConfirm: () => {
                               fileService.restoreBackup(backup.name)
                                 .then(() => {
-                                  toast.success(`Successfully restored backup: ${backup.name}`);
+                                  toast.success(t('toast_restore_success', { backup: backup.name }));
                                   fetchConfigs(); // reload all configs
                                 })
                                 .catch(err => {
-                                  toast.error(`Restore failed: ${err.message}`);
+                                  toast.error(t('toast_restore_failed', { error: err.message }));
                                 });
                             }
                           });
                         }}
                       >
-                        📂 RESTORE
+                        {t('backup_restore_btn')}
                       </button>
                     </div>
                   </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AutocompleteWorkerWrapper } from '../../utils/autocompleteWorker';
 
 /**
  * Reusable Autocomplete Input Component
@@ -17,6 +18,20 @@ export default function AutocompleteInput({
   const [internalValue, setInternalValue] = useState('');
   const [filtered, setFiltered] = useState([]);
   const [show, setShow] = useState(false);
+  const [worker, setWorker] = useState(null);
+
+  useEffect(() => {
+    if (Array.isArray(suggestions) && suggestions.length > 100) {
+      const w = new AutocompleteWorkerWrapper();
+      w.init(suggestions);
+      setWorker(w);
+      return () => {
+        w.terminate();
+      };
+    } else {
+      setWorker(null);
+    }
+  }, [suggestions]);
 
   const inputValue = isControlled ? value : internalValue;
 
@@ -29,13 +44,23 @@ export default function AutocompleteInput({
     }
 
     if (val.trim()) {
-      const matched = suggestions.filter(s => 
-        s.toLowerCase().includes(val.toLowerCase()) && 
-        s.toLowerCase() !== val.toLowerCase()
-      ).slice(0, 10);
-      setFiltered(matched);
-      setShow(true);
+      if (worker) {
+        worker.search(val, 10, (matched) => {
+          setFiltered(matched.filter(s => s.toLowerCase() !== val.toLowerCase()));
+          setShow(true);
+        });
+      } else {
+        const matched = suggestions.filter(s => 
+          s.toLowerCase().includes(val.toLowerCase()) && 
+          s.toLowerCase() !== val.toLowerCase()
+        ).slice(0, 10);
+        setFiltered(matched);
+        setShow(true);
+      }
     } else {
+      if (worker) {
+        worker.search('', 10, () => {});
+      }
       setFiltered([]);
       setShow(false);
     }

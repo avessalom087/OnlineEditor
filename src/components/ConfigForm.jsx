@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { translations } from '../utils/localization';
 
 // Common enums used in DayZ Expansion configuration
 const STATIC_ENUMS = {
@@ -24,7 +25,7 @@ function isVector3(arr) {
 }
 
 // Collapsible Group Wrapper
-function Accordion({ title, children, isDirty, onReset, isList = false, onRemove }) {
+function Accordion({ title, children, isDirty, onReset, isList = false, onRemove, t }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -57,9 +58,9 @@ function Accordion({ title, children, isDirty, onReset, isList = false, onRemove
               className="btn btn-warning" 
               onClick={onReset}
               style={{ padding: '3px 8px', fontSize: '10px' }}
-              title="Reset this section"
+              title={t ? t('config_reset') : "RESET"}
             >
-              RESET
+              {t ? t('config_reset') : "RESET"}
             </button>
           )}
           {isList && onRemove && (
@@ -67,9 +68,9 @@ function Accordion({ title, children, isDirty, onReset, isList = false, onRemove
               className="btn btn-danger" 
               onClick={onRemove}
               style={{ padding: '3px 8px', fontSize: '10px' }}
-              title="Remove item"
+              title={t ? t('config_delete') : "DELETE"}
             >
-              DELETE
+              {t ? t('config_delete') : "DELETE"}
             </button>
           )}
         </div>
@@ -112,7 +113,8 @@ function RenderFormNode({
   onChange, 
   onResetKey, 
   inferredEnums,
-  onNavigateToMap
+  onNavigateToMap,
+  t
 }) {
   const isDirty = JSON.stringify(value) !== JSON.stringify(originalValue);
   const displayLabel = keyName.replace(/([A-Z])/g, ' $1').trim(); // Convert CamelCase to readable spacing
@@ -138,7 +140,7 @@ function RenderFormNode({
       <div className="form-group" style={{ borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
           <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0 }}>
-            {displayLabel} (3D VECTOR)
+            {displayLabel} {t ? "(3D VECTOR)" : "(3D VECTOR)"}
           </label>
           <div style={{ display: 'flex', gap: '8px' }}>
             {onNavigateToMap && (
@@ -148,7 +150,7 @@ function RenderFormNode({
                 onClick={() => onNavigateToMap(value, path)}
                 style={{ padding: '2px 6px', fontSize: '9px', fontFamily: 'var(--font-mono)' }}
               >
-                🖈 SHOW ON MAP
+                🖈 {t ? t('config_show_on_map') : "SHOW ON MAP"}
               </button>
             )}
             {isDirty && (
@@ -158,7 +160,7 @@ function RenderFormNode({
                 onClick={() => onResetKey(path)}
                 style={{ padding: '2px 6px', fontSize: '9px' }}
               >
-                RESET
+                {t ? t('config_reset') : "RESET"}
               </button>
             )}
           </div>
@@ -234,7 +236,7 @@ function RenderFormNode({
       <div style={{ marginBottom: '16px', borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '1px' }}>
-            {displayLabel} (ARRAY · {value.length} ITEMS)
+            {displayLabel} (ARRAY · {value.length} {t ? t('econ_all_items') : "ITEMS"})
           </label>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button 
@@ -243,7 +245,7 @@ function RenderFormNode({
               onClick={handleAddItem}
               style={{ padding: '2px 8px', fontSize: '10px' }}
             >
-              [+] ADD ITEM
+              [+] {t ? t('trader_add_currency') : "ADD ITEM"}
             </button>
             {isDirty && (
               <button 
@@ -252,7 +254,7 @@ function RenderFormNode({
                 onClick={() => onResetKey(path)}
                 style={{ padding: '2px 8px', fontSize: '10px' }}
               >
-                RESET
+                {t ? t('config_reset') : "RESET"}
               </button>
             )}
           </div>
@@ -260,7 +262,7 @@ function RenderFormNode({
 
         {value.length === 0 ? (
           <div style={{ padding: '12px', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center' }}>
-            ARRAY IS EMPTY
+            {t ? t('config_array_empty') : "ARRAY IS EMPTY"}
           </div>
         ) : isArrayOfObjects ? (
           <div>
@@ -275,6 +277,7 @@ function RenderFormNode({
                   onReset={() => onResetKey([...path, idx])}
                   isList={true}
                   onRemove={() => handleRemoveItem(idx)}
+                  t={t}
                 >
                   {Object.keys(item).map(k => (
                     <RenderFormNode
@@ -287,6 +290,7 @@ function RenderFormNode({
                       onResetKey={onResetKey}
                       inferredEnums={inferredEnums}
                       onNavigateToMap={onNavigateToMap}
+                      t={t}
                     />
                   ))}
                 </Accordion>
@@ -334,6 +338,7 @@ function RenderFormNode({
         title={displayLabel} 
         isDirty={isDirty}
         onReset={() => onResetKey(path)}
+        t={t}
       >
         {Object.keys(value).map(k => (
           <RenderFormNode
@@ -346,6 +351,7 @@ function RenderFormNode({
             onResetKey={onResetKey}
             inferredEnums={inferredEnums}
             onNavigateToMap={onNavigateToMap}
+            t={t}
           />
         ))}
       </Accordion>
@@ -382,7 +388,7 @@ function RenderFormNode({
             onClick={() => onResetKey(path)}
             style={{ padding: '1px 6px', fontSize: '9px' }}
           >
-            RESET
+            {t ? t('config_reset') : "RESET"}
           </button>
         )}
       </div>
@@ -406,7 +412,7 @@ function RenderFormNode({
           value={value}
           onChange={e => onChange(path, e.target.value)}
           className={isDirty ? 'field-dirty' : ''}
-          placeholder="ENTER TEXT..."
+          placeholder={t ? t('xml_search_missing') : "ENTER TEXT..."}
         />
       ) : (
         <input
@@ -432,13 +438,22 @@ export default function ConfigForm({
   onResetFile, 
   onSaveFile,
   inferredEnums = {},
-  onNavigateToMap
+  onNavigateToMap,
+  lang = 'ru'
 }) {
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
+
   if (!config) {
     return (
       <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: 'var(--text-secondary)' }}>
         <span style={{ fontSize: '32px', marginBottom: '12px' }}>◀</span>
-        <span style={{ fontFamily: 'var(--font-heading)', fontSize: '18px', fontWeight: '700', letterSpacing: '2px' }}>SELECT CONFIGURATION FILE FROM SIDEBAR</span>
+        <span style={{ fontFamily: 'var(--font-heading)', fontSize: '18px', fontWeight: '700', letterSpacing: '2px' }}>{t('config_select_config')}</span>
       </div>
     );
   }
@@ -447,7 +462,7 @@ export default function ConfigForm({
     return (
       <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '40px', color: 'var(--danger-color)' }}>
         <span style={{ fontSize: '48px', marginBottom: '16px' }}>⚠</span>
-        <h2 style={{ fontFamily: 'var(--font-heading)', fontWeight: '700', letterSpacing: '2px', margin: '0 0 12px 0' }}>PARSING ERROR IN FILE</h2>
+        <h2 style={{ fontFamily: 'var(--font-heading)', fontWeight: '700', letterSpacing: '2px', margin: '0 0 12px 0' }}>{t('config_parsing_error')}</h2>
         <div style={{ 
           fontFamily: 'var(--font-mono)', 
           background: 'rgba(235, 103, 103, 0.05)', 
@@ -493,12 +508,12 @@ export default function ConfigForm({
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>FILE:</span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{t('config_file_label')}</span>
             <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontWeight: 'bold' }}>{filePath}</span>
-            {isDirty && <span style={{ color: 'var(--warning-color)', fontSize: '11px', fontFamily: 'var(--font-heading)' }}>(MODIFIED ●)</span>}
+            {isDirty && <span style={{ color: 'var(--warning-color)', fontSize: '11px', fontFamily: 'var(--font-heading)' }}>{t('config_modified')}</span>}
           </div>
           <div style={{ fontSize: '10px', color: 'var(--text-dark)', marginTop: '4px' }}>
-            SIZE: {(config.sizeBytes / 1024).toFixed(2)} KB
+            {t('config_size')} {(config.sizeBytes / 1024).toFixed(2)} KB
           </div>
         </div>
 
@@ -509,13 +524,13 @@ export default function ConfigForm({
             className={`btn ${isDirty ? 'btn-accent' : ''}`}
             style={{ opacity: isDirty ? 1 : 0.5, cursor: isDirty ? 'pointer' : 'not-allowed' }}
           >
-            {isDirty ? '● SAVE CONFIG' : 'SAVED'}
+            {isDirty ? t('config_save') : t('config_saved')}
           </button>
           <button 
             onClick={handleExportJson}
             className="btn"
           >
-            EXPORT FILE
+            {t('config_export')}
           </button>
           <button 
             onClick={() => onResetFile(filePath)} 
@@ -523,7 +538,7 @@ export default function ConfigForm({
             className="btn btn-warning"
             style={{ opacity: isDirty ? 1 : 0.5, cursor: isDirty ? 'pointer' : 'not-allowed' }}
           >
-            RESET ALL
+            {t('config_reset_all')}
           </button>
         </div>
       </div>
@@ -542,6 +557,7 @@ export default function ConfigForm({
               onResetKey={(path) => onResetField(filePath, path)}
               inferredEnums={inferredEnums}
               onNavigateToMap={onNavigateToMap}
+              t={t}
             />
           ))}
         </div>

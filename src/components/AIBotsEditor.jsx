@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
+import { translations } from '../utils/localization';
 
 const FACTIONS = ['West', 'East', 'Guards', 'Civilian', 'Passive', 'Aggressive', 'Shamans', 'Survivors'];
 const BEHAVIOURS = ['ROAMING_LOCAL', 'HALT', 'ROAMING_SELF', 'PATROL_ROAMING', 'LOOP_OR_ALTERNATE', 'ROAMING_UNLIMITED'];
@@ -17,8 +18,17 @@ export default function AIBotsEditor({
   onDeleteFile, 
   onSaveFile,
   xmlItems = [],
-  setActiveTab: setGlobalActiveTab
+  setActiveTab: setGlobalActiveTab,
+  lang = 'ru'
 }) {
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
+
   const [activeTab, setActiveTab] = useState('patrols'); // 'patrols', 'loadouts', 'roaming', 'loot_drops'
   const xmlItemsSet = React.useMemo(() => new Set((xmlItems || []).map(i => i.toLowerCase())), [xmlItems]);
   const isItemMissing = (className) => {
@@ -120,7 +130,7 @@ export default function AIBotsEditor({
   if (!patrolFile || !patrolFile.success) {
     return (
       <div style={{ padding: '24px', color: 'var(--danger-color)', textAlign: 'center' }}>
-        <h3>Error: AIPatrolSettings.json is missing or failed to parse.</h3>
+        <h3>{t('ai_err_missing_config')}</h3>
         {patrolFile && <p>{patrolFile.error}</p>}
       </div>
     );
@@ -230,10 +240,11 @@ export default function AIBotsEditor({
 
   const handleRemovePatrol = () => {
     if (patrols.length <= 1) {
-      alert("At least one patrol must remain in the configuration!");
+      alert(t('ai_alert_min_patrol'));
       return;
     }
-    if (window.confirm(`Delete AI Patrol "${selectedPatrol.Name || `Patrol #${selectedPatrolIdx + 1}`}"?`)) {
+    const nameVal = selectedPatrol.Name || `Patrol #${selectedPatrolIdx + 1}`;
+    if (window.confirm(t('ai_confirm_delete_patrol', { name: nameVal }))) {
       const newList = [...patrols];
       newList.splice(selectedPatrolIdx, 1);
       onChangeField(patrolConfigPath, ['Patrols'], newList);
@@ -248,14 +259,14 @@ export default function AIBotsEditor({
   const isLoadoutDirty = activeLoadoutConfig ? JSON.stringify(activeLoadoutConfig.content) !== JSON.stringify(activeLoadoutConfig.originalContent) : false;
 
   const handleCreateLoadout = () => {
-    const name = prompt("Enter new Loadout profile name (e.g. MilBanditLoadout):");
+    const name = prompt(t('ai_prompt_loadout_name'));
     if (!name) return;
     const cleanName = name.trim().replace(/\s+/g, '_');
     if (!cleanName) return;
     
     const filePath = `ExpansionMod/Loadouts/${cleanName}.json`;
     if (configs[filePath]) {
-      alert("A loadout with this name already exists!");
+      alert(t('ai_alert_loadout_exists'));
       return;
     }
 
@@ -277,7 +288,7 @@ export default function AIBotsEditor({
   const handleDeleteLoadout = () => {
     if (!selectedLoadoutPath) return;
     const name = selectedLoadoutPath.split('/').pop().replace('.json', '');
-    if (window.confirm(`Are you sure you want to delete loadout "${name}" from disk?`)) {
+    if (window.confirm(t('ai_confirm_delete_loadout', { name }))) {
       onDeleteFile(selectedLoadoutPath);
       setSelectedLoadoutPath(null);
     }
@@ -285,14 +296,14 @@ export default function AIBotsEditor({
 
   const handleCloneLoadout = () => {
     if (!selectedLoadoutPath) return;
-    const name = prompt("Enter name for the cloned Loadout profile:");
+    const name = prompt(t('ai_prompt_clone_loadout'));
     if (!name) return;
     const cleanName = name.trim().replace(/\s+/g, '_');
     if (!cleanName) return;
 
     const newPath = `ExpansionMod/Loadouts/${cleanName}.json`;
     if (configs[newPath]) {
-      alert("A loadout with this name already exists!");
+      alert(t('ai_alert_loadout_exists'));
       return;
     }
 
@@ -438,7 +449,8 @@ export default function AIBotsEditor({
 
   const handleRemoveLocation = () => {
     if (!selectedLocation || !locationFile?.success) return;
-    if (window.confirm(`Delete roaming location "${selectedLocation.Name || `Location #${selectedLocationIdx + 1}`}"?`)) {
+    const nameVal = selectedLocation.Name || `Location #${selectedLocationIdx + 1}`;
+    if (window.confirm(t('ai_confirm_delete_location', { name: nameVal }))) {
       const newList = [...roamingLocationsList];
       newList.splice(selectedLocationIdx, 1);
       onChangeField(locationConfigPath, ['RoamingLocations'], newList);
@@ -471,12 +483,12 @@ export default function AIBotsEditor({
 
   // Loot drops action handlers
   const handleCreateLootDrop = () => {
-    const name = window.prompt("Enter new Loot Drop profile name (e.g. SoldierLoot):");
+    const name = window.prompt(t('ai_prompt_loot_name'));
     if (!name || !name.trim()) return;
     const cleanName = name.trim().replace(/\s+/g, '_');
     const path = `ExpansionMod/AI/LootDrops/${cleanName}.json`;
     if (configs[path]) {
-      alert("Loot Drop profile already exists!");
+      alert(t('ai_alert_loot_exists'));
       return;
     }
     onCreateFile(path, []);
@@ -485,7 +497,7 @@ export default function AIBotsEditor({
 
   const handleDeleteLootDrop = () => {
     if (!selectedLootDropPath) return;
-    if (window.confirm(`Delete loot drop file: ${selectedLootDropPath}?`)) {
+    if (window.confirm(t('ai_confirm_delete_loot', { path: selectedLootDropPath }))) {
       onDeleteFile(selectedLootDropPath);
       setSelectedLootDropPath(null);
     }
@@ -493,14 +505,14 @@ export default function AIBotsEditor({
 
   const handleCloneLootDrop = () => {
     if (!selectedLootDropPath) return;
-    const name = prompt("Enter name for the cloned Loot Drop profile:");
+    const name = prompt(t('ai_prompt_clone_loot'));
     if (!name) return;
     const cleanName = name.trim().replace(/\s+/g, '_');
     if (!cleanName) return;
 
     const newPath = `ExpansionMod/AI/LootDrops/${cleanName}.json`;
     if (configs[newPath]) {
-      alert("A loot drop profile with this name already exists!");
+      alert(t('ai_alert_loot_exists'));
       return;
     }
 
@@ -517,7 +529,7 @@ export default function AIBotsEditor({
     
     const currentList = Array.isArray(file.content) ? file.content : [];
     if (currentList.some(item => item.ClassName.toLowerCase() === classname.toLowerCase())) {
-      alert("Item classname already exists in this loot table!");
+      alert(t('ai_alert_loot_item_exists'));
       return;
     }
 
@@ -584,28 +596,28 @@ export default function AIBotsEditor({
           onClick={() => setActiveTab('patrols')}
           style={{ padding: '6px 16px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold' }}
         >
-          🚨 PATROL MANAGER
+          {t('ai_tab_patrol_manager')}
         </button>
         <button 
           className={`btn ${activeTab === 'loadouts' ? 'btn-accent' : ''}`}
           onClick={() => setActiveTab('loadouts')}
           style={{ padding: '6px 16px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold' }}
         >
-          👕 LOADOUT DESIGNER
+          {t('ai_tab_loadout_designer')}
         </button>
         <button 
           className={`btn ${activeTab === 'roaming' ? 'btn-accent' : ''}`}
           onClick={() => setActiveTab('roaming')}
           style={{ padding: '6px 16px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold' }}
         >
-          🗺 ROAMING LOCATIONS
+          {t('ai_tab_roaming_locations')}
         </button>
         <button 
           className={`btn ${activeTab === 'loot_drops' ? 'btn-accent' : ''}`}
           onClick={() => setActiveTab('loot_drops')}
           style={{ padding: '6px 16px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold' }}
         >
-          🎁 LOOT DROPS
+          {t('ai_tab_loot_drops')}
         </button>
       </div>
 
@@ -632,14 +644,14 @@ export default function AIBotsEditor({
                   onClick={() => setActiveSubTab('patrols')}
                   style={{ flex: 1, padding: '6px 8px', fontSize: '11px' }}
                 >
-                  PATROLS
+                  {t('ai_subtab_patrols')}
                 </button>
                 <button 
                   className={`btn ${activeSubTab === 'general' ? 'btn-active' : ''}`}
                   onClick={() => setActiveSubTab('general')}
                   style={{ flex: 1, padding: '6px 8px', fontSize: '11px' }}
                 >
-                  GLOBAL AI
+                  {t('ai_subtab_global')}
                 </button>
               </div>
 
@@ -681,7 +693,7 @@ export default function AIBotsEditor({
                               {pName}
                             </span>
                             <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                              FACTION: {patrol.Faction} · WAYPOINTS: {patrol.Waypoints?.length || 0}
+                              {t('ai_label_faction').toUpperCase()}: {patrol.Faction} · {t('ai_patrol_waypoints').replace('// ', '').toUpperCase()}: {patrol.Waypoints?.length || 0}
                             </span>
                           </div>
                           {isPatrolDirty && <span className="badge-dirty" />}
@@ -691,13 +703,13 @@ export default function AIBotsEditor({
                   </div>
                   <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
                     <button className="btn btn-accent" onClick={handleAddPatrol} style={{ width: '100%', justifyContent: 'center' }}>
-                      [+] CREATE NEW PATROL
+                      {t('ai_btn_create_patrol')}
                     </button>
                   </div>
                 </>
               ) : (
                 <div style={{ padding: '16px', color: 'var(--text-secondary)', fontSize: '11px', textAlign: 'center', lineHeight: '1.4' }}>
-                  GLOBAL PARAMETERS SELECTED. USE THE CONFIGURATION PANELS ON THE RIGHT TO TWEAK VALUES.
+                  {t('ai_msg_global_selected')}
                 </div>
               )}
             </div>
@@ -713,9 +725,9 @@ export default function AIBotsEditor({
                 alignItems: 'center'
               }}>
                 <div>
-                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>FILE: </span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{lang === 'ru' ? 'ФАЙЛ:' : 'FILE:'} </span>
                   <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontWeight: 'bold' }}>AIPatrolSettings.json</span>
-                  {isPatrolDirty && <span style={{ color: 'var(--warning-color)', fontSize: '11px', marginLeft: '8px' }}>(UNSAVED CHANGES ●)</span>}
+                  {isPatrolDirty && <span style={{ color: 'var(--warning-color)', fontSize: '11px', marginLeft: '8px' }}>{t('ai_unsaved_changes')}</span>}
                 </div>
                 <button 
                   className={`btn ${isPatrolDirty ? 'btn-accent' : ''}`}
@@ -723,7 +735,7 @@ export default function AIBotsEditor({
                   disabled={!isPatrolDirty}
                   style={{ opacity: isPatrolDirty ? 1 : 0.5, cursor: isPatrolDirty ? 'pointer' : 'not-allowed' }}
                 >
-                  SAVE PATROL SETTINGS
+                  {t('ai_btn_save_patrol')}
                 </button>
               </div>
 
@@ -734,79 +746,79 @@ export default function AIBotsEditor({
                     /* Global Defaults Edit Mode */
                     <>
                       <div className="card-hud">
-                        <h4>// GLOBAL SPAWN & DESPAWN LIMITS</h4>
+                        <h4>{t('ai_global_limits')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: '12px' }}>
                           <div className="form-group">
-                            <label>Enable Patrols</label>
+                            <label>{t('ai_label_enable_patrols')}</label>
                             <select value={patrolContent.Enabled} onChange={e => handleUpdateGeneralVal('Enabled', Number(e.target.value))}>
-                              <option value={1}>1 - ENABLED</option>
-                              <option value={0}>0 - DISABLED</option>
+                              <option value={1}>{t('ai_opt_enabled')}</option>
+                              <option value={0}>{t('ai_opt_disabled')}</option>
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>Spawn Distance Min (m)</label>
+                            <label>{t('ai_label_spawn_min')}</label>
                             <input type="number" value={patrolContent.MinDistRadius ?? 400} onChange={e => handleUpdateGeneralVal('MinDistRadius', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Spawn Distance Max (m)</label>
+                            <label>{t('ai_label_spawn_max')}</label>
                             <input type="number" value={patrolContent.MaxDistRadius ?? 1000} onChange={e => handleUpdateGeneralVal('MaxDistRadius', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Despawn Distance Radius (m)</label>
+                            <label>{t('ai_label_despawn_radius')}</label>
                             <input type="number" value={patrolContent.DespawnRadius ?? 1100} onChange={e => handleUpdateGeneralVal('DespawnRadius', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>AI Despawn Timeout (secs)</label>
+                            <label>{t('ai_label_despawn_timeout')}</label>
                             <input type="number" value={patrolContent.DespawnTime ?? 600} onChange={e => handleUpdateGeneralVal('DespawnTime', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>AI Respawn Cooldown (secs)</label>
+                            <label>{t('ai_label_respawn_cooldown')}</label>
                             <input type="number" value={patrolContent.RespawnTime ?? 600} onChange={e => handleUpdateGeneralVal('RespawnTime', Number(e.target.value))} />
                           </div>
                         </div>
                       </div>
 
                       <div className="card-hud">
-                        <h4>// GLOBAL COMBAT & THREAT PARAMETERS</h4>
+                        <h4>{t('ai_global_combat')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: '12px' }}>
                           <div className="form-group">
-                            <label>Accuracy Min (-1 = use default)</label>
+                            <label>{t('ai_label_accuracy_min_ph')}</label>
                             <input type="number" step="any" value={patrolContent.AccuracyMin ?? -1.0} onChange={e => handleUpdateGeneralVal('AccuracyMin', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Accuracy Max (-1 = use default)</label>
+                            <label>{t('ai_label_accuracy_max_ph')}</label>
                             <input type="number" step="any" value={patrolContent.AccuracyMax ?? -1.0} onChange={e => handleUpdateGeneralVal('AccuracyMax', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Threat Distance Limit (m)</label>
+                            <label>{t('ai_label_threat_distance')}</label>
                             <input type="number" value={patrolContent.ThreatDistanceLimit ?? -1} onChange={e => handleUpdateGeneralVal('ThreatDistanceLimit', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Noise Investigation Limit (m)</label>
+                            <label>{t('ai_label_noise_limit')}</label>
                             <input type="number" value={patrolContent.NoiseInvestigationDistanceLimit ?? -1} onChange={e => handleUpdateGeneralVal('NoiseInvestigationDistanceLimit', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Max Flanking Distance (m)</label>
+                            <label>{t('ai_label_flanking_distance')}</label>
                             <input type="number" value={patrolContent.MaxFlankingDistance ?? -1} onChange={e => handleUpdateGeneralVal('MaxFlankingDistance', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Enable Flanking Outside Combat</label>
+                            <label>{t('ai_label_enable_flanking_combat')}</label>
                             <select value={patrolContent.EnableFlankingOutsideCombat ?? -1} onChange={e => handleUpdateGeneralVal('EnableFlankingOutsideCombat', Number(e.target.value))}>
-                              <option value={-1}>-1 - Default</option>
-                              <option value={1}>1 - Enabled</option>
-                              <option value={0}>0 - Disabled</option>
+                              <option value={-1}>{t('ai_opt_default')}</option>
+                              <option value={1}>{t('ai_opt_enabled')}</option>
+                              <option value={0}>{t('ai_opt_disabled')}</option>
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>Damage Multiplier (Dealt)</label>
+                            <label>{t('ai_label_damage_multiplier')}</label>
                             <input type="number" step="any" value={patrolContent.DamageMultiplier ?? -1.0} onChange={e => handleUpdateGeneralVal('DamageMultiplier', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Damage Received Multiplier</label>
+                            <label>{t('ai_label_damage_received')}</label>
                             <input type="number" step="any" value={patrolContent.DamageReceivedMultiplier ?? -1.0} onChange={e => handleUpdateGeneralVal('DamageReceivedMultiplier', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Shoryuken Melee Chance</label>
+                            <label>{t('ai_label_shoryuken_chance')}</label>
                             <input type="number" step="any" value={patrolContent.ShoryukenChance ?? 0.0} onChange={e => handleUpdateGeneralVal('ShoryukenChance', Number(e.target.value))} />
                           </div>
                         </div>
@@ -816,12 +828,12 @@ export default function AIBotsEditor({
                       {aiSettingsFile && aiSettingsFile.success && (
                         <div className="card-hud" style={{ borderLeft: '3px solid var(--text-glow)', marginTop: '20px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', marginBottom: '12px' }}>
-                            <h4 style={{ margin: 0 }}>// ADVANCED AI CHARACTER BEHAVIORS (AISETTINGS.JSON)</h4>
+                            <h4 style={{ margin: 0 }}>{t('ai_advanced_behaviors')}</h4>
                             <button 
                               className={`btn ${JSON.stringify(aiSettingsFile.content) !== JSON.stringify(aiSettingsFile.originalContent) ? 'btn-accent' : ''}`}
                               onClick={() => onSaveFile(aiSettingsPath)}
                             >
-                              SAVE GLOBAL AI BEHAVIORS
+                              {t('ai_btn_save_behaviors')}
                             </button>
                           </div>
                           
@@ -829,22 +841,22 @@ export default function AIBotsEditor({
                             
                             {/* Vaulting / Climb switches */}
                             <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>MOVEMENT & OBSTACLES</span>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_movement_obstacles')}</span>
                               
                               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', cursor: 'pointer', marginTop: '6px' }}>
-                                <span>ENABLE VAULTING (ПАРКУР БОТОВ):</span>
+                                <span>{t('ai_label_vaulting')}</span>
                                 <select 
                                   value={aiSettingsFile.content.Vaulting ?? 1} 
                                   onChange={e => onChangeField(aiSettingsPath, ['Vaulting'], Number(e.target.value))}
                                   style={{ padding: '3px 8px', fontSize: '11px', width: '120px' }}
                                 >
-                                  <option value={1}>1 - ENABLED</option>
-                                  <option value={0}>0 - DISABLED</option>
+                                  <option value={1}>{t('ai_opt_enabled')}</option>
+                                  <option value={0}>{t('ai_opt_disabled')}</option>
                                 </select>
                               </label>
 
                               <div className="form-group" style={{ marginTop: '8px' }}>
-                                <label style={{ fontSize: '9px' }}>FORMATION SCALE (МАСШТАБ СТРОЯ): {aiSettingsFile.content.FormationScale ?? 1.0}</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_formation_scale', { scale: aiSettingsFile.content.FormationScale ?? 1.0 })}</label>
                                 <input 
                                   type="range" 
                                   min="0.1" 
@@ -858,10 +870,10 @@ export default function AIBotsEditor({
 
                             {/* Combat melee special options */}
                             <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>MELEE SPECIALS (SHORYUKEN)</span>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_melee_specials')}</span>
                               
                               <div className="form-group">
-                                <label style={{ fontSize: '9px' }}>SHORYUKEN CHANCE (ВЕРОЯТНОСТЬ СУПЕРУДАРА): {Math.round((aiSettingsFile.content.ShoryukenChance ?? 0.01) * 100)}%</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_shoryuken_percent', { chance: Math.round((aiSettingsFile.content.ShoryukenChance ?? 0.01) * 100) })}</label>
                                 <input 
                                   type="range" 
                                   min="0.0" 
@@ -873,7 +885,7 @@ export default function AIBotsEditor({
                               </div>
 
                               <div className="form-group">
-                                <label style={{ fontSize: '9px' }}>SHORYUKEN DAMAGE MULTIPLIER</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_shoryuken_damage_mult')}</label>
                                 <input 
                                   type="number" 
                                   step="any"
@@ -885,34 +897,34 @@ export default function AIBotsEditor({
 
                             {/* Recruit Friendly options */}
                             <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>RECRUITMENT MECHANICS (НАЙМ БОТОВ)</span>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_recruitment_mechanics')}</span>
                               
                               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', cursor: 'pointer', marginTop: '4px' }}>
-                                <span>CAN RECRUIT FRIENDLY BOTS:</span>
+                                <span>{t('ai_label_recruit_friendly')}</span>
                                 <select 
                                   value={aiSettingsFile.content.CanRecruitFriendly ?? 1} 
                                   onChange={e => onChangeField(aiSettingsPath, ['CanRecruitFriendly'], Number(e.target.value))}
                                   style={{ padding: '3px 8px', fontSize: '11px', width: '120px' }}
                                 >
-                                  <option value={1}>1 - YES</option>
-                                  <option value={0}>0 - NO</option>
+                                  <option value={1}>{t('ai_opt_yes')}</option>
+                                  <option value={0}>{t('ai_opt_no')}</option>
                                 </select>
                               </label>
 
                               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', cursor: 'pointer', marginTop: '4px' }}>
-                                <span>CAN RECRUIT GUARDS:</span>
+                                <span>{t('ai_label_recruit_guards')}</span>
                                 <select 
                                   value={aiSettingsFile.content.CanRecruitGuards ?? 0} 
                                   onChange={e => onChangeField(aiSettingsPath, ['CanRecruitGuards'], Number(e.target.value))}
                                   style={{ padding: '3px 8px', fontSize: '11px', width: '120px' }}
                                 >
-                                  <option value={1}>1 - YES</option>
-                                  <option value={0}>0 - NO</option>
+                                  <option value={1}>{t('ai_opt_yes')}</option>
+                                  <option value={0}>{t('ai_opt_no')}</option>
                                 </select>
                               </label>
 
                               <div className="form-group">
-                                <label style={{ fontSize: '9px' }}>MAX RECRUITABLE BOTS PER PLAYER</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_max_recruitable')}</label>
                                 <input 
                                   type="number" 
                                   value={aiSettingsFile.content.MaxRecruitableAI ?? 1} 
@@ -923,10 +935,10 @@ export default function AIBotsEditor({
 
                             {/* Threat and Manners */}
                             <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>THREAT TIMEOUTS & CHAT</span>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_threat_timeouts')}</span>
                               
                               <div className="form-group">
-                                <label style={{ fontSize: '9px' }}>COMBAT AGGRESSION TIMEOUT (SECS)</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_combat_timeout')}</label>
                                 <input 
                                   type="number" 
                                   value={aiSettingsFile.content.AggressionTimeout ?? 120.0} 
@@ -934,7 +946,7 @@ export default function AIBotsEditor({
                                 />
                               </div>
                               <div className="form-group">
-                                <label style={{ fontSize: '9px' }}>GUARDS AGGRESSION TIMEOUT (SECS)</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_guards_timeout')}</label>
                                 <input 
                                   type="number" 
                                   value={aiSettingsFile.content.GuardAggressionTimeout ?? 150.0} 
@@ -953,18 +965,18 @@ export default function AIBotsEditor({
                       {/* Section 1: General details */}
                       <div className="card-hud">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', marginBottom: '12px' }}>
-                          <h4 style={{ margin: 0 }}>// PATROL PROPERTIES</h4>
+                          <h4 style={{ margin: 0 }}>{t('ai_patrol_properties')}</h4>
                           <button className="btn btn-danger" onClick={handleRemovePatrol} style={{ padding: '4px 8px', fontSize: '10px' }}>
-                            DELETE PATROL
+                            {t('ai_btn_delete_patrol')}
                           </button>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                           <div className="form-group">
-                            <label>Patrol Identifier Name</label>
+                            <label>{t('ai_label_patrol_name')}</label>
                             <input type="text" value={selectedPatrol.Name || ''} onChange={e => handleUpdatePatrolVal('Name', e.target.value)} />
                           </div>
                           <div className="form-group">
-                            <label>Loadout Profile</label>
+                            <label>{t('ai_label_loadout_profile')}</label>
                             <select value={selectedPatrol.Loadout || ''} onChange={e => handleUpdatePatrolVal('Loadout', e.target.value)}>
                               {loadoutsList.map(l => (
                                 <option key={l} value={l}>{l}</option>
@@ -972,11 +984,11 @@ export default function AIBotsEditor({
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>Unit Count (Min)</label>
+                            <label>{t('ai_label_unit_min')}</label>
                             <input type="number" value={selectedPatrol.NumberOfAI ?? 1} onChange={e => handleUpdatePatrolVal('NumberOfAI', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Unit Count (Max)</label>
+                            <label>{t('ai_label_unit_max')}</label>
                             <input type="number" value={selectedPatrol.NumberOfAIMax ?? 2} onChange={e => handleUpdatePatrolVal('NumberOfAIMax', Number(e.target.value))} />
                           </div>
                         </div>
@@ -984,34 +996,34 @@ export default function AIBotsEditor({
 
                       {/* Section 2: Combat & Aiming */}
                       <div className="card-hud">
-                        <h4>// COMBAT & TARGETING PARAMETERS (ПРИЦЕЛИВАНИЕ)</h4>
+                        <h4>{t('ai_combat_targeting')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: '12px' }}>
                           <div className="form-group">
-                            <label>Accuracy Min (-1 = use global)</label>
+                            <label>{t('ai_label_accuracy_min_patrol')}</label>
                             <input type="number" step="any" value={selectedPatrol.AccuracyMin ?? -1.0} onChange={e => handleUpdatePatrolVal('AccuracyMin', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Accuracy Max (-1 = use global)</label>
+                            <label>{t('ai_label_accuracy_max_patrol')}</label>
                             <input type="number" step="any" value={selectedPatrol.AccuracyMax ?? -1.0} onChange={e => handleUpdatePatrolVal('AccuracyMax', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Threat Distance Limit (m)</label>
+                            <label>{t('ai_label_threat_distance')}</label>
                             <input type="number" value={selectedPatrol.ThreatDistanceLimit ?? -1} onChange={e => handleUpdatePatrolVal('ThreatDistanceLimit', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Noise Investigation Limit (m)</label>
+                            <label>{t('ai_label_noise_limit')}</label>
                             <input type="number" value={selectedPatrol.NoiseInvestigationDistanceLimit ?? -1} onChange={e => handleUpdatePatrolVal('NoiseInvestigationDistanceLimit', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Max Flanking Distance (m)</label>
+                            <label>{t('ai_label_flanking_distance')}</label>
                             <input type="number" value={selectedPatrol.MaxFlankingDistance ?? -1} onChange={e => handleUpdatePatrolVal('MaxFlankingDistance', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Enable Flanking</label>
+                            <label>{t('ai_label_enable_flanking')}</label>
                             <select value={selectedPatrol.EnableFlankingOutsideCombat ?? -1} onChange={e => handleUpdatePatrolVal('EnableFlankingOutsideCombat', Number(e.target.value))}>
-                              <option value={-1}>-1 - Use Global</option>
-                              <option value={1}>1 - Enabled</option>
-                              <option value={0}>0 - Disabled</option>
+                              <option value={-1}>{t('ai_opt_use_global')}</option>
+                              <option value={1}>{t('ai_opt_enabled')}</option>
+                              <option value={0}>{t('ai_opt_disabled')}</option>
                             </select>
                           </div>
                         </div>
@@ -1019,10 +1031,10 @@ export default function AIBotsEditor({
 
                       {/* Section 3: Factions, Behavior, Loot */}
                       <div className="card-hud">
-                        <h4>// BEHAVIOR, FACTIONS & DEATH LOOT</h4>
+                        <h4>{t('ai_behavior_factions')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: '12px' }}>
                           <div className="form-group">
-                            <label>AI Faction</label>
+                            <label>{t('ai_label_faction')}</label>
                             <select value={selectedPatrol.Faction || 'West'} onChange={e => handleUpdatePatrolVal('Faction', e.target.value)}>
                               {FACTIONS.map(f => (
                                 <option key={f} value={f}>{f}</option>
@@ -1030,7 +1042,7 @@ export default function AIBotsEditor({
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>AI Behavior Model</label>
+                            <label>{t('ai_label_behavior_model')}</label>
                             <select value={selectedPatrol.Behaviour || 'LOOP_OR_ALTERNATE'} onChange={e => handleUpdatePatrolVal('Behaviour', e.target.value)}>
                               {BEHAVIOURS.map(b => (
                                 <option key={b} value={b}>{b}</option>
@@ -1038,7 +1050,7 @@ export default function AIBotsEditor({
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>Patrol Speed</label>
+                            <label>{t('ai_label_patrol_speed')}</label>
                             <select value={selectedPatrol.Speed || 'JOG'} onChange={e => handleUpdatePatrolVal('Speed', e.target.value)}>
                               {SPEEDS.map(s => (
                                 <option key={s} value={s}>{s}</option>
@@ -1046,7 +1058,7 @@ export default function AIBotsEditor({
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>Under Threat Speed</label>
+                            <label>{t('ai_label_threat_speed')}</label>
                             <select value={selectedPatrol.UnderThreatSpeed || 'SPRINT'} onChange={e => handleUpdatePatrolVal('UnderThreatSpeed', e.target.value)}>
                               {SPEEDS.map(s => (
                                 <option key={s} value={s}>{s}</option>
@@ -1054,7 +1066,7 @@ export default function AIBotsEditor({
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>Default Stance</label>
+                            <label>{t('ai_label_default_stance')}</label>
                             <select value={selectedPatrol.DefaultStance || 'CROUCHED'} onChange={e => handleUpdatePatrolVal('DefaultStance', e.target.value)}>
                               {STANCES.map(s => (
                                 <option key={s} value={s}>{s}</option>
@@ -1062,9 +1074,9 @@ export default function AIBotsEditor({
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>Loot Drop on Death Profile</label>
+                            <label>{t('ai_label_loot_drop_profile')}</label>
                             <select value={selectedPatrol.LootDropOnDeath || ''} onChange={e => handleUpdatePatrolVal('LootDropOnDeath', e.target.value)}>
-                              <option value="">None (Use default)</option>
+                              <option value="">{t('ai_opt_none_default')}</option>
                               {lootDropsList.map(l => (
                                 <option key={l} value={l}>{l}</option>
                               ))}
@@ -1075,29 +1087,29 @@ export default function AIBotsEditor({
 
                       {/* Section 4: Damage Multipliers & Health */}
                       <div className="card-hud">
-                        <h4>// HEALTH, DAMAGE MULTIPLIERS & AMMO</h4>
+                        <h4>{t('ai_health_damage')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: '12px' }}>
                           <div className="form-group">
-                            <label>Damage Multiplier (Dealt)</label>
+                            <label>{t('ai_label_damage_multiplier')}</label>
                             <input type="number" step="any" value={selectedPatrol.DamageMultiplier ?? -1.0} onChange={e => handleUpdatePatrolVal('DamageMultiplier', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Damage Received Multiplier</label>
+                            <label>{t('ai_label_damage_received')}</label>
                             <input type="number" step="any" value={selectedPatrol.DamageReceivedMultiplier ?? -1.0} onChange={e => handleUpdatePatrolVal('DamageReceivedMultiplier', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Headshot Resistance</label>
+                            <label>{t('ai_label_headshot_resistance')}</label>
                             <input type="number" step="any" value={selectedPatrol.HeadshotResistance ?? 0.0} onChange={e => handleUpdatePatrolVal('HeadshotResistance', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>Unlimited Reloads (Mags count)</label>
+                            <label>{t('ai_label_unlimited_reloads')}</label>
                             <input type="number" value={selectedPatrol.UnlimitedReload ?? 6} onChange={e => handleUpdatePatrolVal('UnlimitedReload', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>AI Lootable on Death</label>
+                            <label>{t('ai_label_lootable')}</label>
                             <select value={selectedPatrol.CanBeLooted ?? 1} onChange={e => handleUpdatePatrolVal('CanBeLooted', Number(e.target.value))}>
-                              <option value={1}>Yes (Can be looted)</option>
-                              <option value={0}>No (Inventory locked)</option>
+                              <option value={1}>{t('ai_opt_yes_looted')}</option>
+                              <option value={0}>{t('ai_opt_no_locked')}</option>
                             </select>
                           </div>
                         </div>
@@ -1105,13 +1117,13 @@ export default function AIBotsEditor({
 
                       {/* Section 5: Units Classnames Array */}
                       <div className="card-hud">
-                        <h4>// CUSTOM NPC UNITS IN PATROL</h4>
+                        <h4>{t('ai_custom_npc_units')}</h4>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                          Specify the NPC types that spawn inside this patrol. If empty, standard bots spawn.
+                          {t('ai_custom_npc_desc')}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'var(--bg-primary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px', maxHeight: '150px', overflowY: 'auto' }}>
                           {(!selectedPatrol.Units || selectedPatrol.Units.length === 0) ? (
-                            <span style={{ fontSize: '12px', color: 'var(--text-dark)', padding: '6px' }}>Empty (Spawns default NPCs)</span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-dark)', padding: '6px' }}>{t('ai_custom_npc_empty')}</span>
                           ) : (
                             selectedPatrol.Units.map((u, uIdx) => (
                               <div key={uIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 8px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
@@ -1122,10 +1134,10 @@ export default function AIBotsEditor({
                           )}
                         </div>
                         <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ADD UNIT CLASS:</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('ai_label_add_unit')}</span>
                           <AutocompleteInput
                             suggestions={itemSuggestions}
-                            placeholder="e.g. SurvivorM_Mirek"
+                            placeholder={t('ai_ph_unit_class')}
                             onSelect={handleAddUnit}
                             value={newClothingInput}
                             onChange={setNewClothingInput}
@@ -1136,30 +1148,30 @@ export default function AIBotsEditor({
                       {/* Section 6: Waypoints route */}
                       <div className="card-hud">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                          <h4 style={{ margin: 0 }}>// PATROL WAYPOINTS</h4>
+                          <h4 style={{ margin: 0 }}>{t('ai_patrol_waypoints')}</h4>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button 
                               className="btn btn-accent" 
                               onClick={() => {
-                                if (selectedPatrol.Waypoints?.length > 0) {
-                                  onNavigateToMap(selectedPatrol.Waypoints[0], ['Patrols', selectedPatrolIdx, 'Waypoints', 0]);
-                                }
-                              }}
-                              disabled={!selectedPatrol.Waypoints || selectedPatrol.Waypoints.length === 0}
-                              style={{ padding: '4px 8px', fontSize: '10px' }}
-                            >
-                              🗺 PLOT ON MAP
-                            </button>
-                            <button className="btn" onClick={handleAddWaypoint} style={{ padding: '4px 8px', fontSize: '10px' }}>
-                              [+] ADD WAYPOINT
-                            </button>
+                                  if (selectedPatrol.Waypoints?.length > 0) {
+                                    onNavigateToMap(selectedPatrol.Waypoints[0], ['Patrols', selectedPatrolIdx, 'Waypoints', 0]);
+                                  }
+                                }}
+                                disabled={!selectedPatrol.Waypoints || selectedPatrol.Waypoints.length === 0}
+                                style={{ padding: '4px 8px', fontSize: '10px' }}
+                              >
+                                {t('ai_btn_plot_map')}
+                              </button>
+                              <button className="btn" onClick={handleAddWaypoint} style={{ padding: '4px 8px', fontSize: '10px' }}>
+                                {t('ai_btn_add_waypoint')}
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                        {(!selectedPatrol.Waypoints || selectedPatrol.Waypoints.length === 0) ? (
-                          <div style={{ padding: '16px', border: '1px dashed var(--border-color)', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                            No waypoints. AI remains static.
-                          </div>
-                        ) : (
+                          {(!selectedPatrol.Waypoints || selectedPatrol.Waypoints.length === 0) ? (
+                            <div style={{ padding: '16px', border: '1px dashed var(--border-color)', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                              {t('ai_waypoints_empty')}
+                            </div>
+                          ) : (
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                             {selectedPatrol.Waypoints.map((wp, wpIdx) => (
                               <div key={wpIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-primary)', padding: '6px 10px', border: '1px solid var(--border-color)' }}>
@@ -1177,7 +1189,7 @@ export default function AIBotsEditor({
                     </>
                   ) : (
                     <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      NO PATROLS DETECTED. CLICK '+' ON THE LEFT PANEL TO CREATE A PATROL.
+                      {t('ai_patrols_none_detected')}
                     </div>
                   )}
                 </div>
@@ -1202,10 +1214,10 @@ export default function AIBotsEditor({
             }}>
               <div style={{ padding: '12px 16px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)' }}>
                 <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>
-                  // BOT_LOADOUTS
+                  {t('ai_bot_loadouts')}
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-dark)', marginTop: '2px' }}>
-                  TOTAL: {loadoutPaths.length} PROFILES
+                  {t('ai_total_profiles', { count: loadoutPaths.length })}
                 </div>
               </div>
 
@@ -1248,7 +1260,7 @@ export default function AIBotsEditor({
               </div>
               <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
                 <button className="btn btn-accent" onClick={handleCreateLoadout} style={{ width: '100%', justifyContent: 'center' }}>
-                  [+] CREATE LOADOUT
+                  {t('ai_btn_create_loadout')}
                 </button>
               </div>
             </div>
@@ -1269,11 +1281,11 @@ export default function AIBotsEditor({
                     gap: '12px'
                   }}>
                     <div>
-                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>EDITING LOADOUT: </span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('ai_editing_loadout')}</span>
                       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontWeight: 'bold' }}>
                         {selectedLoadoutPath.split('/').pop()}
                       </span>
-                      {isLoadoutDirty && <span style={{ color: 'var(--warning-color)', fontSize: '11px', marginLeft: '8px' }}>(UNSAVED ●)</span>}
+                      {isLoadoutDirty && <span style={{ color: 'var(--warning-color)', fontSize: '11px', marginLeft: '8px' }}>{t('ai_unsaved')}</span>}
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -1283,13 +1295,13 @@ export default function AIBotsEditor({
                         disabled={!isLoadoutDirty}
                         style={{ opacity: isLoadoutDirty ? 1 : 0.5 }}
                       >
-                        SAVE LOADOUT
+                        {t('ai_btn_save_loadout')}
                       </button>
                       <button className="btn btn-accent" onClick={handleCloneLoadout}>
-                        CLONE PROFILE
+                        {t('ai_btn_clone_profile')}
                       </button>
                       <button className="btn btn-danger" onClick={handleDeleteLoadout}>
-                        DELETE FILE
+                        {t('ai_btn_delete_file')}
                       </button>
                     </div>
                   </div>
@@ -1305,7 +1317,7 @@ export default function AIBotsEditor({
                       overflowY: 'auto'
                     }}>
                       <div style={{ padding: '10px 14px', fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)' }}>
-                        CLOTHING SLOTS
+                        {t('ai_clothing_slots')}
                       </div>
                       {CLOTHING_SLOTS.map(s => {
                         const itemsCount = getSlotItems(activeLoadoutConfig.content, s).length;
@@ -1338,11 +1350,11 @@ export default function AIBotsEditor({
                       
                       {/* Slot items list */}
                       <div className="card-hud">
-                        <h4>// CLOTHING ITEMS FOR SLOT: {selectedSlot.toUpperCase()}</h4>
+                        <h4>{t('ai_clothing_items_slot', { slot: selectedSlot.toUpperCase() })}</h4>
                         <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {getSlotItems(activeLoadoutConfig.content, selectedSlot).length === 0 ? (
                             <div style={{ padding: '20px', border: '1px dashed var(--border-color)', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                              No clothes assigned to this slot. The bot will spawn naked in this slot.
+                              {t('ai_clothing_slot_empty')}
                             </div>
                           ) : (
                             getSlotItems(activeLoadoutConfig.content, selectedSlot).map((item, idx) => {
@@ -1353,19 +1365,19 @@ export default function AIBotsEditor({
                                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     {item.ClassName}
                                     {isItemMissing(item.ClassName) && (
-                                      <span title="Warning: This item classname is not found in the loaded types.xml database." style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
+                                      <span title={t('ai_tooltip_item_missing')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
                                     )}
                                   </div>
                                   <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '9px' }}>Chance</label>
+                                    <label style={{ fontSize: '9px' }}>{t('ai_label_chance')}</label>
                                     <input type="number" step="any" value={item.Chance ?? 1.0} onChange={e => handleUpdateClothingItemField(selectedSlot, idx, 'Chance', e.target.value)} style={{ padding: '2px' }} />
                                   </div>
                                   <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '9px' }}>Min Health</label>
+                                    <label style={{ fontSize: '9px' }}>{t('ai_label_min_health')}</label>
                                     <input type="number" step="any" value={minH} onChange={e => handleUpdateClothingItemField(selectedSlot, idx, 'MinHealth', e.target.value)} style={{ padding: '2px' }} />
                                   </div>
                                   <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '9px' }}>Max Health</label>
+                                    <label style={{ fontSize: '9px' }}>{t('ai_label_max_health')}</label>
                                     <input type="number" step="any" value={maxH} onChange={e => handleUpdateClothingItemField(selectedSlot, idx, 'MaxHealth', e.target.value)} style={{ padding: '2px' }} />
                                   </div>
                                   <button className="btn btn-danger" onClick={() => handleRemoveClothingItem(selectedSlot, idx)} style={{ padding: '6px 10px', fontSize: '12px', marginTop: '12px' }}>×</button>
@@ -1375,10 +1387,10 @@ export default function AIBotsEditor({
                           )}
                           
                           <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ADD CLOTHING:</span>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('ai_label_add_clothing')}</span>
                             <AutocompleteInput
                               suggestions={itemSuggestions}
-                              placeholder="Type clothing classname..."
+                              placeholder={t('ai_ph_clothing_class')}
                               onSelect={(name) => handleAddClothingItem(selectedSlot, name)}
                               value={newClothingInput}
                               onChange={setNewClothingInput}
@@ -1389,11 +1401,11 @@ export default function AIBotsEditor({
 
                       {/* Cargo Inventory items list */}
                       <div className="card-hud">
-                        <h4>// BOT INVENTORY CARGO & WEAPONS (СНАРЯЖЕНИЕ / ЛУТ)</h4>
+                        <h4>{t('ai_inventory_cargo')}</h4>
                         <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {(!activeLoadoutConfig.content.InventoryCargo || activeLoadoutConfig.content.InventoryCargo.length === 0) ? (
                             <div style={{ padding: '20px', border: '1px dashed var(--border-color)', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                              Inventory is empty. No extra cargo/weapons spawned.
+                              {t('ai_inventory_cargo_empty')}
                             </div>
                           ) : (
                             activeLoadoutConfig.content.InventoryCargo.map((item, idx) => {
@@ -1408,15 +1420,15 @@ export default function AIBotsEditor({
                                     )}
                                   </div>
                                   <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '9px' }}>Spawn Chance</label>
+                                    <label style={{ fontSize: '9px' }}>{t('ai_label_spawn_chance')}</label>
                                     <input type="number" step="any" value={item.Chance ?? 1.0} onChange={e => handleUpdateCargoItemField(idx, 'Chance', e.target.value)} style={{ padding: '2px' }} />
                                   </div>
                                   <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '9px' }}>Min Qty</label>
+                                    <label style={{ fontSize: '9px' }}>{t('ai_label_min_qty')}</label>
                                     <input type="number" value={minQ} onChange={e => handleUpdateCargoItemField(idx, 'MinQty', e.target.value)} style={{ padding: '2px' }} />
                                   </div>
                                   <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '9px' }}>Max Qty</label>
+                                    <label style={{ fontSize: '9px' }}>{t('ai_label_max_qty')}</label>
                                     <input type="number" value={maxQ} onChange={e => handleUpdateCargoItemField(idx, 'MaxQty', e.target.value)} style={{ padding: '2px' }} />
                                   </div>
                                   <button className="btn btn-danger" onClick={() => handleRemoveCargoItem(idx)} style={{ padding: '6px 10px', fontSize: '12px', marginTop: '12px' }}>×</button>
@@ -1426,10 +1438,10 @@ export default function AIBotsEditor({
                           )}
 
                           <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ADD CARGO ITEM:</span>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('ai_label_add_cargo')}</span>
                             <AutocompleteInput
                               suggestions={itemSuggestions}
-                              placeholder="Type weapon or item classname..."
+                              placeholder={t('ai_ph_cargo_class')}
                               onSelect={handleAddCargoItem}
                               value={newCargoInput}
                               onChange={setNewCargoInput}
@@ -1444,7 +1456,7 @@ export default function AIBotsEditor({
                 </>
               ) : (
                 <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-                  <span>SELECT LOADOUT PROFILE FROM SIDEBAR</span>
+                  <span>{t('ai_select_loadout_sidebar')}</span>
                 </div>
               )}
             </div>
@@ -1476,19 +1488,17 @@ export default function AIBotsEditor({
             }}>
               <span style={{ fontSize: '48px', display: 'block', marginBottom: '16px' }}>🗺️</span>
               <h3 style={{ fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '20px', margin: '0 0 12px 0' }}>
-                VISUAL ROAMING LOCATIONS EDITOR
+                {t('ai_visual_roaming_title')}
               </h3>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', margin: '0 0 24px 0' }}>
-                Roaming locations, settlement centers, and spawn boundaries have been migrated completely to the <strong>Interactive Map</strong> tab. 
-                This allows you to drag settlements, resize spawn radii, and manage NoGo zones visually in real-time. 
-                Global building exclusions are also available in the map sidebar.
+                {t('ai_visual_roaming_desc')}
               </p>
               <button 
                 className="btn btn-accent" 
                 onClick={() => setGlobalActiveTab('map')}
                 style={{ padding: '12px 24px', fontSize: '12px', fontWeight: 'bold', margin: '0 auto', letterSpacing: '1px' }}
               >
-                GO TO INTERACTIVE MAP
+                {t('ai_btn_goto_map')}
               </button>
             </div>
           </div>
@@ -1510,10 +1520,10 @@ export default function AIBotsEditor({
             }}>
               <div style={{ padding: '12px 16px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)' }}>
                 <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>
-                  // AI_LOOT_TABLES
+                  {t('ai_loot_tables')}
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-dark)', marginTop: '2px' }}>
-                  TOTAL: {lootDropPaths.length} PROFILES
+                  {t('ai_total_profiles', { count: lootDropPaths.length })}
                 </div>
               </div>
 
@@ -1556,7 +1566,7 @@ export default function AIBotsEditor({
               </div>
               <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
                 <button className="btn btn-accent" onClick={handleCreateLootDrop} style={{ width: '100%', justifyContent: 'center' }}>
-                  [+] CREATE LOOT PROFILE
+                  {t('ai_btn_create_loot_profile')}
                 </button>
               </div>
             </div>
@@ -1574,12 +1584,12 @@ export default function AIBotsEditor({
                     alignItems: 'center'
                   }}>
                     <div>
-                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>EDITING PROFILE: </span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('ai_editing_loot_profile')}</span>
                       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontWeight: 'bold' }}>
                         {selectedLootDropPath.split('/').pop()}
                       </span>
                       {JSON.stringify(configs[selectedLootDropPath].content) !== JSON.stringify(configs[selectedLootDropPath].originalContent) && (
-                        <span style={{ color: 'var(--warning-color)', fontSize: '11px', marginLeft: '8px' }}>(UNSAVED ●)</span>
+                        <span style={{ color: 'var(--warning-color)', fontSize: '11px', marginLeft: '8px' }}>{t('ai_unsaved')}</span>
                       )}
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -1587,24 +1597,24 @@ export default function AIBotsEditor({
                         className="btn btn-accent"
                         onClick={() => onSaveFile(selectedLootDropPath)}
                       >
-                        SAVE LOOT TABLE
+                        {t('ai_btn_save_loot_table')}
                       </button>
                       <button className="btn btn-accent" onClick={handleCloneLootDrop}>
-                        CLONE PROFILE
+                        {t('ai_btn_clone_loot_profile')}
                       </button>
                       <button className="btn btn-danger" onClick={handleDeleteLootDrop}>
-                        DELETE PROFILE
+                        {t('ai_btn_delete_loot_profile')}
                       </button>
                     </div>
                   </div>
 
                   <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                     <div className="card-hud">
-                      <h4>// LOOT DROPS INDEX ({configs[selectedLootDropPath].content.length || 0} ITEMS)</h4>
+                      <h4>{t('ai_loot_drops_index', { count: configs[selectedLootDropPath].content.length || 0 })}</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
                         {configs[selectedLootDropPath].content.length === 0 ? (
                           <div style={{ padding: '20px', border: '1px dashed var(--border-color)', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                            Loot table is empty. No drops configured for bots using this profile.
+                            {t('ai_loot_table_empty')}
                           </div>
                         ) : (
                           configs[selectedLootDropPath].content.map((item, idx) => {
@@ -1618,23 +1628,23 @@ export default function AIBotsEditor({
                                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   {item.ClassName}
                                   {isItemMissing(item.ClassName) && (
-                                    <span title="Warning: This item classname is not found in the loaded types.xml database." style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
+                                    <span title={t('ai_tooltip_item_missing')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
                                   )}
                                 </div>
                                 <div className="form-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '9px' }}>Drop Chance</label>
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_drop_chance')}</label>
                                   <input type="number" step="any" value={item.Chance ?? 1.0} onChange={e => handleUpdateLootDropItemField(idx, 'Chance', e.target.value)} style={{ padding: '2px' }} />
                                 </div>
                                 <div className="form-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '9px' }}>Min Qty</label>
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_min_qty')}</label>
                                   <input type="number" value={minQ} onChange={e => handleUpdateLootDropItemField(idx, 'MinQty', e.target.value)} style={{ padding: '2px' }} />
                                 </div>
                                 <div className="form-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '9px' }}>Max Qty</label>
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_max_qty')}</label>
                                   <input type="number" value={maxQ} onChange={e => handleUpdateLootDropItemField(idx, 'MaxQty', e.target.value)} style={{ padding: '2px' }} />
                                 </div>
                                 <div className="form-group" style={{ margin: 0 }}>
-                                  <label style={{ fontSize: '9px' }}>Min Health</label>
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_min_health')}</label>
                                   <input type="number" step="any" value={minH} onChange={e => handleUpdateLootDropItemField(idx, 'MinHealth', e.target.value)} style={{ padding: '2px' }} />
                                 </div>
                                 <button className="btn btn-danger" onClick={() => handleRemoveLootDropItem(idx)} style={{ padding: '6px 10px', fontSize: '12px', marginTop: '12px' }}>×</button>
@@ -1644,10 +1654,10 @@ export default function AIBotsEditor({
                         )}
 
                         <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ADD ITEM TO LOOT DROP:</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('ai_label_add_loot_item')}</span>
                           <AutocompleteInput
                             suggestions={itemSuggestions}
-                            placeholder="Type classname to drop..."
+                            placeholder={t('ai_ph_loot_item_class')}
                             onSelect={handleAddLootDropItem}
                             value={newDropItemInput}
                             onChange={setNewDropItemInput}
@@ -1659,7 +1669,7 @@ export default function AIBotsEditor({
                 </>
               ) : (
                 <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-                  <span>SELECT LOOT PROFILE FROM SIDEBAR</span>
+                  <span>{t('ai_select_loot_sidebar')}</span>
                 </div>
               )}
             </div>

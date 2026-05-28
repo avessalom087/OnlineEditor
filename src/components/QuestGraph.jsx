@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import AutocompleteInput from './shared/AutocompleteInput';
+import { translations } from '../utils/localization';
 
 // Topological sorting layer layout for quest nodes
 function layoutQuests(quests, nodeOffsets) {
@@ -101,74 +103,15 @@ function getObjectiveFilePath(typeId, id) {
   return `ExpansionMod/Quests/Objectives/${info.folder}/Objective_${info.prefix}_${id}.json`;
 }
 
-// Simple Autocomplete block for reuse inside Quest Editor
-function ItemAutocomplete({ suggestions, onAdd, label = "Add item" }) {
-  const [val, setVal] = useState('');
-  const [filtered, setFiltered] = useState([]);
-  const [show, setShow] = useState(false);
-
-  const handleChange = (e) => {
-    const v = e.target.value;
-    setVal(v);
-    if (v.trim()) {
-      setFiltered(suggestions.filter(s => s.toLowerCase().includes(v.toLowerCase())).slice(0, 8));
-      setShow(true);
-    } else {
-      setFiltered([]);
-      setShow(false);
-    }
-  };
-
+// Simple Autocomplete block for reuse inside Quest Editor (optimized via off-thread Web Worker in AutocompleteInput)
+function ItemAutocomplete({ suggestions, onAdd, label = "Add item", placeholder = "Type ClassName..." }) {
   return (
-    <div style={{ display: 'flex', gap: '8px', position: 'relative', width: '100%' }}>
-      <input
-        type="text"
-        placeholder="Type ClassName..."
-        value={val}
-        onChange={handleChange}
-        onFocus={() => val.trim() && setShow(true)}
-        onBlur={() => setTimeout(() => setShow(false), 200)}
-        style={{ flex: 1, fontSize: '12px', padding: '6px' }}
-      />
-      <button 
-        type="button" 
-        className="btn btn-accent" 
-        onClick={() => {
-          if (val.trim()) {
-            onAdd(val.trim());
-            setVal('');
-            setShow(false);
-          }
-        }}
-        style={{ padding: '6px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
-      >
-        {label}
-      </button>
-      {show && filtered.length > 0 && (
-        <ul style={{
-          position: 'absolute', top: '100%', left: 0, right: 0,
-          background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-          padding: 0, margin: '2px 0 0 0', listStyle: 'none', zIndex: 999,
-          maxHeight: '150px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-        }}>
-          {filtered.map((sug, idx) => (
-            <li 
-              key={idx}
-              onClick={() => {
-                onAdd(sug);
-                setVal('');
-                setShow(false);
-              }}
-              style={{ padding: '6px 12px', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '11px', borderBottom: '1px solid rgba(255,255,255,0.03)', color: '#fff' }}
-              onMouseOver={e => e.target.style.background = 'rgba(149,192,149,0.1)'}
-              onMouseOut={e => e.target.style.background = 'transparent'}
-            >
-              {sug}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <AutocompleteInput 
+      suggestions={suggestions} 
+      placeholder={placeholder} 
+      onSelect={onAdd} 
+      buttonLabel={label} 
+    />
   );
 }
 
@@ -181,9 +124,18 @@ export default function QuestGraph({
   onNavigateToMap,
   selectedQuestId,
   onSelectQuest,
-  xmlItems = []
+  xmlItems = [],
+  lang = 'ru'
 }) {
   const containerRef = useRef(null);
+
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
 
   // Canvas pan & zoom states
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -900,12 +852,12 @@ export default function QuestGraph({
           alignItems: 'center'
         }}>
           <button className="btn btn-accent" onClick={handleCreateQuest} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }}>
-            [+] CREATE NEW QUEST
+            {t('quest_btn_create')}
           </button>
           <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
           <button className="btn" onClick={() => setZoom(prev => Math.min(prev * 1.2, 3))} style={{ padding: '4px 8px', fontSize: '12px' }}>+</button>
           <button className="btn" onClick={() => setZoom(prev => Math.max(prev / 1.2, 0.3))} style={{ padding: '4px 8px', fontSize: '12px' }}>-</button>
-          <button className="btn" onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }} style={{ padding: '4px 8px', fontSize: '11px' }}>RESET</button>
+          <button className="btn" onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }} style={{ padding: '4px 8px', fontSize: '11px' }}>{t('config_reset')}</button>
         </div>
       </div>
 
@@ -942,7 +894,7 @@ export default function QuestGraph({
           {/* Header */}
           <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)' }}>
             <div>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>// QUEST_EDITOR (ID {selectedQuest.id})</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>// {t('quest_editor_title')} (ID {selectedQuest.id})</div>
               <h3 style={{ margin: '2px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '16px' }}>{activeQuestConfig.Title}</h3>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -950,9 +902,9 @@ export default function QuestGraph({
                 className="btn btn-danger" 
                 onClick={handleDeleteQuest}
                 style={{ padding: '4px 8px', fontSize: '10px' }}
-                title="Delete quest config from disk"
+                title={t('quest_delete_tooltip')}
               >
-                DELETE
+                {t('config_delete')}
               </button>
               <button 
                 onClick={() => setSelectedQuest(null)}
@@ -968,7 +920,7 @@ export default function QuestGraph({
             
             {/* Direct Hop to raw editor */}
             <button className="btn" onClick={() => onOpenFile(selectedQuest.filePath)} style={{ justifyContent: 'center', fontSize: '11px', padding: '6px' }}>
-              ✎ OPEN RAW JSON
+              {t('quest_btn_open_raw')}
             </button>
 
             {/* Visual Objective Timeline */}
@@ -982,13 +934,13 @@ export default function QuestGraph({
                 flexDirection: 'column',
                 gap: '8px'
               }}>
-                <div style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>// OBJECTIVES FLOW TIMELINE</div>
+                <div style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>// {t('quest_flow_timeline')}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', paddingBottom: '4px' }}>
                   {activeQuestConfig.Objectives.map((objRef, idx) => {
                     const typeInfo = OBJECTIVE_TYPES[objRef.ObjectiveType] || { label: 'Objective', prefix: 'OBJ' };
                     const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID);
                     const objFile = configs[objPath];
-                    const objText = objFile?.success ? objFile.content.ObjectiveText : `${typeInfo.label} #${objRef.ID}`;
+                    const objText = objFile?.success ? objFile.content.ObjectiveText : `${t(`quest_obj_type_${objRef.ObjectiveType}`) || typeInfo.label} #${objRef.ID}`;
                     
                     let typeColor = '#808080';
                     let typeIcon = '❓';
@@ -1021,7 +973,7 @@ export default function QuestGraph({
                               alert(`Objective config file is missing on disk:\n${objPath}`);
                             }
                           }}
-                          title={`Click to edit objective #${objRef.ID}`}
+                          title={t('quest_edit_obj_tooltip', { id: objRef.ID })}
                         >
                           <span style={{ fontSize: '12px' }}>{typeIcon}</span>
                           <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: typeColor, fontWeight: 'bold' }}>
@@ -1041,13 +993,13 @@ export default function QuestGraph({
                 onClick={() => setActiveAccordion(activeAccordion === 'general' ? '' : 'general')}
                 style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', borderBottom: activeAccordion === 'general' ? '1px solid var(--border-color)' : 'none' }}
               >
-                <span>GENERAL DATA & DIALOGUES</span>
+                <span>{t('quest_acc_general')}</span>
                 <span>{activeAccordion === 'general' ? '▼' : '►'}</span>
               </div>
               {activeAccordion === 'general' && (
                 <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>QUEST TITLE</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_title')}</label>
                     <input 
                       type="text" 
                       value={activeQuestConfig.Title || ''} 
@@ -1055,7 +1007,7 @@ export default function QuestGraph({
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>OBJECTIVE SUMMARY TEXT</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_summary')}</label>
                     <input 
                       type="text" 
                       value={activeQuestConfig.ObjectiveText || ''} 
@@ -1063,7 +1015,7 @@ export default function QuestGraph({
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>DIALOGUE: START QUEST</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_start')}</label>
                     <textarea 
                       rows="3" 
                       value={activeQuestConfig.Descriptions?.[0] || ''} 
@@ -1072,7 +1024,7 @@ export default function QuestGraph({
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>DIALOGUE: IN PROGRESS</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_progress')}</label>
                     <textarea 
                       rows="2" 
                       value={activeQuestConfig.Descriptions?.[1] || ''} 
@@ -1081,7 +1033,7 @@ export default function QuestGraph({
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>DIALOGUE: COMPLETION</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_completion')}</label>
                     <textarea 
                       rows="2" 
                       value={activeQuestConfig.Descriptions?.[2] || ''} 
@@ -1092,12 +1044,12 @@ export default function QuestGraph({
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
                     {[
-                      { label: 'Active', key: 'Active' },
-                      { label: 'Repeatable', key: 'Repeatable' },
-                      { label: 'Autocomplete', key: 'Autocomplete' },
-                      { label: 'Cancel on Death', key: 'CancelQuestOnPlayerDeath' },
-                      { label: 'Group Quest', key: 'IsGroupQuest' },
-                      { label: 'Achievement', key: 'IsAchievement' }
+                      { label: t('quest_chk_active'), key: 'Active' },
+                      { label: t('quest_chk_repeatable'), key: 'Repeatable' },
+                      { label: t('quest_chk_autocomplete'), key: 'Autocomplete' },
+                      { label: t('quest_chk_cancel_death'), key: 'CancelQuestOnPlayerDeath' },
+                      { label: t('quest_chk_group'), key: 'IsGroupQuest' },
+                      { label: t('quest_chk_achievement'), key: 'IsAchievement' }
                     ].map(f => (
                       <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
                         <input 
@@ -1119,7 +1071,7 @@ export default function QuestGraph({
                 onClick={() => setActiveAccordion(activeAccordion === 'npc' ? '' : 'npc')}
                 style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', borderBottom: activeAccordion === 'npc' ? '1px solid var(--border-color)' : 'none' }}
               >
-                <span>QUEST GIVERS & TURN-INS NPCs</span>
+                <span>{t('quest_acc_npcs')}</span>
                 <span>{activeAccordion === 'npc' ? '▼' : '►'}</span>
               </div>
               {activeAccordion === 'npc' && (
@@ -1127,7 +1079,7 @@ export default function QuestGraph({
                   
                   {/* Quest Givers (QuestGiverIDs) */}
                   <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>QUEST GIVER NPCs:</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>{t('quest_label_givers')}</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '100px', overflowY: 'auto', background: 'var(--bg-secondary)', padding: '6px', border: '1px solid var(--border-color)' }}>
                       {npcsList.map(npc => {
                         const isGiver = (activeQuestConfig.QuestGiverIDs || []).includes(npc.id);
@@ -1151,7 +1103,7 @@ export default function QuestGraph({
 
                   {/* Quest Turn-Ins (QuestTurnInIDs) */}
                   <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>QUEST TURN-IN NPCs:</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>{t('quest_label_turnins')}</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '100px', overflowY: 'auto', background: 'var(--bg-secondary)', padding: '6px', border: '1px solid var(--border-color)' }}>
                       {npcsList.map(npc => {
                         const isTurnIn = (activeQuestConfig.QuestTurnInIDs || []).includes(npc.id);
@@ -1183,7 +1135,7 @@ export default function QuestGraph({
                 onClick={() => setActiveAccordion(activeAccordion === 'flow' ? '' : 'flow')}
                 style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', borderBottom: activeAccordion === 'flow' ? '1px solid var(--border-color)' : 'none' }}
               >
-                <span>FLOW, REPUTATION & FACTION</span>
+                <span>{t('quest_flow_rep_faction')}</span>
                 <span>{activeAccordion === 'flow' ? '▼' : '►'}</span>
               </div>
               {activeAccordion === 'flow' && (
@@ -1191,7 +1143,7 @@ export default function QuestGraph({
                   
                   {/* PreQuestIDs list */}
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>PREREQUISITE QUESTS</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_prerequisites')}</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '6px' }}>
                       {(activeQuestConfig.PreQuestIDs || []).map(preId => {
                         const title = quests.find(q => q.id === preId)?.title || `Quest ID ${preId}`;
@@ -1213,7 +1165,7 @@ export default function QuestGraph({
                       }}
                       style={{ fontSize: '12px', padding: '6px' }}
                     >
-                      <option value="">+ Add Prerequisite...</option>
+                      <option value="">{t('quest_add_prereq')}</option>
                       {quests.filter(q => q.id !== selectedQuest.id && !(activeQuestConfig.PreQuestIDs || []).includes(q.id)).map(q => (
                         <option key={q.id} value={q.id}>ID {q.id}: {q.title}</option>
                       ))}
@@ -1222,13 +1174,13 @@ export default function QuestGraph({
 
                   {/* Follow-up quest */}
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>FOLLOW-UP QUEST (NEXT)</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_followup')}</label>
                     <select
                       value={activeQuestConfig.FollowUpQuest ?? -1}
                       onChange={e => handleSetFollowup(Number(e.target.value))}
                       style={{ fontSize: '12px', padding: '6px' }}
                     >
-                      <option value={-1}>None (End of flow)</option>
+                      <option value={-1}>{t('quest_no_followup')}</option>
                       {quests.filter(q => q.id !== selectedQuest.id).map(q => (
                         <option key={q.id} value={q.id}>ID {q.id}: {q.title}</option>
                       ))}
@@ -1237,7 +1189,7 @@ export default function QuestGraph({
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>REQUIRED FACTION</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_req_faction')}</label>
                       <input 
                         type="text" 
                         value={activeQuestConfig.RequiredFaction || ''} 
@@ -1245,7 +1197,7 @@ export default function QuestGraph({
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>FACTION REWARD</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_faction_reward')}</label>
                       <input 
                         type="text" 
                         value={activeQuestConfig.FactionReward || ''} 
@@ -1253,7 +1205,7 @@ export default function QuestGraph({
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>REP REQUIREMENT</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_rep_req')}</label>
                       <input 
                         type="number" 
                         value={activeQuestConfig.ReputationRequirement ?? -1} 
@@ -1261,7 +1213,7 @@ export default function QuestGraph({
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>REP REWARD</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_rep_reward')}</label>
                       <input 
                         type="number" 
                         value={activeQuestConfig.ReputationReward ?? 0} 
@@ -1280,7 +1232,7 @@ export default function QuestGraph({
                 onClick={() => setActiveAccordion(activeAccordion === 'items' ? '' : 'items')}
                 style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', borderBottom: activeAccordion === 'items' ? '1px solid var(--border-color)' : 'none' }}
               >
-                <span>QUEST ITEMS & REWARDS</span>
+                <span>{t('quest_acc_items')}</span>
                 <span>{activeAccordion === 'items' ? '▼' : '►'}</span>
               </div>
               {activeAccordion === 'items' && (
@@ -1288,10 +1240,10 @@ export default function QuestGraph({
                   
                   {/* Quest Items table */}
                   <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>QUEST ITEMS:</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_items')}</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '100px', overflowY: 'auto', background: 'var(--bg-secondary)', padding: '6px', border: '1px solid var(--border-color)', marginBottom: '8px' }}>
                       {(activeQuestConfig.QuestItems || []).length === 0 ? (
-                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>NO ITEMS GRANTED FOR ACTIVE QUEST</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('quest_no_items')}</div>
                       ) : (
                         (activeQuestConfig.QuestItems || []).map((item, idx) => (
                           <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
@@ -1319,7 +1271,8 @@ export default function QuestGraph({
                           const amt = Number(document.getElementById('new-qitem-amt')?.value || 1);
                           onChangeField(selectedQuest.filePath, ['QuestItems'], [...(activeQuestConfig.QuestItems || []), { ClassName: name, Amount: amt }]);
                         }}
-                        label="Add Item"
+                        label={t('quest_btn_add_item')}
+                        placeholder={t('quest_ph_classname')}
                       />
                       <input id="new-qitem-amt" type="number" defaultValue="1" style={{ width: '55px', fontSize: '12px', padding: '6px', textAlign: 'center' }} />
                     </div>
@@ -1329,17 +1282,17 @@ export default function QuestGraph({
 
                   {/* Rewards list */}
                   <div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>REWARDS ON COMPLETION:</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_rewards')}</span>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', background: 'var(--bg-secondary)', padding: '6px', border: '1px solid var(--border-color)', marginBottom: '8px' }}>
                       {(activeQuestConfig.Rewards || []).length === 0 ? (
-                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>NO REWARDS CONFIGURED</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('quest_no_rewards')}</div>
                       ) : (
                         (activeQuestConfig.Rewards || []).map((reward, idx) => (
                           <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
                             <div>
                               <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{reward.ClassName} ({reward.Amount}x)</div>
-                              <div style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>CHANCE: {reward.Chance * 100}%</div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{t('quest_reward_chance', { chance: reward.Chance * 100 })}</div>
                             </div>
                             <button 
                               className="btn btn-danger" 
@@ -1374,15 +1327,16 @@ export default function QuestGraph({
                           };
                           onChangeField(selectedQuest.filePath, ['Rewards'], [...(activeQuestConfig.Rewards || []), newRew]);
                         }}
-                        label="+ Add Reward"
+                        label={t('quest_btn_add_reward')}
+                        placeholder={t('quest_ph_classname')}
                       />
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>AMOUNT</label>
+                          <label style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{t('quest_label_amount')}</label>
                           <input id="new-reward-amt" type="number" defaultValue="1" style={{ fontSize: '11px', padding: '4px', textAlign: 'center' }} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>CHANCE (0.0-1.0)</label>
+                          <label style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{t('quest_label_chance')}</label>
                           <input id="new-reward-chance" type="number" defaultValue="1.0" step="0.1" min="0" max="1" style={{ fontSize: '11px', padding: '4px', textAlign: 'center' }} />
                         </div>
                       </div>
@@ -1396,7 +1350,7 @@ export default function QuestGraph({
                           checked={activeQuestConfig.NeedToSelectReward === 1 || activeQuestConfig.NeedToSelectReward === true}
                           onChange={e => onChangeField(selectedQuest.filePath, ['NeedToSelectReward'], e.target.checked ? 1 : 0)}
                         />
-                        Player must select reward
+                        {t('quest_chk_must_select')}
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
                         <input 
@@ -1404,11 +1358,11 @@ export default function QuestGraph({
                           checked={activeQuestConfig.RandomReward === 1 || activeQuestConfig.RandomReward === true}
                           onChange={e => onChangeField(selectedQuest.filePath, ['RandomReward'], e.target.checked ? 1 : 0)}
                         />
-                        Give random reward
+                        {t('quest_chk_random_reward')}
                       </label>
                       {(activeQuestConfig.RandomReward === 1 || activeQuestConfig.RandomReward === true) && (
                         <div>
-                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>RANDOM REWARDS AMOUNT</label>
+                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('quest_label_random_amount')}</label>
                           <input 
                             type="number" 
                             value={activeQuestConfig.RandomRewardAmount ?? -1} 
@@ -1429,7 +1383,7 @@ export default function QuestGraph({
                 onClick={() => setActiveAccordion(activeAccordion === 'objectives' ? '' : 'objectives')}
                 style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', borderBottom: activeAccordion === 'objectives' ? '1px solid var(--border-color)' : 'none' }}
               >
-                <span>QUEST OBJECTIVES ({activeQuestConfig.Objectives?.length || 0})</span>
+                <span>{t('quest_acc_objectives', { count: activeQuestConfig.Objectives?.length || 0 })}</span>
                 <span>{activeAccordion === 'objectives' ? '▼' : '►'}</span>
               </div>
               {activeAccordion === 'objectives' && (
@@ -1439,14 +1393,14 @@ export default function QuestGraph({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {(activeQuestConfig.Objectives || []).length === 0 ? (
                       <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '12px', textAlign: 'center', border: '1px dashed var(--border-color)' }}>
-                        NO OBJECTIVES ATTACHED. SELECT A TYPE BELOW TO INJECT.
+                        {t('quest_no_objectives')}
                       </div>
                     ) : (
                       (activeQuestConfig.Objectives || []).map((objRef, idx) => {
                         const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID);
                         const objFile = configs[objPath];
                         const text = objFile?.success && objFile.content ? objFile.content.ObjectiveText : `Objective ID ${objRef.ID}`;
-                        const typeLabel = OBJECTIVE_TYPES[objRef.ObjectiveType]?.label || 'Unknown';
+                        const typeLabel = t(`quest_obj_type_${objRef.ObjectiveType}`) || OBJECTIVE_TYPES[objRef.ObjectiveType]?.label || 'Unknown';
 
                         return (
                           <div 
@@ -1478,7 +1432,7 @@ export default function QuestGraph({
                                 }}
                                 style={{ padding: '2px 8px', fontSize: '10px' }}
                               >
-                                EDIT
+                                {t('quest_btn_edit')}
                               </button>
                               <button 
                                 className="btn btn-danger"
@@ -1498,7 +1452,7 @@ export default function QuestGraph({
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center', background: 'var(--bg-secondary)', padding: '8px', border: '1px solid var(--border-color)', marginTop: '6px' }}>
                     <select id="new-obj-type" style={{ fontSize: '12px', flex: 1, padding: '4px' }}>
                       {Object.entries(OBJECTIVE_TYPES).map(([id, info]) => (
-                        <option key={id} value={id}>{info.label}</option>
+                        <option key={id} value={id}>{t(`quest_obj_type_${id}`) || info.label}</option>
                       ))}
                     </select>
                     <button 
@@ -1511,7 +1465,7 @@ export default function QuestGraph({
                       }}
                       style={{ fontSize: '11px', padding: '6px 12px' }}
                     >
-                      [+] ADD
+                      {t('quest_btn_add')}
                     </button>
                   </div>
 
@@ -1540,10 +1494,10 @@ export default function QuestGraph({
             <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                  // OBJECTIVE_DETAILS (TYPE: {OBJECTIVE_TYPES[editingObjective.objective.ObjectiveType]?.label})
+                  // {t('quest_modal_obj_details')} (TYPE: {t(`quest_obj_type_${editingObjective.objective.ObjectiveType}`) || OBJECTIVE_TYPES[editingObjective.objective.ObjectiveType]?.label})
                 </span>
                 <div style={{ fontSize: '15px', color: 'var(--text-glow)', fontWeight: 'bold', marginTop: '2px' }}>
-                  Objective ID {editingObjective.objective.ID}
+                  {t('quest_modal_obj_id', { id: editingObjective.objective.ID })}
                 </div>
               </div>
               <button 
@@ -1558,7 +1512,7 @@ export default function QuestGraph({
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               
               <div>
-                <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>OBJECTIVE DIALOGUE TEXT</label>
+                <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_objective_text')}</label>
                 <input 
                   type="text" 
                   value={editingObjective.objective.ObjectiveText || ''} 
@@ -1572,7 +1526,7 @@ export default function QuestGraph({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>TIME LIMIT (SECONDS)</label>
+                  <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_time_limit')}</label>
                   <input 
                     type="number" 
                     value={editingObjective.objective.TimeLimit ?? -1} 
@@ -1594,7 +1548,7 @@ export default function QuestGraph({
                         onChangeField(editingObjective.filePath, ['Active'], e.target.checked ? 1 : 0);
                       }} 
                     />
-                    Objective Active
+                    {t('quest_chk_obj_active')}
                   </label>
                 </div>
               </div>
@@ -1605,7 +1559,7 @@ export default function QuestGraph({
               {editingObjective.objective.Position !== undefined && (
                 <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '2px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-glow)', fontWeight: 'bold' }}>LOCATION COORDINATES [X, Y, Z]</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('quest_label_coords')}</span>
                     <button 
                       className="btn btn-accent" 
                       onClick={() => {
@@ -1616,7 +1570,7 @@ export default function QuestGraph({
                       style={{ padding: '2px 8px', fontSize: '9px' }}
                       title="Locate coordinates on the Tactical Map"
                     >
-                      📌 PLOT ON MAP
+                      {t('quest_btn_plot_map')}
                     </button>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
@@ -1647,7 +1601,7 @@ export default function QuestGraph({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>RADIUS (METERS)</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_radius_m')}</label>
                       <input 
                         type="number" 
                         value={editingObjective.objective.MaxDistance ?? 20.0} 
@@ -1659,7 +1613,7 @@ export default function QuestGraph({
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>MARKER NAME</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_marker_name')}</label>
                       <input 
                         type="text" 
                         value={editingObjective.objective.MarkerName || ''} 
@@ -1673,9 +1627,9 @@ export default function QuestGraph({
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginTop: '4px' }}>
                     {[
-                      { label: 'Show distance', key: 'ShowDistance' },
-                      { label: 'Trigger enter', key: 'TriggerOnEnter' },
-                      { label: 'Trigger exit', key: 'TriggerOnExit' }
+                      { label: t('quest_chk_show_distance'), key: 'ShowDistance' },
+                      { label: t('quest_chk_trigger_enter'), key: 'TriggerOnEnter' },
+                      { label: t('quest_chk_trigger_exit'), key: 'TriggerOnExit' }
                     ].map(f => (
                       <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
                         <input 
@@ -1699,7 +1653,7 @@ export default function QuestGraph({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>MAX DISTANCE</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_max_distance')}</label>
                       <input 
                         type="number" 
                         value={editingObjective.objective.MaxDistance ?? 20.0} 
@@ -1711,7 +1665,7 @@ export default function QuestGraph({
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>MARKER NAME</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_marker_name')}</label>
                       <input 
                         type="text" 
                         value={editingObjective.objective.MarkerName || ''} 
@@ -1726,10 +1680,10 @@ export default function QuestGraph({
 
                   {/* Collections List */}
                   <div>
-                    <span style={{ fontSize: '10px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>REQUIRED COLLECTIONS:</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_req_collections')}</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '6px', border: '1px solid var(--border-color)', marginBottom: '8px' }}>
                       {(editingObjective.objective.Collections || []).length === 0 ? (
-                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>NO COLLECTION ITEMS ADDED</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('quest_no_collections')}</div>
                       ) : (
                         (editingObjective.objective.Collections || []).map((col, colIdx) => (
                           <div key={colIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
@@ -1763,7 +1717,8 @@ export default function QuestGraph({
                           setEditingObjective({ ...editingObjective, objective: updated });
                           onChangeField(editingObjective.filePath, ['Collections'], list);
                         }}
-                        label="Add Item"
+                        label={t('quest_btn_add_item')}
+                        placeholder={t('quest_ph_classname')}
                       />
                       <input id="new-col-amt" type="number" defaultValue="1" style={{ width: '55px', fontSize: '12px', padding: '6px', textAlign: 'center' }} />
                     </div>
@@ -1776,7 +1731,7 @@ export default function QuestGraph({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>KILL COUNT</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_kill_count')}</label>
                       <input 
                         type="number" 
                         value={editingObjective.objective.Amount ?? 10} 
@@ -1788,7 +1743,7 @@ export default function QuestGraph({
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>MAX RADIAL DISTANCE</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_max_radial')}</label>
                       <input 
                         type="number" 
                         value={editingObjective.objective.MaxDistance ?? -1.0} 
@@ -1803,7 +1758,7 @@ export default function QuestGraph({
 
                   {/* ClassNames and AllowedWeapons lists */}
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>ALLOWED WEAPONS (IF EMPTY, ANY WEAPON)</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('quest_label_allowed_weapons')}</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)' }}>
                       {(editingObjective.objective.AllowedWeapons || []).map((w, wIdx) => (
                         <div key={w} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
@@ -1830,7 +1785,8 @@ export default function QuestGraph({
                         setEditingObjective({ ...editingObjective, objective: updated });
                         onChangeField(editingObjective.filePath, ['AllowedWeapons'], list);
                       }}
-                      label="Add Weapon"
+                      label={t('quest_btn_add_weapon')}
+                      placeholder={t('quest_ph_classname')}
                     />
                   </div>
                 </div>
@@ -1847,13 +1803,13 @@ export default function QuestGraph({
                   alert("Objective file saved successfully!");
                 }}
               >
-                SAVE OBJECTIVE
+                {t('quest_btn_save_objective')}
               </button>
               <button 
                 className="btn" 
                 onClick={() => setEditingObjective(null)}
               >
-                CLOSE
+                {t('quest_btn_close')}
               </button>
             </div>
 

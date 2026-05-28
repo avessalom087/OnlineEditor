@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ConfigForm from './ConfigForm';
+import { translations } from '../utils/localization';
 
 export default function SettingsEditor({ 
   configs, 
@@ -8,8 +9,17 @@ export default function SettingsEditor({
   onResetFile, 
   onSaveFile,
   inferredEnums,
-  onNavigateToMap
+  onNavigateToMap,
+  lang = 'ru'
 }) {
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
+
   const [selectedSettingsPath, setSelectedSettingsPath] = useState(null);
 
   // Filter all server settings files
@@ -49,10 +59,10 @@ export default function SettingsEditor({
       }}>
         <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)' }}>
           <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>
-            // SERVER_SETTINGS
+            // {t('settings_server_settings')}
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-dark)', marginTop: '4px' }}>
-            TOTAL: {settingsPaths.length} SCHEMAS
+            {t('settings_total', { count: settingsPaths.length })}
           </div>
         </div>
 
@@ -121,10 +131,11 @@ export default function SettingsEditor({
             onSaveFile={onSaveFile}
             inferredEnums={inferredEnums}
             onNavigateToMap={onNavigateToMap}
+            lang={lang}
           />
         ) : (
           <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-            <span>SELECT SETTINGS CONFIG FILE FROM LIST</span>
+            <span>{t('settings_select_config')}</span>
           </div>
         )}
       </div>

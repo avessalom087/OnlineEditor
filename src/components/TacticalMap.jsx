@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './ToastManager';
+import { translations } from '../utils/localization';
 
 const MAP_PRESETS = [
   { name: '10km Grid (10000m)', size: 10000 },
@@ -37,15 +38,25 @@ export default function TacticalMap({
   onDeleteFile,
   onSelectQuest,
   setActiveTab,
-  onOpenFile
+  onOpenFile,
+  lang = 'ru'
 }) {
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
+
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const toast = useToast();
   
   // Map dimensions configuration
   const [mapSize, setMapSize] = useState(10000);
-  const [customSize, setCustomSize] = useState('10000');
+  const [isCustomPreset, setIsCustomPreset] = useState(false);
+  const [customSizeStr, setCustomSizeStr] = useState('10000');
 
   // Layer Visibility
   const [layers, setLayers] = useState({
@@ -1461,20 +1472,49 @@ export default function TacticalMap({
         {/* Layer checkboxes HUD */}
         <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
           <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold', marginBottom: '8px' }}>
-            // GRID_PRESETS
+            // {t('map_grid_presets')}
           </div>
           <select 
-            value={mapSize} 
-            onChange={(e) => { setMapSize(Number(e.target.value)); setCustomSize(e.target.value); }}
+            value={isCustomPreset ? 'custom' : mapSize} 
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === 'custom') {
+                setIsCustomPreset(true);
+                const num = Number(customSizeStr) || 10000;
+                setMapSize(num);
+              } else {
+                setIsCustomPreset(false);
+                setMapSize(Number(val));
+              }
+            }}
             style={{ marginBottom: '12px' }}
           >
             {MAP_PRESETS.map(p => (
               <option key={p.name} value={p.size}>{p.name}</option>
             ))}
+            <option value="custom">{t('map_custom_size_opt')}</option>
           </select>
 
+          {isCustomPreset && (
+            <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('map_custom_size_label')}</label>
+              <input 
+                type="number"
+                value={customSizeStr}
+                onChange={(e) => {
+                  setCustomSizeStr(e.target.value);
+                  const num = Number(e.target.value);
+                  if (num > 0) {
+                    setMapSize(num);
+                  }
+                }}
+                style={{ fontSize: '12px', padding: '6px 10px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)', width: '100%' }}
+              />
+            </div>
+          )}
+
           <label className="btn btn-accent" style={{ display: 'inline-flex', width: '100%', padding: '8px 12px', fontSize: '11px', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px', textAlign: 'center' }}>
-            🗺️ LOAD CUSTOM MAP
+            {t('map_load_custom')}
             <input 
               type="file" 
               accept="image/*" 
@@ -1501,7 +1541,7 @@ export default function TacticalMap({
                 color: isRulerActive ? '#2ebd59' : 'var(--text-primary)'
               }}
             >
-              📏 {isRulerActive ? 'MEASURE: ON' : 'MEASURE DISTANCE'}
+              📏 {isRulerActive ? t('map_measure_on') : t('map_measure_btn')}
             </button>
             {isRulerActive && rulerPoints && (
               <button 
@@ -1509,13 +1549,13 @@ export default function TacticalMap({
                 className="btn btn-danger"
                 style={{ padding: '6px 8px', fontSize: '10px' }}
               >
-                RESET
+                {t('modal_confirm_cancel')}
               </button>
             )}
           </div>
 
           <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold', marginBottom: '8px' }}>
-            // LAYER_OVERLAYS
+            // {t('map_layer_overlays')}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
             {[
@@ -1557,11 +1597,11 @@ export default function TacticalMap({
           {layers.patrols && (
             <div style={{ marginTop: '16px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '12px' }}>
               <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold', marginBottom: '8px' }}>
-                // AI_PATROL_ROUTING
+                // {t('map_ai_patrol_routing')}
               </div>
               
               <div className="form-group" style={{ marginBottom: '8px' }}>
-                <label style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>SELECT ACTIVE PATROL</label>
+                <label style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('map_select_active_patrol')}</label>
                 <select
                   value={activePatrolDrawIndex}
                   onChange={(e) => {
@@ -1573,7 +1613,7 @@ export default function TacticalMap({
                   }}
                   style={{ fontSize: '11px', padding: '4px', width: '100%' }}
                 >
-                  <option value={-1}>-- Select Patrol --</option>
+                  <option value={-1}>-- {t('map_select_patrol_ph')} --</option>
                   {(configs['expansion/settings/AIPatrolSettings.json']?.content?.Patrols || []).map((patrol, idx) => (
                     <option key={idx} value={idx}>
                       #{idx + 1}: {patrol.Name || `Patrol #${idx + 1}`} ({patrol.Faction})
@@ -1598,18 +1638,18 @@ export default function TacticalMap({
                       color: isDrawModeActive ? '#ebd667' : 'var(--text-primary)'
                     }}
                   >
-                    {isDrawModeActive ? '✍️ DRAWING WAYPOINTS...' : '✍️ DRAW ROUTE'}
+                    {isDrawModeActive ? '✍️ ' + t('map_draw_wp_active') : '✍️ ' + t('map_draw_wp')}
                   </button>
 
                   <div style={{ borderTop: '1px dashed rgba(255,255,255,0.08)', marginTop: '4px', paddingTop: '8px' }}>
-                    <label style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>MERGE PATROL ROUTE</label>
+                    <label style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('map_merge_patrol_route')}</label>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <select
                         value={mergeTargetPatrolIndex}
                         onChange={(e) => setMergeTargetPatrolIndex(Number(e.target.value))}
                         style={{ fontSize: '11px', padding: '4px', flex: 1, minWidth: 0 }}
                       >
-                        <option value={-1}>-- Merge with --</option>
+                        <option value={-1}>-- {t('map_merge_with')} --</option>
                         {(configs['expansion/settings/AIPatrolSettings.json']?.content?.Patrols || [])
                           .map((patrol, idx) => ({ patrol, idx }))
                           .filter(({ idx }) => idx !== activePatrolDrawIndex)
@@ -1626,7 +1666,7 @@ export default function TacticalMap({
                         className="btn btn-accent"
                         style={{ padding: '4px 8px', fontSize: '10px', opacity: mergeTargetPatrolIndex === -1 ? 0.5 : 1 }}
                       >
-                        MERGE
+                        {t('map_merge_btn')}
                       </button>
                     </div>
                   </div>
@@ -1639,7 +1679,7 @@ export default function TacticalMap({
 
             <input
               type="text"
-              placeholder="SEARCH PLOTTED INDEX..."
+              placeholder={t('map_search_placeholder')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               style={{ fontSize: '11px', padding: '6px 20px 6px 20px' }}
@@ -1663,7 +1703,7 @@ export default function TacticalMap({
                 letterSpacing: '1px'
               }}
             >
-              <span>📁 EXCLUDED BUILDINGS ({configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings?.length || 0})</span>
+              <span>📁 {t('map_excluded_buildings')} ({configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings?.length || 0})</span>
               <span>{excludeCollapse ? '▼' : '►'}</span>
             </div>
             
@@ -1671,7 +1711,7 @@ export default function TacticalMap({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '4px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
                   {(configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings || []).length === 0 ? (
-                    <div style={{ fontSize: '10px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>No exclusions.</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('map_no_exclusions')}</div>
                   ) : (
                     (configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings || []).map((b, bIdx) => (
                       <div key={bIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
@@ -1696,7 +1736,7 @@ export default function TacticalMap({
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <input 
                     type="text" 
-                    placeholder="Exclude building prefix..." 
+                    placeholder={t('map_exclude_placeholder')} 
                     value={newExcludeInput}
                     onChange={e => setNewExcludeInput(e.target.value)}
                     style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }}
@@ -1727,7 +1767,7 @@ export default function TacticalMap({
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {allListItems.length === 0 ? (
             <div style={{ padding: '20px', color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center' }}>
-              NO PLOTTED ENTITIES FOUND
+              {t('map_no_entities_plotted')}
             </div>
           ) : (
             allListItems.map((item, idx) => {
@@ -1773,7 +1813,7 @@ export default function TacticalMap({
                     onClick={() => handleDeleteEntity(item)}
                     style={{ padding: '2px 6px', fontSize: '9px', fontFamily: 'monospace' }}
                   >
-                    DEL
+                    {t('map_del_btn')}
                   </button>
                 </div>
               );
@@ -1812,7 +1852,7 @@ export default function TacticalMap({
         }}>
           <div>X: {mouseCoords.x}</div>
           <div>Z: {mouseCoords.z}</div>
-          <div style={{ color: 'var(--text-secondary)' }}>DOUBLE CLICK: SPAWN ENTITY</div>
+          <div style={{ color: 'var(--text-secondary)' }}>{t('map_double_click_spawn')}</div>
         </div>
 
         {/* Selected Entity Inspector Panel / Hovered Tooltip */}
@@ -1834,7 +1874,7 @@ export default function TacticalMap({
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontSize: '9px', color: 'var(--text-glow)', fontWeight: 'bold', fontFamily: 'var(--font-mono)' }}>
-                // INSPECT_SELECTED
+                // {t('map_inspect_selected')}
               </div>
               <button 
                 onClick={() => setSelectedEntity(null)}
@@ -1846,7 +1886,7 @@ export default function TacticalMap({
 
             {selectedEntity.type === 'roaming_location' ? (
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '9px' }}>Settlement Name</label>
+                <label style={{ fontSize: '9px' }}>{t('map_settlement_name')}</label>
                 <input 
                   type="text" 
                   value={selectedEntity.name} 
@@ -1861,13 +1901,13 @@ export default function TacticalMap({
             )}
 
             <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-              TYPE: <span style={{ color: 'var(--text-primary)' }}>{selectedEntity.type.toUpperCase()}</span>
+              {t('map_type_label') || "TYPE"}: <span style={{ color: 'var(--text-primary)' }}>{selectedEntity.type.toUpperCase()}</span>
             </div>
 
              {/* Manual Coordinates inputs */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '9px' }}>X COORD</label>
+                <label style={{ fontSize: '9px' }}>{t('map_x_coord')}</label>
                 <input 
                   type="number" 
                   step="any"
@@ -1877,7 +1917,7 @@ export default function TacticalMap({
                 />
               </div>
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '9px' }}>Z COORD</label>
+                <label style={{ fontSize: '9px' }}>{t('map_z_coord')}</label>
                 <input 
                   type="number" 
                   step="any"
@@ -1906,7 +1946,7 @@ export default function TacticalMap({
                 marginTop: '2px'
               }}
             >
-              📋 COPY VECTOR
+              📋 {t('map_copy_vector')}
             </button>
 
             {/* Roaming Specific Fields */}
@@ -1914,7 +1954,7 @@ export default function TacticalMap({
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label style={{ fontSize: '9px' }}>ZONE RADIUS</label>
+                    <label style={{ fontSize: '9px' }}>{t('map_zone_radius_label')}</label>
                     <input 
                       type="number" 
                       value={selectedEntity.radius} 
@@ -1923,7 +1963,7 @@ export default function TacticalMap({
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label style={{ fontSize: '9px' }}>TYPE</label>
+                    <label style={{ fontSize: '9px' }}>{t('map_type_label')}</label>
                     <select 
                       value={selectedEntity.locationType} 
                       onChange={e => handleUpdateSelectedField('Type', e.target.value)}
@@ -1944,7 +1984,7 @@ export default function TacticalMap({
                       checked={selectedEntity.enabled === 1}
                       onChange={e => handleUpdateSelectedField('Enabled', e.target.checked ? 1 : 0)}
                     />
-                    <span>Location Enabled</span>
+                    <span>{t('map_location_enabled')}</span>
                   </label>
                 </div>
               </>
@@ -1970,14 +2010,14 @@ export default function TacticalMap({
                 }}
                 style={{ flex: 1.2, justifyContent: 'center', padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' }}
               >
-                ДОП. НАСТРОЙКИ
+                {t('map_more_settings')}
               </button>
               <button 
                 className="btn btn-danger" 
                 onClick={() => handleDeleteEntity(selectedEntity)}
                 style={{ flex: 0.8, justifyContent: 'center', padding: '6px', fontSize: '11px' }}
               >
-                DELETE
+                {t('config_delete')}
               </button>
             </div>
           </div>
@@ -1997,12 +2037,12 @@ export default function TacticalMap({
             gap: '6px',
             pointerEvents: 'none'
           }}>
-            <div style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>// HOVERED_ENTITY (CLICK TO SELECT)</div>
+            <div style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>// {t('map_hovered_entity')}</div>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: '700', color: 'var(--text-glow)', fontSize: '12px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
               {hoveredEntity.name}
             </div>
             <div style={{ fontSize: '10px', color: 'var(--text-primary)' }}>
-              TYPE: {hoveredEntity.type.toUpperCase()}<br />
+              {t('map_type_label') || "TYPE"}: {hoveredEntity.type.toUpperCase()}<br />
               COORDS: {Math.round(hoveredEntity.x)}, {Math.round(hoveredEntity.z)}
             </div>
           </div>
@@ -2034,8 +2074,8 @@ export default function TacticalMap({
               }}
             >
               <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                <div style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '2px' }}>// SPAWN_NEW_ENTITY</div>
-                <h3 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)' }}>CREATE MAP POINT</h3>
+                <div style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '2px' }}>// {t('map_spawn_new_entity')}</div>
+                <h3 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)' }}>{t('map_create_map_point')}</h3>
               </div>
 
               <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
@@ -2043,22 +2083,22 @@ export default function TacticalMap({
               </div>
 
               <div className="form-group">
-                <label>Entity Category</label>
+                <label>{t('map_spawn_modal_type')}</label>
                 <select 
                   value={spawnType} 
                   onChange={e => setSpawnType(e.target.value)}
                 >
-                  <option value="airdrop">AIRDROP MISSION</option>
-                  <option value="npc">NPC QUEST CHARACTER</option>
-                  <option value="safezone">SAFEZONE CIRCLE</option>
-                  <option value="traderzone">TRADER ZONE</option>
-                  <option value="nogo_area">NOGO AREA (AI BLOCK)</option>
-                  <option value="roaming_location">ROAMING LOCATION (SETTLEMENT)</option>
+                  <option value="airdrop">{t('map_opt_airdrop')}</option>
+                  <option value="npc">{t('map_opt_npc')}</option>
+                  <option value="safezone">{t('map_opt_safezone')}</option>
+                  <option value="traderzone">{t('map_opt_trader')}</option>
+                  <option value="nogo_area">{t('map_opt_nogo')}</option>
+                  <option value="roaming_location">{t('map_opt_roaming')}</option>
                 </select>
               </div>
 
               <div className="form-group">
-                <label>Entity Name</label>
+                <label>{t('map_spawn_modal_name')}</label>
                 <input
                   type="text"
                   required
@@ -2070,7 +2110,7 @@ export default function TacticalMap({
 
               {spawnType === 'npc' ? (
                 <div className="form-group">
-                  <label>NPC ClassName</label>
+                  <label>{t('map_spawn_modal_npc_class')}</label>
                   <input
                     type="text"
                     required
@@ -2081,7 +2121,7 @@ export default function TacticalMap({
                 </div>
               ) : (
                 <div className="form-group">
-                  <label>Zone Radius (meters)</label>
+                  <label>{t('map_spawn_modal_radius')}</label>
                   <input
                     type="number"
                     required
@@ -2092,8 +2132,8 @@ export default function TacticalMap({
               )}
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                <button type="submit" className="btn btn-accent" style={{ flex: 1, justifyContent: 'center' }}>SPAWN</button>
-                <button type="button" className="btn" onClick={() => setShowSpawnModal(false)} style={{ flex: 1, justifyContent: 'center' }}>CANCEL</button>
+                <button type="submit" className="btn btn-accent" style={{ flex: 1, justifyContent: 'center' }}>{t('map_spawn_modal_btn')}</button>
+                <button type="button" className="btn" onClick={() => setShowSpawnModal(false)} style={{ flex: 1, justifyContent: 'center' }}>{t('modal_confirm_cancel')}</button>
               </div>
             </form>
           </div>

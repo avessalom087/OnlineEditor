@@ -14,6 +14,7 @@ import SettingsEditor from './components/SettingsEditor';
 import { validateConfig } from './utils/diagnostics';
 import * as fileService from './services/fileService';
 import * as idb from './utils/indexedDB';
+import { translations } from './utils/localization';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -221,6 +222,22 @@ export default function App() {
 
 function AppContent() {
   const toast = useToast();
+
+  const [lang, setLang] = useState(() => {
+    return localStorage.getItem('dayz_editor_lang') || 'ru';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dayz_editor_lang', lang);
+  }, [lang]);
+
+  const t = useCallback((key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  }, [lang]);
 
   // Version control & localStorage schema migration
   const APP_VERSION = '1.2.0';
@@ -824,20 +841,37 @@ function AppContent() {
             letterSpacing: '2px',
             textShadow: '0 0 15px rgba(178, 250, 158, 0.3)'
           }}>
-            TACTICAL CONFIG STATION
+            {t('welcome_title')}
           </h1>
           <p style={{
             color: 'var(--text-primary)',
             fontSize: '14px',
             lineHeight: '1.6',
-            margin: '0 auto 30px auto',
+            margin: '0 auto 20px auto',
             maxWidth: '460px',
             fontFamily: 'var(--font-heading)',
             letterSpacing: '0.5px'
           }}>
-            Fully client-side configuration tool for DayZ Expansion.
-            Directly modify, validate, and manage server configs and maps locally inside your browser.
+            {t('welcome_subtitle')}
           </p>
+
+          {/* Welcome Screen RU/EN toggle */}
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '24px' }}>
+            <button 
+              className={`btn ${lang === 'ru' ? 'btn-active' : ''}`} 
+              onClick={() => setLang('ru')}
+              style={{ padding: '6px 12px', fontSize: '11px' }}
+            >
+              🇷🇺 РУССКИЙ
+            </button>
+            <button 
+              className={`btn ${lang === 'en' ? 'btn-active' : ''}`} 
+              onClick={() => setLang('en')}
+              style={{ padding: '6px 12px', fontSize: '11px' }}
+            >
+              🇬🇧 ENGLISH
+            </button>
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', width: '100%' }}>
             {savedHandle ? (
@@ -854,7 +888,7 @@ function AppContent() {
                     borderWidth: '2px'
                   }}
                 >
-                  📂 RESTORE ACCESS TO: {folderName.toUpperCase()}
+                  {t('welcome_restore_btn', { folder: folderName.toUpperCase() })}
                 </button>
                 <button
                   className="btn"
@@ -867,7 +901,7 @@ function AppContent() {
                   }}
                   disabled={!isSupported}
                 >
-                  OPEN A DIFFERENT FOLDER
+                  {t('welcome_open_diff_btn')}
                 </button>
               </>
             ) : (
@@ -884,7 +918,7 @@ function AppContent() {
                 }}
                 disabled={!isSupported}
               >
-                📂 OPEN SERVER CONFIG DIRECTORY
+                {t('welcome_open_btn')}
               </button>
             )}
           </div>
@@ -902,10 +936,9 @@ function AppContent() {
               lineHeight: '1.5'
             }}>
               <strong style={{ fontFamily: 'var(--font-heading)', fontSize: '13px', display: 'block', marginBottom: '4px' }}>
-                ⚠️ BROWSER NOT SUPPORTED
+                {t('welcome_browser_warn_title')}
               </strong>
-              Your current browser does not support the File System Access API. 
-              Please switch to a Chromium-based desktop browser (e.g. <strong>Google Chrome, Microsoft Edge, Opera, or Brave</strong>) to select and edit local server directories.
+              {t('welcome_browser_warn_body')}
             </div>
           )}
 
@@ -921,9 +954,9 @@ function AppContent() {
               color: 'var(--text-secondary)'
             }}>
               <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '8px', fontSize: '12px', fontFamily: 'var(--font-heading)', letterSpacing: '1px' }}>
-                EXPECTED FOLDER STRUCTURE:
+                {t('welcome_expected_struct')}
               </strong>
-              Open the DayZ server profiles folder containing:
+              {t('welcome_expected_desc')}
               <ul style={{ margin: '6px 0 0 0', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 <li><strong style={{ color: 'var(--text-glow)' }}>expansion/</strong> (settings, traders, missions...)</li>
                 <li><strong style={{ color: 'var(--text-glow)' }}>ExpansionMod/</strong> (AI, Quests, Market, Loadouts...)</li>
@@ -996,10 +1029,10 @@ function AppContent() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div>
             <div style={{ fontFamily: 'var(--font-heading)', fontSize: '11px', letterSpacing: '3px', color: 'var(--text-secondary)', fontWeight: '700' }}>
-              EXPANSION // CONFIG_STATION
+              {t('header_station')}
             </div>
             <h1 style={{ margin: '2px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '20px', fontWeight: '700', color: 'var(--text-glow)', letterSpacing: '1px', textShadow: '0 0 8px rgba(178,250,158,0.2)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              TACTICAL CONTROL CENTER
+              {t('header_control_center')}
               <span style={{ fontSize: '10px', color: 'var(--text-glow)', border: '1px solid var(--border-glow)', borderRadius: '3px', padding: '1px 5px', opacity: 0.7, letterSpacing: '1px', fontWeight: 'normal', textShadow: 'none' }}>
                 v1.2.0 (ONLINE)
               </span>
@@ -1021,7 +1054,7 @@ function AppContent() {
               fontFamily: 'var(--font-mono)',
               lineHeight: '1.2'
             }}>
-              <span style={{ color: 'var(--text-secondary)' }}>DIR:</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{t('header_dir')}</span>
               <strong style={{ color: 'var(--text-glow)' }}>{folderName.toUpperCase()}</strong>
               <button 
                 onClick={handleDisconnect} 
@@ -1037,22 +1070,22 @@ function AppContent() {
                   fontSize: '11px',
                   letterSpacing: '1px'
                 }}
-                title="Disconnect directory and return to Welcome Screen"
+                title={t('header_disconnect')}
               >
-                × DISCONNECT
+                {t('header_disconnect')}
               </button>
             </div>
           )}
 
           {/* Navigation tabs */}
           <nav style={{ display: 'flex', marginLeft: '32px' }}>
-            <TabBtn id="dashboard"  label="Dashboard" />
-            <TabBtn id="economy"    label="Economy"    badge={dirtyEconomy} />
-            <TabBtn id="quests"     label="Quests"     badge={dirtyQuests} />
-            <TabBtn id="aibots"     label="AI Bots"    badge={dirtyAiBots} />
-            <TabBtn id="settings"   label="Settings"   badge={dirtySettings} />
-            <TabBtn id="map"        label="Interactive Map" />
-            <TabBtn id="raw_editor" label="Raw Editor" />
+            <TabBtn id="dashboard"  label={t('tab_dashboard')} />
+            <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy} />
+            <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests} />
+            <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots} />
+            <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings} />
+            <TabBtn id="map"        label={t('tab_map')} />
+            <TabBtn id="raw_editor" label={t('tab_raw_editor')} />
           </nav>
         </div>
 
@@ -1063,19 +1096,19 @@ function AppContent() {
             <>
               <span style={{ fontSize: '11px', color: 'var(--warning-color)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center' }}>
                 <span className="pulse-dot" />
-                UNSAVED ({dirtyFiles.size})
+                {t('header_unsaved')} ({dirtyFiles.size})
               </span>
               <button onClick={handleSaveAll} className="btn btn-warning">
-                💾 EXPORT PACKAGE
+                {t('header_export_package')}
               </button>
               <button onClick={handleDiscardAll} className="btn btn-danger">
-                DISCARD
+                {t('header_discard')}
               </button>
             </>
           ) : (
             !loading && (
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                ✓ All saved
+                {t('all_saved')}
               </span>
             )
           )}
@@ -1090,16 +1123,26 @@ function AppContent() {
             🔍
           </button>
 
+          {/* Language Selector */}
+          <button
+            className="btn btn-accent"
+            onClick={() => setLang(prev => prev === 'ru' ? 'en' : 'ru')}
+            style={{ padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--font-mono)' }}
+            title="Switch Language / Смена языка"
+          >
+            {lang === 'ru' ? '🇬🇧 EN' : '🇷🇺 RU'}
+          </button>
+
           {/* Reload */}
-          <button onClick={fetchConfigs} className="btn" title="Reload from disk">
-            ↻ RELOAD
+          <button onClick={fetchConfigs} className="btn" title={t('header_reload')}>
+            {t('header_reload')}
           </button>
 
           {/* Hotkey cheat sheet */}
           <button
             className="btn"
             onClick={() => setIsHotkeyOpen(true)}
-            title="Keyboard shortcuts"
+            title={t('header_shortcuts')}
             style={{ padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--font-mono)' }}
           >
             ?
@@ -1153,6 +1196,7 @@ function AppContent() {
                     onUpdateXmlItems={setXmlItems}
                     fetchConfigs={fetchConfigs}
                     onShowConfirm={setConfirmDialog}
+                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1165,6 +1209,7 @@ function AppContent() {
                     onSaveFile={handleSaveFile}
                     xmlItems={xmlItems}
                     onShowConfirm={setConfirmDialog}
+                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1181,6 +1226,7 @@ function AppContent() {
                     onSelectQuest={setSelectedQuestId}
                     onNavigateToMap={handleNavigateToMap}
                     xmlItems={xmlItems}
+                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1196,6 +1242,7 @@ function AppContent() {
                     onSaveFile={handleSaveFile}
                     xmlItems={xmlItems}
                     setActiveTab={setActiveTab}
+                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1210,6 +1257,7 @@ function AppContent() {
                     onSaveFile={handleSaveFile}
                     inferredEnums={schemaReport ? schemaReport.inferredEnums : {}}
                     onNavigateToMap={handleNavigateToMap}
+                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1226,6 +1274,7 @@ function AppContent() {
                     onSelectQuest={setSelectedQuestId}
                     setActiveTab={setActiveTab}
                     onOpenFile={handleOpenFile}
+                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1241,6 +1290,7 @@ function AppContent() {
                     onSaveFile={handleSaveFile}
                     inferredEnums={schemaReport ? schemaReport.inferredEnums : {}}
                     onNavigateToMap={handleNavigateToMap}
+                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
