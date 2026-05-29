@@ -807,7 +807,7 @@ export default function QuestGraph({
                     stroke="#44aacc"
                     strokeWidth="1.5"
                     style={{ cursor: 'crosshair', transition: 'r 0.15s' }}
-                    title="Prerequisite Port"
+                    title={t('quest_port_prereq')}
                   />
 
                   {/* Right (output) port for Follow-ups */}
@@ -830,7 +830,7 @@ export default function QuestGraph({
                         currentY: coords.y
                       });
                     }}
-                    title="Follow-up Port (Drag arrow to connect)"
+                    title={t('quest_port_followup')}
                   />
                 </g>
               );
@@ -1427,7 +1427,7 @@ export default function QuestGraph({
                                   if (objFile?.success) {
                                     setEditingObjective({ objective: objFile.content, filePath: objPath });
                                   } else {
-                                    alert("Cannot edit objective file: failed to load or missing.");
+                                    alert(t('quest_obj_file_missing'));
                                   }
                                 }}
                                 style={{ padding: '2px 8px', fontSize: '10px' }}
@@ -1568,7 +1568,7 @@ export default function QuestGraph({
                         setEditingObjective(null);
                       }}
                       style={{ padding: '2px 8px', fontSize: '9px' }}
-                      title="Locate coordinates on the Tactical Map"
+                      title={t('quest_locate_on_map')}
                     >
                       {t('quest_btn_plot_map')}
                     </button>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { translations } from '../utils/localization';
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -20,6 +21,12 @@ export default class ErrorBoundary extends React.Component {
   };
 
   render() {
+    const lang = this.props.lang || 'ru';
+    const t = (key, replacements = {}) => {
+      let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+      Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
+      return text;
+    };
     if (this.state.hasError) {
       return (
         <div style={{
@@ -43,7 +50,7 @@ export default class ErrorBoundary extends React.Component {
               fontWeight: 'bold',
               marginBottom: '6px',
             }}>
-              // COMPONENT_ERROR_BOUNDARY
+              {t('err_boundary_label')}
             </div>
             <h2 style={{
               margin: '0 0 8px 0',
@@ -52,7 +59,7 @@ export default class ErrorBoundary extends React.Component {
               fontSize: '22px',
               letterSpacing: '1px',
             }}>
-              PANEL RUNTIME ERROR
+              {t('err_boundary_title')}
             </h2>
             <p style={{
               margin: 0,
@@ -61,7 +68,7 @@ export default class ErrorBoundary extends React.Component {
               maxWidth: '480px',
               lineHeight: '1.6',
             }}>
-              This panel crashed unexpectedly. Your unsaved data is safe — all other tabs continue working normally.
+              {t('err_boundary_body')}
             </p>
           </div>
 
@@ -87,13 +94,13 @@ export default class ErrorBoundary extends React.Component {
               className="btn btn-accent"
               onClick={this.handleReset}
             >
-              ↺ RETRY PANEL
+              {t('err_boundary_retry')}
             </button>
             <button
               className="btn"
               onClick={() => this.setState(prev => ({ showStack: !prev.showStack }))}
             >
-              {this.state.showStack ? 'HIDE' : 'SHOW'} STACK TRACE
+              {this.state.showStack ? t('err_boundary_hide_stack') : t('err_boundary_show_stack')}
             </button>
           </div>
 

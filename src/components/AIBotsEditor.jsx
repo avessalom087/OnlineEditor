@@ -1416,7 +1416,7 @@ export default function AIBotsEditor({
                                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     {item.ClassName}
                                     {isItemMissing(item.ClassName) && (
-                                      <span title="Warning: This item classname is not found in the loaded types.xml database." style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
+                                      <span title={t('ai_tooltip_cargo_missing')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
                                     )}
                                   </div>
                                   <div className="form-group" style={{ margin: 0 }}>

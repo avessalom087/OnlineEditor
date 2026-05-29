@@ -1,7 +1,7 @@
 export const translations = {
   en: {
     // Welcome Screen
-    welcome_title: "TACTICAL CONFIG STATION",
+    welcome_title: "PROJECT ZERO TOOL",
     welcome_subtitle: "Fully client-side configuration tool for DayZ Expansion. Directly modify, validate, and manage server configs and maps locally inside your browser.",
     welcome_restore_btn: "📂 RESTORE ACCESS TO: {folder}",
     welcome_open_btn: "📂 OPEN SERVER CONFIG DIRECTORY",
@@ -22,7 +22,7 @@ export const translations = {
     tab_aibots: "AI Bots",
     tab_settings: "Settings",
     tab_map: "Interactive Map",
-    tab_raw_editor: "Raw Editor",
+    tab_raw_editor: "JSON",
     header_unsaved: "UNSAVED",
     header_export_package: "💾 EXPORT PACKAGE",
     header_discard: "DISCARD",
@@ -226,6 +226,7 @@ export const translations = {
     trader_no_currencies: "NO CURRENCIES (FALLS BACK TO STANDARD BANKNOTE)",
     trader_add_currency: "ADD CURRENCY:",
     trader_search_class: "SEARCH CLASS...",
+    trader_label_add_category: "ADD CATEGORY:",
     trader_add_category_btn: "[+] ADD CATEGORY",
     trader_add_override_btn: "ADD OVERRIDE:",
     trader_select_cat_ph: "-- SELECT CATEGORY --",
@@ -563,11 +564,134 @@ export const translations = {
     ai_subtab_global: "GLOBAL AI",
     ai_msg_global_selected: "GLOBAL PARAMETERS SELECTED. USE THE CONFIGURATION PANELS ON THE RIGHT TO TWEAK VALUES.",
     ai_unsaved_changes: "(UNSAVED CHANGES ●)",
-    ai_unsaved: "(UNSAVED ●)"
+    ai_unsaved: "(UNSAVED ●)",
+
+    // Sidebar
+    sidebar_filter_configs: "// FILTER_CONFIGS",
+    sidebar_search_ph: "ENTER SEARCH QUERY...",
+    sidebar_total_files: "TOTAL: {count} FILES",
+    sidebar_modified: "{count} MODIFIED",
+    sidebar_no_matches: "NO CONFIGS MATCHING QUERY",
+
+    // Global Search
+    search_placeholder: "Search configs, items, quests, patrols...",
+    search_no_results: "No results for \"{query}\"",
+    search_categories_header: "SEARCHABLE CATEGORIES",
+    search_shortcut_nav: "↑↓ navigate",
+    search_shortcut_open: "↵ open",
+    search_shortcut_toggle: "Ctrl+K toggle",
+    search_hint_config: "📁 Config file paths",
+    search_hint_market: "💰 Market item classnames",
+    search_hint_quest: "📋 Quest titles & IDs",
+    search_hint_patrol: "🤖 AI Patrol route names",
+    search_hint_trader: "🛍 Trader display names",
+
+    // Hotkey Modal
+    hotkey_header_label: "// KEYBOARD_SHORTCUTS",
+    hotkey_title: "HOTKEY CHEAT SHEET",
+    hotkey_close: "× CLOSE",
+    hotkey_section_global: "GLOBAL",
+    hotkey_section_map: "TACTICAL MAP",
+    hotkey_section_modals: "MODALS & DIALOGS",
+    hotkey_key_search: "Open Global Search",
+    hotkey_key_save: "Export / Save All modified files",
+    hotkey_key_show_hotkeys: "Show this Hotkey Cheat Sheet",
+    hotkey_key_delete: "Delete selected entity",
+    hotkey_key_escape_entity: "Deselect current entity",
+    hotkey_key_ruler: "Toggle Distance Ruler tool",
+    hotkey_key_close_modal: "Close active modal / dialog",
+    hotkey_key_confirm: "Confirm selected search result",
+    hotkey_key_navigate: "Navigate search results",
+
+    // Draft Recovery Modal
+    draft_header_label: "// DRAFT_RECOVERY_SYSTEM",
+    draft_title: "UNSAVED SESSION DRAFT FOUND",
+    draft_body: "The editor found unsaved changes from a previous session ({count} modified files). Restore or discard?",
+    draft_restore_btn: "Restore Draft",
+    draft_discard_btn: "Discard",
+
+    // Loading
+    app_loading: "READING SERVER DIRECTORY...",
+
+    // Error Boundary
+    err_boundary_label: "// COMPONENT_ERROR_BOUNDARY",
+    err_boundary_title: "PANEL RUNTIME ERROR",
+    err_boundary_body: "This panel crashed unexpectedly. Your unsaved data is safe — all other tabs continue working normally.",
+    err_boundary_retry: "↺ RETRY PANEL",
+    err_boundary_hide_stack: "HIDE STACK TRACE",
+    err_boundary_show_stack: "SHOW STACK TRACE",
+
+    // Toast messages (App.jsx)
+    toast_configs_loaded: "Configurations loaded from directory successfully!",
+    toast_load_failed: "Failed to load configs: {error}",
+    toast_write_denied: "Write permissions were not granted.",
+    toast_select_failed: "Failed to select directory: {error}",
+    toast_restore_denied: "Permission to write was denied.",
+    toast_restore_access_failed: "Failed to restore access: {error}",
+    toast_disconnected: "Disconnected configuration directory.",
+    toast_draft_restored: "Draft restored: {count} files recovered.",
+    toast_draft_discarded: "Draft discarded.",
+    toast_file_saved: "Saved: {file}",
+    toast_save_failed: "Save failed: {error}",
+    toast_package_exported: "Package exported! {count} file(s) saved.",
+    toast_export_failed: "Export failed: {error}",
+    toast_no_modified: "No modified files to export.",
+    toast_changes_discarded: "All unsaved changes discarded.",
+    toast_file_created: "Created: {file}",
+    toast_create_failed: "Create failed: {error}",
+    toast_file_deleted: "Deleted: {file}",
+    toast_delete_failed: "Delete failed: {error}",
+    toast_syntax_repaired: "Syntax repaired: {file}",
+    toast_repair_failed: "Repair failed: {error}",
+    toast_autofix_done: "Auto-Fix complete! Repaired {syntax} syntax error(s) and {struct} structural warning(s).",
+
+    // Confirm Modal defaults
+    modal_cancel_default: "CANCEL",
+    modal_confirm_default: "CONFIRM",
+
+    // TacticalMap
+    map_spawn_name_ph: "ENTER UNIQUE NAME...",
+    map_coords_label: "COORDINATES",
+
+    // Economy category stats
+    econ_stats_items: "ITEMS",
+    econ_stats_avg_min: "AVG MIN",
+    econ_stats_avg_max: "AVG MAX",
+    econ_stats_avg_sell: "AVG SELL",
+    econ_editing_label: "EDITING:",
+    econ_display_name_label: "DISPLAY NAME:",
+    econ_init_stock_label: "INIT STOCK %:",
+    econ_save_cat_btn_text: "SAVE CATEGORY",
+    econ_filter_items_ph: "FILTER ITEMS...",
+    econ_source_cat_label: "SOURCE CATEGORY:",
+    econ_import_from_types: "📥 IMPORT FROM TYPES.XML",
+    econ_bulk_apply_btn: "APPLY",
+    econ_bulk_selected: "{count} SELECTED",
+    econ_select_cat_label: "SELECT CATEGORY FROM LIST",
+    econ_select_trader_label: "SELECT TRADER CONFIG FROM LIST",
+    econ_trader_editing_label: "EDITING TRADER DATA:",
+    econ_trader_save_btn: "SAVE TRADER DATA",
+    xml_close_btn: "× CLOSE",
+
+    // QuestGraph node port tooltips & misc
+    quest_port_prereq: "Prerequisite Port",
+    quest_port_followup: "Follow-up Port (Drag arrow to connect)",
+    quest_locate_on_map: "Locate coordinates on the Tactical Map",
+    quest_obj_file_missing: "Cannot edit objective file: failed to load or missing.",
+
+    // AIBotsEditor cargo item tooltip (duplicate entry safety)
+    ai_tooltip_cargo_missing: "Warning: This item classname is not found in the loaded types.xml database.",
+
+    // EconomyEditor misc tooltips
+    econ_translated_name_tooltip: "Translated Name",
+    econ_search_all_categories_tooltip: "Search across all categories",
+    econ_item_missing_tooltip: "Not found in types.xml database.",
+    econ_copy_item_tooltip: "Copy item",
+    econ_item_missing_trader_tooltip: "Not in types.xml"
   },
   ru: {
     // Welcome Screen
-    welcome_title: "ТАКТИЧЕСКИЙ РЕДАКТОР КОНФИГОВ",
+    welcome_title: "PROJECT ZERO TOOL",
     welcome_subtitle: "Полностью клиентский инструмент настройки DayZ Expansion. Редактируйте, проверяйте и управляйте конфигурациями серверов и картами локально в вашем браузере.",
     welcome_restore_btn: "📂 ВОССТАНОВИТЬ ДОСТУП К: {folder}",
     welcome_open_btn: "📂 ОТКРЫТЬ ЛОКАЛЬНУЮ ПАПКУ С МОДАМИ",
@@ -588,7 +712,7 @@ export const translations = {
     tab_aibots: "ИИ Боты",
     tab_settings: "Настройки",
     tab_map: "Интерактивная карта",
-    tab_raw_editor: "Сырой редактор",
+    tab_raw_editor: "JSON",
     header_unsaved: "НЕ СОХРАНЕНО",
     header_export_package: "💾 ЭКСПОРТ ПАКЕТА",
     header_discard: "ОТКЛОНИТЬ",
@@ -792,6 +916,7 @@ export const translations = {
     trader_no_currencies: "НЕТ СОБСТВЕННОЙ ВАЛЮТЫ (ПО УМОЛЧАНИЮ ИСПОЛЬЗУЮТСЯ СТАНДАРТНЫЕ БАНКНОТЫ)",
     trader_add_currency: "ДОБАВИТЬ ВАЛЮТУ:",
     trader_search_class: "ПОИСК КЛАССА...",
+    trader_label_add_category: "ДОБАВИТЬ КАТЕГОРИЮ:",
     trader_add_category_btn: "[+] ДОБАВИТЬ КАТЕГОРИЮ",
     trader_add_override_btn: "ДОБАВИТЬ НАЦЕНКУ:",
     trader_select_cat_ph: "-- ВЫБЕРИТЕ КАТЕГОРИЮ --",
@@ -1129,6 +1254,129 @@ export const translations = {
     ai_subtab_global: "ГЛОБАЛЬНЫЙ ИИ",
     ai_msg_global_selected: "ВЫБРАНЫ ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ. ИСПОЛЬЗУЙТЕ ПАНЕЛИ НАСТРОЙКИ СПРАВА ДЛЯ ИЗМЕНЕНИЯ ЗНАЧЕНИЙ.",
     ai_unsaved_changes: "(НЕСОХРАНЕННЫЕ ИЗМЕНЕНИЯ ●)",
-    ai_unsaved: "(НЕСОХРАНЕНО ●)"
+    ai_unsaved: "(НЕСОХРАНЕНО ●)",
+
+    // Sidebar
+    sidebar_filter_configs: "// ФИЛЬТР_КОНФИГОВ",
+    sidebar_search_ph: "ВВЕДИТЕ ЗАПРОС ДЛЯ ПОИСКА...",
+    sidebar_total_files: "ВСЕГО: {count} ФАЙЛОВ",
+    sidebar_modified: "{count} ИЗМЕНЕНО",
+    sidebar_no_matches: "КОНФИГОВ ПО ЗАПРОСУ НЕ НАЙДЕНО",
+
+    // Global Search
+    search_placeholder: "Поиск конфигов, предметов, квестов, патрулей...",
+    search_no_results: "Ничего не найдено по запросу \"{query}\"",
+    search_categories_header: "КАТЕГОРИИ ПОИСКА",
+    search_shortcut_nav: "↑↓ навигация",
+    search_shortcut_open: "↵ открыть",
+    search_shortcut_toggle: "Ctrl+K переключить",
+    search_hint_config: "📁 Пути к конфиг-файлам",
+    search_hint_market: "💰 Классы предметов магазина",
+    search_hint_quest: "📋 Названия и ID квестов",
+    search_hint_patrol: "🤖 Маршруты ИИ патрулей",
+    search_hint_trader: "🛍 Имена торговцев",
+
+    // Hotkey Modal
+    hotkey_header_label: "// ГОРЯЧИЕ_КЛАВИШИ",
+    hotkey_title: "СПРАВКА ПО ГОРЯЧИМ КЛАВИШАМ",
+    hotkey_close: "× ЗАКРЫТЬ",
+    hotkey_section_global: "ГЛОБАЛЬНЫЕ",
+    hotkey_section_map: "ТАКТИЧЕСКАЯ КАРТА",
+    hotkey_section_modals: "МОДАЛЬНЫЕ ОКНА И ДИАЛОГИ",
+    hotkey_key_search: "Открыть глобальный поиск",
+    hotkey_key_save: "Экспорт / Сохранить все изменённые файлы",
+    hotkey_key_show_hotkeys: "Показать эту справку по горячим клавишам",
+    hotkey_key_delete: "Удалить выбранный объект",
+    hotkey_key_escape_entity: "Снять выделение с объекта",
+    hotkey_key_ruler: "Переключить инструмент измерения дистанции",
+    hotkey_key_close_modal: "Закрыть активное модальное окно / диалог",
+    hotkey_key_confirm: "Подтвердить выбранный результат поиска",
+    hotkey_key_navigate: "Навигация по результатам поиска",
+
+    // Draft Recovery Modal
+    draft_header_label: "// СИСТЕМА_ВОССТАНОВЛЕНИЯ_ЧЕРНОВИКА",
+    draft_title: "НАЙДЕН НЕСОХРАНЕННЫЙ ЧЕРНОВИК СЕССИИ",
+    draft_body: "Редактор обнаружил несохраненные изменения из предыдущей сессии ({count} изменённых файлов). Восстановить или отклонить?",
+    draft_restore_btn: "Восстановить черновик",
+    draft_discard_btn: "Отклонить",
+
+    // Loading
+    app_loading: "ЧТЕНИЕ ДИРЕКТОРИИ СЕРВЕРА...",
+
+    // Error Boundary
+    err_boundary_label: "// ОШИБКА_КОМПОНЕНТА",
+    err_boundary_title: "ОШИБКА ВЫПОЛНЕНИЯ ПАНЕЛИ",
+    err_boundary_body: "Эта панель завершила работу с ошибкой. Несохраненные данные в безопасности — остальные вкладки продолжают работать нормально.",
+    err_boundary_retry: "↺ ПЕРЕЗАПУСТИТЬ ПАНЕЛЬ",
+    err_boundary_show_stack: "ПОКАЗАТЬ ТРАССИРОВКУ ОШИБКИ",
+    err_boundary_hide_stack: "СКРЫТЬ ТРАССИРОВКУ ОШИБКИ",
+
+    // Toast messages (App.jsx)
+    toast_configs_loaded: "Конфигурации успешно загружены из директории!",
+    toast_load_failed: "Ошибка загрузки конфигов: {error}",
+    toast_write_denied: "Разрешение на запись не предоставлено.",
+    toast_select_failed: "Ошибка выбора директории: {error}",
+    toast_restore_denied: "Разрешение на запись отклонено.",
+    toast_restore_access_failed: "Ошибка восстановления доступа: {error}",
+    toast_disconnected: "Подключение к директории конфигов разорвано.",
+    toast_draft_restored: "Черновик восстановлен: {count} файлов восстановлено.",
+    toast_draft_discarded: "Черновик отклонён.",
+    toast_file_saved: "Сохранено: {file}",
+    toast_save_failed: "Ошибка сохранения: {error}",
+    toast_package_exported: "Пакет экспортирован! Сохранено файлов: {count}.",
+    toast_export_failed: "Ошибка экспорта: {error}",
+    toast_no_modified: "Нет изменённых файлов для экспорта.",
+    toast_changes_discarded: "Все несохраненные изменения отклонены.",
+    toast_file_created: "Создан: {file}",
+    toast_create_failed: "Ошибка создания: {error}",
+    toast_file_deleted: "Удалён: {file}",
+    toast_delete_failed: "Ошибка удаления: {error}",
+    toast_syntax_repaired: "Синтаксис исправлен: {file}",
+    toast_repair_failed: "Ошибка исправления: {error}",
+    toast_autofix_done: "Автоисправление завершено! Исправлено синтаксических ошибок: {syntax}, структурных предупреждений: {struct}.",
+
+    // Confirm Modal defaults
+    modal_cancel_default: "ОТМЕНА",
+    modal_confirm_default: "ПОДТВЕРДИТЬ",
+
+    // TacticalMap
+    map_spawn_name_ph: "ВВЕДИТЕ УНИКАЛЬНОЕ ИМЯ...",
+    map_coords_label: "КООРДИНАТЫ",
+
+    // Economy category stats
+    econ_stats_items: "ПРЕДМЕТЫ",
+    econ_stats_avg_min: "СРЕДН. МИН",
+    econ_stats_avg_max: "СРЕДН. МАКС",
+    econ_stats_avg_sell: "СРЕДН. ПРОДАЖА",
+    econ_editing_label: "РЕДАКТИРОВАНИЕ:",
+    econ_display_name_label: "ОТОБРАЖАЕМОЕ ИМЯ:",
+    econ_init_stock_label: "НАЧАЛЬНЫЙ ЗАПАС %:",
+    econ_save_cat_btn_text: "СОХРАНИТЬ КАТЕГОРИЮ",
+    econ_filter_items_ph: "ФИЛЬТР ПРЕДМЕТОВ...",
+    econ_source_cat_label: "ИСХОДНАЯ КАТЕГОРИЯ:",
+    econ_import_from_types: "📥 ИМПОРТ ИЗ TYPES.XML",
+    econ_bulk_apply_btn: "ПРИМЕНИТЬ",
+    econ_bulk_selected: "ВЫБРАНО: {count}",
+    econ_select_cat_label: "ВЫБЕРИТЕ КАТЕГОРИЮ ИЗ СПИСКА",
+    econ_select_trader_label: "ВЫБЕРИТЕ ТОРГОВЦА ИЗ СПИСКА",
+    econ_trader_editing_label: "РЕДАКТИРОВАНИЕ ТОРГОВЦА:",
+    econ_trader_save_btn: "СОХРАНИТЬ ДАННЫЕ ТОРГОВЦА",
+    xml_close_btn: "× ЗАКРЫТЬ",
+
+    // QuestGraph node port tooltips & misc
+    quest_port_prereq: "Порт предварительного квеста",
+    quest_port_followup: "Порт следующего квеста (Перетащите стрелку для подключения)",
+    quest_locate_on_map: "Найти координаты на Тактической карте",
+    quest_obj_file_missing: "Невозможно редактировать файл цели: не удалось загрузить или файл отсутствует.",
+
+    // AIBotsEditor cargo item tooltip
+    ai_tooltip_cargo_missing: "Предупреждение: этот предмет не найден в загруженной базе данных types.xml.",
+
+    // EconomyEditor misc tooltips
+    econ_translated_name_tooltip: "Переведённое имя",
+    econ_search_all_categories_tooltip: "Поиск по всем категориям",
+    econ_item_missing_tooltip: "Не найдено в базе данных types.xml.",
+    econ_copy_item_tooltip: "Копировать предмет",
+    econ_item_missing_trader_tooltip: "Не найдено в types.xml"
   }
 };

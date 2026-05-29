@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { translations } from '../utils/localization';
 
 const TYPE_STYLES = {
   CONFIG: { color: '#95c095', bg: 'rgba(149,192,149,0.12)', label: 'CONFIG' },
@@ -8,15 +9,22 @@ const TYPE_STYLES = {
   TRADER: { color: '#c9a6f5', bg: 'rgba(180,100,255,0.10)', label: 'TRADER' },
 };
 
-const SEARCH_HINTS = [
-  ['CONFIG', '📁 Config file paths'],
-  ['MARKET', '💰 Market item classnames'],
-  ['QUEST',  '📋 Quest titles & IDs'],
-  ['PATROL', '🤖 AI Patrol route names'],
-  ['TRADER', '🛍 Trader display names'],
-];
 
-export default function GlobalSearch({ configs, isOpen, onClose, setActiveTab }) {
+export default function GlobalSearch({ configs, isOpen, onClose, setActiveTab, lang = 'ru' }) {
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
+    return text;
+  };
+
+  const SEARCH_HINTS = [
+    ['CONFIG', t('search_hint_config')],
+    ['MARKET', t('search_hint_market')],
+    ['QUEST',  t('search_hint_quest')],
+    ['PATROL', t('search_hint_patrol')],
+    ['TRADER', t('search_hint_trader')],
+  ];
+
   const [query, setQuery]       = useState('');
   const [results, setResults]   = useState([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -171,7 +179,7 @@ export default function GlobalSearch({ configs, isOpen, onClose, setActiveTab })
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search configs, items, quests, patrols..."
+            placeholder={t('search_placeholder')}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -247,12 +255,12 @@ export default function GlobalSearch({ configs, isOpen, onClose, setActiveTab })
           </div>
         ) : query.trim() ? (
           <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '13px' }}>
-            No results for <strong style={{ color: 'var(--text-primary)' }}>"{query}"</strong>
+            {t('search_no_results', { query })}
           </div>
         ) : (
           /* Hints when empty */
           <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '10px', color: 'var(--text-dark)', letterSpacing: '1px', marginBottom: '4px' }}>SEARCHABLE CATEGORIES</div>
+            <div style={{ fontSize: '10px', color: 'var(--text-dark)', letterSpacing: '1px', marginBottom: '4px' }}>{t('search_categories_header')}</div>
             {SEARCH_HINTS.map(([type, desc]) => {
               const ts = TYPE_STYLES[type];
               return (
@@ -276,9 +284,9 @@ export default function GlobalSearch({ configs, isOpen, onClose, setActiveTab })
           fontFamily: 'var(--font-mono)',
           background: 'var(--bg-tertiary)',
         }}>
-          <span>↑↓ navigate</span>
-          <span>↵ open</span>
-          <span>Ctrl+K toggle</span>
+          <span>{t('search_shortcut_nav')}</span>
+          <span>{t('search_shortcut_open')}</span>
+          <span>{t('search_shortcut_toggle')}</span>
         </div>
       </div>
     </div>

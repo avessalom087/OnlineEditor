@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { translations } from '../utils/localization';
 
 // Helper to convert flat paths into a tree structure
 function buildTree(paths, configs, searchQuery) {
@@ -196,7 +197,12 @@ function FileTreeNode({ node, level, selectedPath, onSelectFile, dirtyFiles }) {
   );
 }
 
-export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirtyFiles }) {
+export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirtyFiles, lang = 'ru' }) {
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
+    return text;
+  };
   const [searchQuery, setSearchQuery] = useState('');
 
   const paths = Object.keys(configs);
@@ -224,12 +230,12 @@ export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirty
           textTransform: 'uppercase',
           fontWeight: 'bold'
         }}>
-          // FILTER_CONFIGS
+          {t('sidebar_filter_configs')}
         </div>
         <div style={{ position: 'relative' }}>
           <input
             type="text"
-            placeholder="ENTER SEARCH QUERY..."
+            placeholder={t('sidebar_search_ph')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             style={{
@@ -275,9 +281,9 @@ export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirty
           fontSize: '10px', 
           color: 'var(--text-secondary)' 
         }}>
-          <span>TOTAL: {paths.length} FILES</span>
+          <span>{t('sidebar_total_files', { count: paths.length })}</span>
           {dirtyFiles.size > 0 && (
-            <span style={{ color: 'var(--warning-color)' }}>{dirtyFiles.size} MODIFIED</span>
+            <span style={{ color: 'var(--warning-color)' }}>{t('sidebar_modified', { count: dirtyFiles.size })}</span>
           )}
         </div>
       </div>
@@ -286,7 +292,7 @@ export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirty
       <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-secondary)' }}>
         {childrenKeys.length === 0 ? (
           <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-            NO CONFIGS MATCHING QUERY
+            {t('sidebar_no_matches')}
           </div>
         ) : (
           childrenKeys.map(key => (

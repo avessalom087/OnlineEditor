@@ -49,30 +49,35 @@ function getNestedValue(obj, path) {
 
 // ─── Hotkey Modal ─────────────────────────────────────────────────────────────
 
-function HotkeyModal({ onClose }) {
+function HotkeyModal({ onClose, lang = 'ru' }) {
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
+    return text;
+  };
   const sections = [
     {
-      title: 'GLOBAL',
+      title: t('hotkey_section_global'),
       keys: [
-        { key: 'Ctrl + K', desc: 'Open Global Search' },
-        { key: 'Ctrl + S', desc: 'Export / Save All modified files' },
-        { key: '?',        desc: 'Show this Hotkey Cheat Sheet' },
+        { key: 'Ctrl + K', desc: t('hotkey_key_search') },
+        { key: 'Ctrl + S', desc: t('hotkey_key_save') },
+        { key: '?',        desc: t('hotkey_key_show_hotkeys') },
       ],
     },
     {
-      title: 'TACTICAL MAP',
+      title: t('hotkey_section_map'),
       keys: [
-        { key: 'Delete',  desc: 'Delete selected entity' },
-        { key: 'Escape',  desc: 'Deselect current entity' },
-        { key: 'M',       desc: 'Toggle Distance Ruler tool' },
+        { key: 'Delete',  desc: t('hotkey_key_delete') },
+        { key: 'Escape',  desc: t('hotkey_key_escape_entity') },
+        { key: 'M',       desc: t('hotkey_key_ruler') },
       ],
     },
     {
-      title: 'MODALS & DIALOGS',
+      title: t('hotkey_section_modals'),
       keys: [
-        { key: 'Escape', desc: 'Close active modal / dialog' },
-        { key: 'Enter',  desc: 'Confirm selected search result' },
-        { key: '↑ / ↓',  desc: 'Navigate search results' },
+        { key: 'Escape', desc: t('hotkey_key_close_modal') },
+        { key: 'Enter',  desc: t('hotkey_key_confirm') },
+        { key: '↑ / ↓',  desc: t('hotkey_key_navigate') },
       ],
     },
   ];
@@ -106,10 +111,10 @@ function HotkeyModal({ onClose }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px' }}>// KEYBOARD_SHORTCUTS</div>
-            <h3 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '18px' }}>HOTKEY CHEAT SHEET</h3>
+            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px' }}>{t('hotkey_header_label')}</div>
+            <h3 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '18px' }}>{t('hotkey_title')}</h3>
           </div>
-          <button className="btn" onClick={onClose} style={{ padding: '4px 10px', fontSize: '12px' }}>× CLOSE</button>
+          <button className="btn" onClick={onClose} style={{ padding: '4px 10px', fontSize: '12px' }}>{t('hotkey_close')}</button>
         </div>
 
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -147,7 +152,12 @@ function HotkeyModal({ onClose }) {
 
 // ─── Confirm Dialog ───────────────────────────────────────────────────────────
 
-function ConfirmModal({ dialog, onConfirm, onCancel }) {
+function ConfirmModal({ dialog, onConfirm, onCancel, lang = 'ru' }) {
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
+    return text;
+  };
   if (!dialog) return null;
   const isWarning = dialog.severity === 'warning';
   const borderCol = isWarning ? 'var(--warning-color)' : 'var(--danger-color)';
@@ -197,10 +207,10 @@ function ConfirmModal({ dialog, onConfirm, onCancel }) {
 
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button className="btn" onClick={onCancel} style={{ padding: '8px 16px' }}>
-            {dialog.cancelLabel || 'CANCEL'}
+            {dialog.cancelLabel || t('modal_cancel_default')}
           </button>
           <button className={btnClass} onClick={onConfirm} style={{ padding: '8px 16px' }}>
-            {dialog.confirmLabel || 'CONFIRM'}
+            {dialog.confirmLabel || t('modal_confirm_default')}
           </button>
         </div>
       </div>
@@ -349,11 +359,11 @@ function AppContent() {
         setConfigs(loadedConfigs);
         setSchemaReport(data.schemaReport);
         setLoading(false);
-        toast.success('Configurations loaded from directory successfully!');
+        toast.success(t('toast_configs_loaded'));
       })
       .catch(err => {
         console.error('Failed to load configs', err);
-        toast.error(`Failed to load configs: ${err.message}`);
+        toast.error(t('toast_load_failed', { error: err.message }));
         setLoading(false);
       });
   }, [toast]);
@@ -374,13 +384,13 @@ function AppContent() {
         setHasAccess(true);
         fetchConfigs();
       } else {
-        toast.error('Write permissions were not granted.');
+        toast.error(t('toast_write_denied'));
         setLoading(false);
       }
     } catch (e) {
       if (e.name !== 'AbortError') {
         console.error(e);
-        toast.error(`Failed to select directory: ${e.message}`);
+        toast.error(t('toast_select_failed', { error: e.message }));
       }
       setLoading(false);
     }
@@ -396,12 +406,12 @@ function AppContent() {
         setHasAccess(true);
         fetchConfigs();
       } else {
-        toast.error('Permission to write was denied.');
+        toast.error(t('toast_restore_denied'));
         setLoading(false);
       }
     } catch (e) {
       console.error(e);
-      toast.error(`Failed to restore access: ${e.message}`);
+      toast.error(t('toast_restore_access_failed', { error: e.message }));
       setLoading(false);
     }
   };
@@ -414,7 +424,7 @@ function AppContent() {
     setHasAccess(false);
     setConfigs({});
     setSelectedFilePath(null);
-    toast.info('Disconnected configuration directory.');
+    toast.info(t('toast_disconnected'));
   };
 
   // ── Auto-save draft to localStorage ──────────────────────────────────────
@@ -487,13 +497,13 @@ function AppContent() {
       return updated;
     });
     setDraftToRestore(null);
-    toast.success(`Draft restored: ${Object.keys(draftToRestore).length} files recovered.`);
+    toast.success(t('toast_draft_restored', { count: Object.keys(draftToRestore).length }));
   };
 
   const handleDiscardDraft = () => {
     try { localStorage.removeItem('dayz_editor_draft'); } catch (e) {}
     setDraftToRestore(null);
-    toast.info('Draft discarded.');
+    toast.info(t('toast_draft_discarded'));
   };
 
   // ── Field / file mutations ────────────────────────────────────────────────
@@ -533,9 +543,9 @@ function AppContent() {
           const f = prev[filePath];
           return { ...prev, [filePath]: { ...f, originalContent: JSON.parse(JSON.stringify(f.content)) } };
         });
-        toast.success(`Saved: ${filePath.split('/').pop()}`);
+        toast.success(t('toast_file_saved', { file: filePath.split('/').pop() }));
       })
-      .catch(err => toast.error(`Save failed: ${err.message}`));
+      .catch(err => toast.error(t('toast_save_failed', { error: err.message })));
   };
 
   // ── Internal doSaveAll (called after optional validation) ─────────────────
@@ -550,9 +560,9 @@ function AppContent() {
           });
           return updated;
         });
-        toast.success(`Package exported! ${dirtyFilesList.length} file(s) saved.`);
+        toast.success(t('toast_package_exported', { count: dirtyFilesList.length }));
       })
-      .catch(err => toast.error(`Export failed: ${err.message}`));
+      .catch(err => toast.error(t('toast_export_failed', { error: err.message })));
   }, [toast]);
 
   // ── Save all with export validation ──────────────────────────────────────
@@ -565,7 +575,7 @@ function AppContent() {
     });
 
     if (dirtyFilesList.length === 0) {
-      toast.info('No modified files to export.');
+      toast.info(t('toast_no_modified'));
       return;
     }
 
@@ -610,7 +620,7 @@ function AppContent() {
           });
           return reverted;
         });
-        toast.warning('All unsaved changes discarded.');
+        toast.warning(t('toast_changes_discarded'));
       },
     });
   };
@@ -628,18 +638,18 @@ function AppContent() {
             sizeBytes: JSON.stringify(content).length,
           },
         }));
-        toast.success(`Created: ${filePath.split('/').pop()}`);
+        toast.success(t('toast_file_created', { file: filePath.split('/').pop() }));
       })
-      .catch(err => toast.error(`Create failed: ${err.message}`));
+      .catch(err => toast.error(t('toast_create_failed', { error: err.message })));
   };
 
   const handleDeleteFile = (filePath) => {
     fileService.deleteFile(filePath)
       .then(() => {
         setConfigs(prev => { const copy = { ...prev }; delete copy[filePath]; return copy; });
-        toast.success(`Deleted: ${filePath.split('/').pop()}`);
+        toast.success(t('toast_file_deleted', { file: filePath.split('/').pop() }));
       })
-      .catch(err => toast.error(`Delete failed: ${err.message}`));
+      .catch(err => toast.error(t('toast_delete_failed', { error: err.message })));
   };
 
   // ── Fix handlers ──────────────────────────────────────────────────────────
@@ -655,9 +665,9 @@ function AppContent() {
             sizeBytes: JSON.stringify(data.content).length,
           },
         }));
-        toast.success(`Syntax repaired: ${filePath.split('/').pop()}`);
+        toast.success(t('toast_syntax_repaired', { file: filePath.split('/').pop() }));
       })
-      .catch(err => toast.error(`Repair failed: ${err.message}`));
+      .catch(err => toast.error(t('toast_repair_failed', { error: err.message })));
   };
 
   const handleFixStructuralError = (filePath, error) => {
@@ -727,9 +737,7 @@ function AppContent() {
       return updated;
     });
 
-    toast.success(
-      `Auto-Fix complete! Repaired ${syntaxFixCount} syntax error(s) and ${structuralFixCount} structural warning(s).`
-    );
+    toast.success(t('toast_autofix_done', { syntax: syntaxFixCount, struct: structuralFixCount }));
   };
 
   // ── Navigation helpers ────────────────────────────────────────────────────
@@ -978,12 +986,14 @@ function AppContent() {
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         setActiveTab={setActiveTab}
+        lang={lang}
       />
-      {isHotkeyOpen && <HotkeyModal onClose={() => setIsHotkeyOpen(false)} />}
+      {isHotkeyOpen && <HotkeyModal onClose={() => setIsHotkeyOpen(false)} lang={lang} />}
       <ConfirmModal
         dialog={confirmDialog}
         onConfirm={() => { confirmDialog?.onConfirm?.(); setConfirmDialog(null); }}
         onCancel={() => { confirmDialog?.onCancel?.(); setConfirmDialog(null); }}
+        lang={lang}
       />
 
       {/* ── Draft Recovery Modal ──────────────────────────────────────────── */}
@@ -1001,23 +1011,21 @@ function AppContent() {
           }}>
             <div>
               <div style={{ fontSize: '10px', color: 'var(--warning-color)', fontFamily: 'var(--font-mono)', letterSpacing: '1px', fontWeight: 'bold' }}>
-                // DRAFT_RECOVERY_SYSTEM
+                {t('draft_header_label')}
               </div>
               <h3 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '18px' }}>
-                UNSAVED SESSION DRAFT FOUND
+                {t('draft_title')}
               </h3>
             </div>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.5' }}>
-              The editor found unsaved changes from a previous session
-              (<strong>{Object.keys(draftToRestore).length} modified files</strong>).
-              Restore or discard?
+              {t('draft_body', { count: Object.keys(draftToRestore).length })}
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button className="btn btn-warning" onClick={handleRestoreDraft} style={{ padding: '8px 16px' }}>
-                Restore Draft
+                {t('draft_restore_btn')}
               </button>
               <button className="btn btn-danger" onClick={handleDiscardDraft} style={{ padding: '8px 16px' }}>
-                Discard
+                {t('draft_discard_btn')}
               </button>
             </div>
           </div>
@@ -1164,7 +1172,7 @@ function AppContent() {
               animation: 'spin 1s linear infinite', marginBottom: '16px',
             }} />
             <span style={{ fontFamily: 'var(--font-heading)', fontSize: '16px', fontWeight: '700', letterSpacing: '2px' }}>
-              READING SERVER DIRECTORY...
+              {t('app_loading')}
             </span>
           </div>
         ) : (
@@ -1175,6 +1183,7 @@ function AppContent() {
                 selectedFilePath={selectedFilePath}
                 onSelectFile={setSelectedFilePath}
                 dirtyFiles={dirtyFiles}
+                lang={lang}
               />
             )}
 

@@ -583,7 +583,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 <div style={{ padding: '14px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                   <div style={{ flex: 1, minWidth: '300px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>EDITING:</span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_editing_label')}</span>
                       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontWeight: 'bold', fontSize: '13px' }}>
                         {selectedCategoryPath.split('/').pop()}
                       </span>
@@ -592,7 +592,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                      {/* B5: Editable DisplayName + InitStockPercent */}
                     <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>DISPLAY NAME:</span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('econ_display_name_label')}</span>
                         <input
                           type="text"
                           value={activeCategoryConfig.content.DisplayName || ''}
@@ -600,14 +600,14 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                           style={{ fontSize: '12px', padding: '3px 8px', width: '160px' }}
                         />
                         {activeCategoryConfig.content.DisplayName && activeCategoryConfig.content.DisplayName.startsWith('#STR_') && (
-                          <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontStyle: 'italic' }} title="Translated Name">
+                          <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontStyle: 'italic' }} title={t('econ_translated_name_tooltip')}>
                             ({translateStrKey(activeCategoryConfig.content.DisplayName)})
                           </span>
                         )}
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>INIT STOCK %:</span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('econ_init_stock_label')}</span>
                         <input
                           type="number"
                           value={activeCategoryConfig.content.InitStockPercent ?? 100}
@@ -620,10 +620,10 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     {catStats && (
                       <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap' }}>
                         {[
-                          { label: 'ITEMS',    val: catStats.count   },
-                          { label: 'AVG MIN',  val: `${catStats.avgMin}$` },
-                          { label: 'AVG MAX',  val: `${catStats.avgMax}$` },
-                          { label: 'AVG SELL', val: `${catStats.avgSell}%` },
+                          { label: t('econ_stats_items'),    val: catStats.count   },
+                          { label: t('econ_stats_avg_min'),  val: `${catStats.avgMin}$` },
+                          { label: t('econ_stats_avg_max'),  val: `${catStats.avgMax}$` },
+                          { label: t('econ_stats_avg_sell'), val: `${catStats.avgSell}%` },
                         ].map(({ label, val }) => (
                           <span key={label} style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 8px' }}>
                             <span style={{ color: 'var(--text-dark)' }}>{label}: </span>
@@ -639,7 +639,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     disabled={!isCategoryDirty}
                     style={{ opacity: isCategoryDirty ? 1 : 0.5, cursor: isCategoryDirty ? 'pointer' : 'not-allowed' }}
                   >
-                    SAVE CATEGORY
+                    {t('econ_save_cat_btn_text')}
                   </button>
                 </div>
 
@@ -648,7 +648,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                   {/* Filter + Search-all toggle */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{ position: 'relative', width: '220px' }}>
-                      <input type="text" placeholder="FILTER ITEMS..." value={itemQuery} onChange={e => setItemQuery(e.target.value)} style={{ fontSize: '12px', padding: '6px 12px 6px 24px' }} />
+                      <input type="text" placeholder={t('econ_filter_items_ph')} value={itemQuery} onChange={e => setItemQuery(e.target.value)} style={{ fontSize: '12px', padding: '6px 12px 6px 24px' }} />
                       <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '10px' }}>▶</span>
                     </div>
                     {/* B4: Search all toggle */}
@@ -656,28 +656,28 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                       className={`btn ${searchAllMode ? 'btn-accent' : ''}`}
                       onClick={() => setSearchAllMode(prev => !prev)}
                       style={{ padding: '6px 10px', fontSize: '10px', letterSpacing: '0.5px' }}
-                      title="Search across all categories"
+                      title={t('econ_search_all_categories_tooltip')}
                     >
-                      🔍 {searchAllMode ? 'ALL CATS' : 'THIS CAT'}
+                      🔍 {searchAllMode ? t('econ_search_all') : t('econ_search_this')}
                     </button>
                   </div>
 
                   {/* Add item + paste */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '280px', maxWidth: '420px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ADD ITEM:</span>
-                    <AutocompleteInput suggestions={suggestions} placeholder="TYPE CLASSNAME..." onSelect={handleAddItem} style={{ flex: 1 }} />
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('econ_add_item')}</span>
+                    <AutocompleteInput suggestions={suggestions} placeholder={t('econ_type_classname')} onSelect={handleAddItem} style={{ flex: 1 }} />
                   </div>
 
                   {/* B8: Paste button */}
                   {copiedItem && (
                     <button className="btn btn-warning" onClick={handlePasteCopiedItem} style={{ padding: '6px 12px', fontSize: '11px' }} title={`Paste: ${copiedItem.ClassName}`}>
-                      📋 PASTE "{copiedItem.ClassName}"
+                      {t('econ_paste_btn', { classname: copiedItem.ClassName })}
                     </button>
                   )}
 
                   {/* B7: Import from category */}
                   <button className="btn" onClick={() => setShowImportPanel(prev => !prev)} style={{ padding: '6px 12px', fontSize: '11px' }}>
-                    📥 IMPORT FROM…
+                    {t('econ_import_from_btn')}
                   </button>
 
                   {/* Mass Import from types.xml */}
@@ -687,7 +687,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                       onClick={() => setShowXmlImportModal(true)} 
                       style={{ padding: '6px 12px', fontSize: '11px' }}
                     >
-                      📥 IMPORT FROM TYPES.XML
+                      {t('econ_import_from_types')}
                     </button>
                   )}
                 </div>
@@ -695,7 +695,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 {/* B7: Import panel */}
                 {showImportPanel && (
                   <div style={{ padding: '10px 20px', background: 'rgba(149,192,149,0.04)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>SOURCE CATEGORY:</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('econ_source_cat_label')}</span>
                     <select
                       value={importFromCatPath}
                       onChange={e => setImportFromCatPath(e.target.value)}
@@ -717,20 +717,20 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
 
                 {/* Bulk Actions (B3) */}
                 <div style={{ padding: '10px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '12px' }}>
-                  <span style={{ color: 'var(--text-secondary)', fontWeight: 'bold', fontSize: '10px', letterSpacing: '1px', whiteSpace: 'nowrap' }}>🛠 BULK ACTIONS:</span>
+                  <span style={{ color: 'var(--text-secondary)', fontWeight: 'bold', fontSize: '10px', letterSpacing: '1px', whiteSpace: 'nowrap' }}>{t('econ_bulk_actions')}</span>
                   <span style={{ fontSize: '10px', color: 'var(--text-dark)', fontFamily: 'var(--font-mono)' }}>
-                    {selectedItems.size > 0 ? `${selectedItems.size} SELECTED` : 'ALL ITEMS'}
+                    {selectedItems.size > 0 ? t('econ_bulk_selected', { count: selectedItems.size }) : t('econ_all_items')}
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <label style={{ fontSize: '11px', color: 'var(--text-primary)' }}>OPERATION:</label>
+                    <label style={{ fontSize: '11px', color: 'var(--text-primary)' }}>{t('econ_bulk_op')}</label>
                     <select id="bulk-op" style={{ padding: '4px 8px', fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)' }}>
-                      <option value="mult-buy">Multiply Min & Max Price (Buy)</option>
-                      <option value="mult-sell">Multiply Sell Price %</option>
-                      <option value="sync-sell-percent">Set Sell Price % (all items)</option>
+                      <option value="mult-buy">{t('econ_bulk_op_mult_buy')}</option>
+                      <option value="mult-sell">{t('econ_bulk_op_mult_sell')}</option>
+                      <option value="sync-sell-percent">{t('econ_bulk_op_sync_sell')}</option>
                     </select>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <label style={{ fontSize: '11px', color: 'var(--text-primary)' }}>VALUE:</label>
+                    <label style={{ fontSize: '11px', color: 'var(--text-primary)' }}>{t('econ_bulk_val')}</label>
                     <input type="number" id="bulk-val" defaultValue="1.1" step="any" style={{ padding: '4px 8px', fontSize: '11px', width: '60px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)', textAlign: 'center' }} />
                   </div>
                    <button
@@ -771,7 +771,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                       });
                     }}
                   >
-                    APPLY
+                    {t('econ_bulk_apply_btn')}
                   </button>
                 </div>
 
@@ -880,7 +880,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                                         </span>
                                       )}
                                       {isItemMissing(item.ClassName) && (
-                                        <span title="Not found in types.xml database." style={{ color: 'var(--warning-color)', fontSize: '12px', marginLeft: '6px', cursor: 'help' }}>⚠️</span>
+                                        <span title={t('econ_item_missing_tooltip')} style={{ color: 'var(--warning-color)', fontSize: '12px', marginLeft: '6px', cursor: 'help' }}>⚠️</span>
                                       )}
                                     </div>
                                   </td>
@@ -893,7 +893,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                                   <td style={{ textAlign: 'center' }}>
                                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                       {/* B8: Copy button */}
-                                      <button className="btn" onClick={() => handleCopyItem(item)} style={{ padding: '3px 6px', fontSize: '11px' }} title="Copy item">📋</button>
+                                      <button className="btn" onClick={() => handleCopyItem(item)} style={{ padding: '3px 6px', fontSize: '11px' }} title={t('econ_copy_item_tooltip')}>📋</button>
                                       <button className="btn btn-danger" onClick={() => handleRemoveItem(item.originalIndex)} style={{ padding: '3px 7px', fontSize: '11px', fontFamily: 'monospace' }}>×</button>
                                     </div>
                                   </td>
@@ -909,7 +909,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
               </>
             ) : (
               <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-                SELECT CATEGORY FROM LIST
+                {t('econ_select_cat_label')}
               </div>
             )
           ) : (
@@ -920,11 +920,11 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 {/* Header */}
                 <div style={{ padding: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '2px' }}>
                   <div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px' }}>EDITING TRADER DATA:</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px' }}>{t('econ_trader_editing_label')}</div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: '16px', color: 'var(--text-glow)', fontWeight: 'bold', marginTop: '2px' }}>{selectedTraderPath.split('/').pop()}</div>
                   </div>
                   <button className={`btn ${isTraderDirty ? 'btn-accent' : ''}`} onClick={() => onSaveFile(selectedTraderPath)} disabled={!isTraderDirty} style={{ opacity: isTraderDirty ? 1 : 0.5, cursor: isTraderDirty ? 'pointer' : 'not-allowed' }}>
-                    SAVE TRADER DATA
+                    {t('econ_trader_save_btn')}
                   </button>
                 </div>
 
@@ -933,15 +933,15 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
 
                   {/* General settings */}
                   <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>// GENERAL_TRADER_PARAMETERS</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>{t('trader_general_params')}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       {[
-                        { label: 'DISPLAY NAME',        key: 'DisplayName',        type: 'text',   ph: '' },
-                        { label: 'TRADER ICON',         key: 'TraderIcon',         type: 'text',   ph: '' },
-                        { label: 'MIN REP REQUIREMENT', key: 'MinRequiredReputation', type: 'number', ph: '0' },
-                        { label: 'MAX REP REQUIREMENT', key: 'MaxRequiredReputation', type: 'number', ph: '2147483647' },
-                        { label: 'REQUIRED FACTION',    key: 'RequiredFaction',    type: 'text',   ph: 'e.g. InvincibleObservers' },
-                        { label: 'DISPLAY CURRENCY NAME', key: 'DisplayCurrencyName', type: 'text', ph: 'Default' },
+                        { label: t('trader_label_name'),          key: 'DisplayName',        type: 'text',   ph: '' },
+                        { label: t('trader_label_icon'),          key: 'TraderIcon',         type: 'text',   ph: '' },
+                        { label: t('trader_label_min_rep'),       key: 'MinRequiredReputation', type: 'number', ph: '0' },
+                        { label: t('trader_label_max_rep'),       key: 'MaxRequiredReputation', type: 'number', ph: '2147483647' },
+                        { label: t('trader_label_faction'),       key: 'RequiredFaction',    type: 'text',   ph: 'e.g. InvincibleObservers' },
+                        { label: t('trader_label_currency_name'), key: 'DisplayCurrencyName', type: 'text', ph: 'Default' },
                       ].map(({ label, key, type, ph }) => (
                         <div key={key}>
                           <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
@@ -957,24 +957,24 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                       ))}
 
                       <div>
-                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>COMPLETED QUEST REQ</label>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('trader_label_quest_req')}</label>
                         <select value={activeTraderConfig.content.RequiredCompletedQuestID ?? -1} onChange={e => onChangeField(selectedTraderPath, ['RequiredCompletedQuestID'], Number(e.target.value))} style={{ fontSize: '12px', padding: '6px' }}>
-                          <option value={-1}>None</option>
+                          <option value={-1}>{t('trader_quest_none')}</option>
                           {questsList.map(q => <option key={q.id} value={q.id}>ID {q.id}: {q.title}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>DISPLAY CURRENCY VALUE</label>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('trader_label_currency_val')}</label>
                         <select value={activeTraderConfig.content.DisplayCurrencyValue ?? 1} onChange={e => onChangeField(selectedTraderPath, ['DisplayCurrencyValue'], Number(e.target.value))} style={{ fontSize: '12px', padding: '6px' }}>
-                          <option value={1}>Show (1)</option>
-                          <option value={0}>Hide (0)</option>
+                          <option value={1}>{t('trader_show_val')}</option>
+                          <option value={0}>{t('trader_hide_val')}</option>
                         </select>
                       </div>
                       <div style={{ gridColumn: 'span 2' }}>
-                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>USE CATEGORY SORT ORDER</label>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('trader_label_sort_order')}</label>
                         <select value={activeTraderConfig.content.UseCategoryOrder ?? 0} onChange={e => onChangeField(selectedTraderPath, ['UseCategoryOrder'], Number(e.target.value))} style={{ fontSize: '12px', padding: '6px' }}>
-                          <option value={0}>Standard (0)</option>
-                          <option value={1}>Ascending (1)</option>
+                          <option value={0}>{t('trader_sort_standard')}</option>
+                          <option value={1}>{t('trader_sort_ascending')}</option>
                         </select>
                       </div>
                     </div>
@@ -982,16 +982,16 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
 
                   {/* Currencies */}
                   <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>// ACCEPTED_CURRENCIES</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>{t('trader_currency_accepted')}</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '8px', border: '1px solid var(--border-color)' }}>
                       {(activeTraderConfig.content.Currencies || []).length === 0 ? (
-                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '8px', textAlign: 'center' }}>NO CURRENCIES (FALLS BACK TO STANDARD BANKNOTE)</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '8px', textAlign: 'center' }}>{t('trader_no_currencies')}</div>
                       ) : (
                         (activeTraderConfig.content.Currencies || []).map((cur, idx) => (
                           <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 8px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                             <span style={{ fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                               {cur}
-                              {isItemMissing(cur) && <span title="Not in types.xml" style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
+                              {isItemMissing(cur) && <span title={t('econ_item_missing_trader_tooltip')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
                             </span>
                             <button className="btn btn-danger" onClick={() => handleTraderRemoveCurrency(idx)} style={{ padding: '2px 6px', fontSize: '10px' }}>×</button>
                           </div>
@@ -999,21 +999,21 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                       )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ADD CURRENCY:</span>
-                      <AutocompleteInput suggestions={suggestions} placeholder="SEARCH CLASS..." onSelect={handleTraderAddCurrency} style={{ flex: 1 }} />
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('trader_add_currency')}</span>
+                      <AutocompleteInput suggestions={suggestions} placeholder={t('trader_search_class')} onSelect={handleTraderAddCurrency} style={{ flex: 1 }} />
                     </div>
                   </div>
                 </div>
 
                 {/* Trader Categories */}
                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>// TRADER_MARKET_CATEGORIES</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>{t('trader_market_categories')}</div>
                   <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     <table className="table-tactical">
                       <thead><tr><th>{t('trader_th_category')}</th><th style={{ width: '30%', textAlign: 'center' }}>{t('trader_select_cat_override')}</th><th style={{ width: '10%', textAlign: 'center' }}>{t('trader_th_action')}</th></tr></thead>
                       <tbody>
                         {(activeTraderConfig.content.Categories || []).length === 0 ? (
-                          <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>NO CATEGORIES ATTACHED.</td></tr>
+                          <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>{t('trader_no_categories')}</td></tr>
                         ) : (
                           (activeTraderConfig.content.Categories || []).map((catStr, idx) => {
                             const { name, mode } = parseTraderCategory(catStr);
@@ -1022,10 +1022,10 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                                 <td style={{ fontFamily: 'var(--font-heading)', fontWeight: '600', color: 'var(--text-glow)' }}>{name}</td>
                                 <td style={{ textAlign: 'center' }}>
                                   <select value={mode} onChange={e => handleTraderCategoryOverrideChange(idx, Number(e.target.value))} style={{ fontSize: '11px', padding: '4px', width: '180px', margin: '0 auto' }}>
-                                    <option value={3}>Buy & Sell (3)</option>
-                                    <option value={1}>Player Buy Only (1)</option>
-                                    <option value={2}>Player Sell Only (2)</option>
-                                    <option value={0}>Disabled (0)</option>
+                                    <option value={3}>{t('trader_direction_both')}</option>
+                                    <option value={1}>{t('trader_direction_buy')}</option>
+                                    <option value={2}>{t('trader_direction_sell')}</option>
+                                    <option value={0}>{t('trader_direction_disabled')}</option>
                                   </select>
                                 </td>
                                 <td style={{ textAlign: 'center' }}><button className="btn btn-danger" onClick={() => handleTraderRemoveCategory(idx)} style={{ padding: '3px 8px', fontSize: '10px' }}>×</button></td>
@@ -1037,28 +1037,28 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     </table>
                   </div>
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ADD CATEGORY:</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('trader_label_add_category')}</span>
                     <select id="new-cat-select" style={{ fontSize: '12px', width: '200px' }}>
-                      <option value="">-- SELECT CATEGORY --</option>
+                      <option value="">{t('trader_select_cat_ph')}</option>
                       {marketCategoryNames.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     <select id="new-cat-mode" style={{ fontSize: '12px', width: '150px' }}>
-                      <option value={3}>Buy & Sell (3)</option>
-                      <option value={1}>Player Buy Only (1)</option>
-                      <option value={2}>Player Sell Only (2)</option>
-                      <option value={0}>Disabled (0)</option>
+                      <option value={3}>{t('trader_direction_both')}</option>
+                      <option value={1}>{t('trader_direction_buy')}</option>
+                      <option value={2}>{t('trader_direction_sell')}</option>
+                      <option value={0}>{t('trader_direction_disabled')}</option>
                     </select>
                     <button className="btn btn-accent" onClick={() => { const sel = document.getElementById('new-cat-select'); const mode = document.getElementById('new-cat-mode'); if (sel?.value) { handleTraderAddCategory(sel.value, Number(mode.value)); sel.value = ''; } }}>
-                      [+] ADD CATEGORY
+                      {t('trader_add_category_btn')}
                     </button>
                   </div>
                 </div>
 
                 {/* Item Overrides */}
                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>// INDIVIDUAL_ITEM_TRADE_OVERRIDES</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>{t('trader_item_overrides')}</div>
                   <div style={{ width: '250px', position: 'relative' }}>
-                    <input type="text" placeholder="FILTER OVERRIDES..." value={traderItemQuery} onChange={e => setTraderItemQuery(e.target.value)} style={{ fontSize: '11px', padding: '6px 12px 6px 24px' }} />
+                    <input type="text" placeholder={t('econ_filter_overrides')} value={traderItemQuery} onChange={e => setTraderItemQuery(e.target.value)} style={{ fontSize: '11px', padding: '6px 12px 6px 24px' }} />
                     <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '10px' }}>▶</span>
                   </div>
                   <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
@@ -1066,20 +1066,20 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                       <thead><tr><th>{t('trader_th_item')}</th><th style={{ width: '30%', textAlign: 'center' }}>{t('trader_th_override')}</th><th style={{ width: '10%', textAlign: 'center' }}>{t('trader_th_action')}</th></tr></thead>
                       <tbody>
                         {filteredTraderItems.length === 0 ? (
-                          <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>NO CUSTOM OVERRIDES</td></tr>
+                          <tr><td colSpan="3" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>{t('trader_no_overrides')}</td></tr>
                         ) : (
                           filteredTraderItems.map(([classname, val]) => (
                             <tr key={classname}>
                               <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 {classname}
-                                {isItemMissing(classname) && <span title="Not in types.xml" style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
+                                {isItemMissing(classname) && <span title={t('econ_item_missing_trader_tooltip')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
                               </td>
                               <td style={{ textAlign: 'center' }}>
                                 <select value={val} onChange={e => handleTraderAddItemOverride(classname, Number(e.target.value))} style={{ fontSize: '11px', padding: '4px', width: '180px', margin: '0 auto' }}>
-                                  <option value={3}>Buy & Sell (3)</option>
-                                  <option value={1}>Player Buy Only (1)</option>
-                                  <option value={2}>Player Sell Only (2)</option>
-                                  <option value={0}>Disabled (0)</option>
+                                  <option value={3}>{t('trader_direction_both')}</option>
+                                  <option value={1}>{t('trader_direction_buy')}</option>
+                                  <option value={2}>{t('trader_direction_sell')}</option>
+                                  <option value={0}>{t('trader_direction_disabled')}</option>
                                 </select>
                               </td>
                               <td style={{ textAlign: 'center' }}><button className="btn btn-danger" onClick={() => handleTraderRemoveItemOverride(classname)} style={{ padding: '3px 8px', fontSize: '10px' }}>×</button></td>
@@ -1090,15 +1090,15 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                     </table>
                   </div>
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>ADD OVERRIDE:</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('trader_add_override_btn')}</span>
                     <div style={{ flex: 1, minWidth: '250px' }}>
-                      <AutocompleteInput suggestions={suggestions} placeholder="TYPE CLASSNAME..." onSelect={(name) => { const modeEl = document.getElementById('new-item-override-mode'); handleTraderAddItemOverride(name, Number(modeEl.value)); }} />
+                      <AutocompleteInput suggestions={suggestions} placeholder={t('econ_type_classname')} onSelect={(name) => { const modeEl = document.getElementById('new-item-override-mode'); handleTraderAddItemOverride(name, Number(modeEl.value)); }} />
                     </div>
                     <select id="new-item-override-mode" style={{ fontSize: '12px', width: '150px' }}>
-                      <option value={3}>Buy & Sell (3)</option>
-                      <option value={1}>Player Buy Only (1)</option>
-                      <option value={2}>Player Sell Only (2)</option>
-                      <option value={0}>Disabled (0)</option>
+                      <option value={3}>{t('trader_direction_both')}</option>
+                      <option value={1}>{t('trader_direction_buy')}</option>
+                      <option value={2}>{t('trader_direction_sell')}</option>
+                      <option value={0}>{t('trader_direction_disabled')}</option>
                     </select>
                   </div>
                 </div>
@@ -1106,7 +1106,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
               </div>
             ) : (
               <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-                SELECT TRADER CONFIG FROM LIST
+                {t('econ_select_trader_label')}
               </div>
             )
           )}
@@ -1153,7 +1153,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 onClick={() => { setShowXmlImportModal(false); setSelectedXmlClassnames(new Set()); setXmlSearchQuery(''); }} 
                 style={{ padding: '4px 10px', fontSize: '12px' }}
               >
-                × CLOSE
+                {t('xml_close_btn')}
               </button>
             </div>
 
