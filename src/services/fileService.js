@@ -1,3 +1,5 @@
+import { cleanJsonComments } from '../utils/diagnostics';
+
 let activeDirHandle = null;
 
 /**
@@ -68,7 +70,7 @@ async function scanDir(dirHandle, pathArray = [], configs = {}) {
     const currentPath = [...pathArray, entry.name];
     if (entry.kind === 'directory') {
       // Skip the backups directory during scanning
-      if (currentPath.length === 1 && entry.name.toLowerCase() === 'backups') {
+      if (currentPath.length === 1 && (entry.name.toLowerCase() === '.pz_tool' || entry.name.toLowerCase() === 'backups')) {
         continue;
       }
       await scanDir(entry, currentPath, configs);
@@ -80,21 +82,8 @@ async function scanDir(dirHandle, pathArray = [], configs = {}) {
         try {
           const file = await entry.getFile();
           const rawText = await file.text();
-          const contentCleaned = rawText.replace(/^\uFEFF/, '');
-          let content;
-          try {
-            content = JSON.parse(contentCleaned);
-          } catch (err) {
-            // Clean comments and trailing commas
-            const cleanContent = contentCleaned
-              .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|\/\*[\s\S]*?\*\/|\/\/.*$/gm, (match, stringGroup) => {
-                return stringGroup ? stringGroup : '';
-              })
-              .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|,\s*([\]}])/g, (match, stringGroup, brace) => {
-                return stringGroup ? stringGroup : brace;
-              });
-            content = JSON.parse(cleanContent);
-          }
+          const cleanText = cleanJsonComments(rawText);
+          const content = JSON.parse(cleanText);
           configs[relPath] = {
             success: true,
             content,
@@ -211,7 +200,8 @@ async function rotateBackups(rootDirHandle) {
   try {
     let backupsDirHandle;
     try {
-      backupsDirHandle = await rootDirHandle.getDirectoryHandle('backups');
+      const pzToolDirHandle = await rootDirHandle.getDirectoryHandle('.pz_tool');
+      backupsDirHandle = await pzToolDirHandle.getDirectoryHandle('backups');
     } catch (e) {
       return;
     }
@@ -262,7 +252,8 @@ export async function saveFile(filePath, content) {
   if (!activeDirHandle) throw new Error('No directory selected');
 
   const timestamp = Date.now();
-  const backupsDirHandle = await activeDirHandle.getDirectoryHandle('backups', { create: true });
+  const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool', { create: true });
+  const backupsDirHandle = await pzToolDirHandle.getDirectoryHandle('backups', { create: true });
   const backupFolderHandle = await backupsDirHandle.getDirectoryHandle(`backup_file_${timestamp}`, { create: true });
 
   // Backup the file first if it exists
@@ -289,7 +280,8 @@ export async function saveAll(files) {
   if (!activeDirHandle) throw new Error('No directory selected');
 
   const timestamp = Date.now();
-  const backupsDirHandle = await activeDirHandle.getDirectoryHandle('backups', { create: true });
+  const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool', { create: true });
+  const backupsDirHandle = await pzToolDirHandle.getDirectoryHandle('backups', { create: true });
   const backupFolderHandle = await backupsDirHandle.getDirectoryHandle(`backup_all_${timestamp}`, { create: true });
 
   for (const file of files) {
@@ -338,22 +330,8 @@ export async function fixSyntax(filePath) {
   const fileHandle = await getFileHandleFromPath(activeDirHandle, filePath);
   const file = await fileHandle.getFile();
   const rawText = await file.text();
-  const contentCleaned = rawText.replace(/^\uFEFF/, '');
-
-  let parsed;
-  try {
-    parsed = JSON.parse(contentCleaned);
-  } catch (e) {
-    // Clean comments and trailing commas
-    const cleanContent = contentCleaned
-      .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|\/\*[\s\S]*?\*\/|\/\/.*$/gm, (match, stringGroup) => {
-        return stringGroup ? stringGroup : '';
-      })
-      .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|,\s*([\]}])/g, (match, stringGroup, brace) => {
-        return stringGroup ? stringGroup : brace;
-      });
-    parsed = JSON.parse(cleanContent);
-  }
+  const cleanText = cleanJsonComments(rawText);
+  const parsed = JSON.parse(cleanText);
 
   // Save cleaned JSON back to disk
   const writable = await fileHandle.createWritable();
@@ -387,7 +365,8 @@ export async function listBackups() {
   try {
     let backupsDirHandle;
     try {
-      backupsDirHandle = await activeDirHandle.getDirectoryHandle('backups');
+      const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool');
+      backupsDirHandle = await pzToolDirHandle.getDirectoryHandle('backups');
     } catch (e) {
       return [];
     }
@@ -444,7 +423,8 @@ async function copyFolderContent(srcDirHandle, destDirHandle) {
 export async function restoreBackup(folderName) {
   if (!activeDirHandle) throw new Error('No directory selected');
 
-  const backupsDirHandle = await activeDirHandle.getDirectoryHandle('backups');
+  const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool');
+  const backupsDirHandle = await pzToolDirHandle.getDirectoryHandle('backups');
   const backupFolderHandle = await backupsDirHandle.getDirectoryHandle(folderName);
 
   await copyFolderContent(backupFolderHandle, activeDirHandle);

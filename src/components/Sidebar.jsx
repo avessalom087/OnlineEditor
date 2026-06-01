@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 
 // Helper to convert flat paths into a tree structure
 function buildTree(paths, configs, searchQuery) {
@@ -197,12 +197,8 @@ function FileTreeNode({ node, level, selectedPath, onSelectFile, dirtyFiles }) {
   );
 }
 
-export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirtyFiles, lang = 'ru' }) {
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
-    return text;
-  };
+export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirtyFiles }) {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
 
   const paths = Object.keys(configs);

@@ -14,7 +14,7 @@ import SettingsEditor from './components/SettingsEditor';
 import { validateConfig } from './utils/diagnostics';
 import * as fileService from './services/fileService';
 import * as idb from './utils/indexedDB';
-import { translations } from './utils/localization';
+import { useTranslation } from './utils/localization';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -49,12 +49,8 @@ function getNestedValue(obj, path) {
 
 // ─── Hotkey Modal ─────────────────────────────────────────────────────────────
 
-function HotkeyModal({ onClose, lang = 'ru' }) {
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
-    return text;
-  };
+function HotkeyModal({ onClose }) {
+  const { t } = useTranslation();
   const sections = [
     {
       title: t('hotkey_section_global'),
@@ -152,12 +148,8 @@ function HotkeyModal({ onClose, lang = 'ru' }) {
 
 // ─── Confirm Dialog ───────────────────────────────────────────────────────────
 
-function ConfirmModal({ dialog, onConfirm, onCancel, lang = 'ru' }) {
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
-    return text;
-  };
+function ConfirmModal({ dialog, onConfirm, onCancel }) {
+  const { t } = useTranslation();
   if (!dialog) return null;
   const isWarning = dialog.severity === 'warning';
   const borderCol = isWarning ? 'var(--warning-color)' : 'var(--danger-color)';
@@ -228,26 +220,26 @@ export default function App() {
   );
 }
 
+// Helper to parse button text and wrap label part in responsive class
+const renderResponsiveButtonText = (text) => {
+  if (!text) return null;
+  const parts = text.split(' ');
+  if (parts.length > 1 && parts[0].length <= 3) {
+    return (
+      <>
+        <span>{parts[0]}</span>
+        <span className="btn-text-responsive" style={{ marginLeft: '4px' }}>{parts.slice(1).join(' ')}</span>
+      </>
+    );
+  }
+  return <span>{text}</span>;
+};
+
 // ─── AppContent (all logic lives here) ───────────────────────────────────────
 
 function AppContent() {
   const toast = useToast();
-
-  const [lang, setLang] = useState(() => {
-    return localStorage.getItem('dayz_editor_lang') || 'ru';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('dayz_editor_lang', lang);
-  }, [lang]);
-
-  const t = useCallback((key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, v);
-    });
-    return text;
-  }, [lang]);
+  const { t, lang, setLang } = useTranslation();
 
   // Version control & localStorage schema migration
   const APP_VERSION = '1.2.0';
@@ -266,6 +258,100 @@ function AppContent() {
 
   const [configs, setConfigs]           = useState({});
   const [schemaReport, setSchemaReport] = useState(null);
+  
+
+  // Undo/Redo history stacks
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+
+  const updateConfigs = (updater) => {
+    setConfigs(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      // Truncate nested originalContent comparisons or do basic shallow comparison to avoid performance hit
+      // We check if keys changed or content of keys changed
+      if (next === prev) return prev;
+      setUndoStack(prevUndo => [...prevUndo, prev].slice(-40));
+      setRedoStack([]);
+      return next;
+    });
+  };
+
+  const handleUndo = () => {
+    setUndoStack(prevUndo => {
+      if (prevUndo.length === 0) return prevUndo;
+      const last = prevUndo[prevUndo.length - 1];
+      setConfigs(currentConfigs => {
+        setRedoStack(prevRedo => [...prevRedo, currentConfigs]);
+        return last;
+      });
+      return prevUndo.slice(0, -1);
+    });
+    toast.info(lang === 'ru' ? "Действие отменено (Undo)" : "Action undone");
+  };
+
+  const handleRedo = () => {
+    setRedoStack(prevRedo => {
+      if (prevRedo.length === 0) return prevRedo;
+      const next = prevRedo[prevRedo.length - 1];
+      setConfigs(currentConfigs => {
+        setUndoStack(prevUndo => [...prevUndo, currentConfigs]);
+        return next;
+      });
+      return prevRedo.slice(0, -1);
+    });
+    toast.info(lang === 'ru' ? "Действие возвращено (Redo)" : "Action redone");
+  };
+
+  // Global hotkeys listener
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (
+        activeEl.tagName === 'INPUT' || 
+        activeEl.tagName === 'TEXTAREA' || 
+        activeEl.tagName === 'SELECT' || 
+        activeEl.contentEditable === 'true'
+      );
+
+      // 1. Alt + 1..7 tab switching
+      if (e.altKey && !e.ctrlKey && !e.shiftKey) {
+        const key = e.key;
+        const tabs = ['dashboard', 'economy', 'quests', 'aibots', 'settings', 'map', 'raw_editor'];
+        const index = parseInt(key, 10) - 1;
+        if (index >= 0 && index < tabs.length) {
+          e.preventDefault();
+          setActiveTab(tabs[index]);
+        }
+      }
+
+      // 2. Ctrl+Z / Ctrl+Y history triggers
+      if (e.ctrlKey && !e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) {
+            handleRedo();
+          } else {
+            handleUndo();
+          }
+        } else if (key === 'y') {
+          e.preventDefault();
+          handleRedo();
+        }
+      }
+
+      // 3. Focus search menu on "/" key
+      if (e.key === '/' && !isInput && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        setIsSearchOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [lang]);
   
   // File access state
   const [hasAccess, setHasAccess]       = useState(false);
@@ -286,15 +372,45 @@ function AppContent() {
     return saved ? Number(saved) : null;
   });
 
-  const [xmlItems, setXmlItems] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('dayz_editor_xml_items') || '[]'); }
-    catch (e) { return []; }
-  });
+  const [xmlItems, setXmlItems] = useState([]);
+  const [highlightedQuestIds, setHighlightedQuestIds] = useState([]);
+
+  const handleNavigateToQuestGraph = (questId, cycleIds = []) => {
+    setSelectedQuestId(questId);
+    setHighlightedQuestIds(cycleIds);
+    setActiveTab('quests');
+  };
 
   // UI overlay states
   const [isSearchOpen, setIsSearchOpen]   = useState(false);
   const [isHotkeyOpen, setIsHotkeyOpen]   = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [dashboardSubTab, setDashboardSubTab] = useState('status');
+
+  const handleClearXmlDatabase = () => {
+    setConfirmDialog({
+      title: t('cmd_palette_clear_db') || "Clear Server Items Database",
+      body: t('modal_confirm_clear_db_body') || "Are you sure you want to clear the loaded types.xml database from IndexedDB?",
+      severity: 'danger',
+      confirmLabel: t('xml_clear_db_btn') || "Clear Database",
+      cancelLabel: t('confirm_cancel') || "Cancel",
+      onConfirm: () => {
+        handleUpdateXmlItems([]);
+        toast.success(t('toast_db_cleared') || "Database cleared successfully!");
+      }
+    });
+  };
+
+  const handleUpdateXmlItems = useCallback((items) => {
+    setXmlItems(items);
+    if (items && items.length > 0) {
+      idb.saveXmlItems(items).catch(err => console.error(err));
+      localStorage.removeItem('dayz_editor_xml_items');
+    } else {
+      idb.clearXmlItems().catch(err => console.error(err));
+      localStorage.removeItem('dayz_editor_xml_items');
+    }
+  }, []);
 
   // Restore saved folder on mount
   useEffect(() => {
@@ -304,10 +420,35 @@ function AppContent() {
           setSavedHandle(handle);
           setFolderName(handle.name);
         }
-        setLoading(false);
       })
       .catch(err => {
         console.error('Failed to load saved directory handle', err);
+      });
+
+    idb.getXmlItems()
+      .then(items => {
+        if (items && items.length > 0) {
+          setXmlItems(items);
+        } else {
+          // Legacy migration
+          try {
+            const legacy = localStorage.getItem('dayz_editor_xml_items');
+            if (legacy) {
+              const parsed = JSON.parse(legacy);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setXmlItems(parsed);
+                idb.saveXmlItems(parsed).catch(e => console.error(e));
+                localStorage.removeItem('dayz_editor_xml_items');
+              }
+            }
+          } catch (e) {
+            console.error('Failed to migrate xml items', e);
+          }
+        }
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to load XML items from IndexedDB', err);
         setLoading(false);
       });
   }, []);
@@ -508,7 +649,7 @@ function AppContent() {
 
   // ── Field / file mutations ────────────────────────────────────────────────
   const handleChangeField = (filePath, pathArray, newValue) => {
-    setConfigs(prev => {
+    updateConfigs(prev => {
       const file = prev[filePath];
       if (!file || !file.success) return prev;
       return { ...prev, [filePath]: { ...file, content: setNestedValue(file.content, pathArray, newValue) } };
@@ -516,7 +657,7 @@ function AppContent() {
   };
 
   const handleResetField = (filePath, pathArray) => {
-    setConfigs(prev => {
+    updateConfigs(prev => {
       const file = prev[filePath];
       if (!file || !file.success || !file.originalContent) return prev;
       const origVal = getNestedValue(file.originalContent, pathArray);
@@ -526,7 +667,7 @@ function AppContent() {
   };
 
   const handleResetFile = (filePath) => {
-    setConfigs(prev => {
+    updateConfigs(prev => {
       const file = prev[filePath];
       if (!file || !file.originalContent) return prev;
       return { ...prev, [filePath]: { ...file, content: JSON.parse(JSON.stringify(file.originalContent)) } };
@@ -610,7 +751,7 @@ function AppContent() {
       confirmLabel: 'DISCARD ALL',
       cancelLabel: 'CANCEL',
       onConfirm: () => {
-        setConfigs(prev => {
+        updateConfigs(prev => {
           const reverted = { ...prev };
           Object.keys(reverted).forEach(path => {
             const file = reverted[path];
@@ -714,14 +855,14 @@ function AppContent() {
       }
     });
 
-    setConfigs(prev => {
+    updateConfigs(prev => {
       const updated = { ...prev };
       Object.keys(updated).forEach(filePath => {
         const file = updated[filePath];
         if (!file.success) return;
         const fileSchema = schemaReport?.files?.[filePath]?.schema;
         if (fileSchema) {
-          const fileErrors = validateConfig(file.content, fileSchema, filePath, questIds, marketCategories, marketItems);
+          const fileErrors = validateConfig(file.content, fileSchema, filePath, questIds, marketCategories, marketItems, updated);
           let content = JSON.parse(JSON.stringify(file.content));
           let changed = false;
           fileErrors.forEach(err => {
@@ -870,14 +1011,14 @@ function AppContent() {
               onClick={() => setLang('ru')}
               style={{ padding: '6px 12px', fontSize: '11px' }}
             >
-              🇷🇺 РУССКИЙ
+              РУССКИЙ
             </button>
             <button 
               className={`btn ${lang === 'en' ? 'btn-active' : ''}`} 
               onClick={() => setLang('en')}
               style={{ padding: '6px 12px', fontSize: '11px' }}
             >
-              🇬🇧 ENGLISH
+              ENGLISH
             </button>
           </div>
 
@@ -986,14 +1127,15 @@ function AppContent() {
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         setActiveTab={setActiveTab}
-        lang={lang}
+        onFixAllErrors={handleFixAllErrors}
+        onClearXmlDatabase={handleClearXmlDatabase}
+        onNavigateToSubTab={setDashboardSubTab}
       />
-      {isHotkeyOpen && <HotkeyModal onClose={() => setIsHotkeyOpen(false)} lang={lang} />}
+      {isHotkeyOpen && <HotkeyModal onClose={() => setIsHotkeyOpen(false)} />}
       <ConfirmModal
         dialog={confirmDialog}
         onConfirm={() => { confirmDialog?.onConfirm?.(); setConfirmDialog(null); }}
         onCancel={() => { confirmDialog?.onCancel?.(); setConfirmDialog(null); }}
-        lang={lang}
       />
 
       {/* ── Draft Recovery Modal ──────────────────────────────────────────── */}
@@ -1034,14 +1176,14 @@ function AppContent() {
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <header className="header" style={{ flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-          <div style={{ flexShrink: 0 }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: '10px', letterSpacing: '3px', color: 'var(--text-secondary)', fontWeight: '700', whiteSpace: 'nowrap' }}>
+        <div className="header-left">
+          <div className="header-title">
+            <div className="header-title-sub">
               {t('header_station')}
             </div>
-            <h1 style={{ margin: '1px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', fontWeight: '700', color: 'var(--text-glow)', letterSpacing: '1px', textShadow: '0 0 8px rgba(178,250,158,0.2)', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+            <h1 className="header-title-main">
               {t('header_control_center')}
-              <span style={{ fontSize: '9px', color: 'var(--text-glow)', border: '1px solid var(--border-glow)', borderRadius: '3px', padding: '1px 4px', opacity: 0.7, letterSpacing: '1px', fontWeight: 'normal', textShadow: 'none', whiteSpace: 'nowrap' }}>
+              <span className="header-title-version">
                 v1.2.0 (ONLINE)
               </span>
             </h1>
@@ -1049,87 +1191,41 @@ function AppContent() {
 
           {/* Directory Connection status widget */}
           {hasAccess && (
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-color)',
-              padding: '4px 10px',
-              borderRadius: '2px',
-              fontSize: '11px',
-              marginLeft: '8px',
-              fontFamily: 'var(--font-mono)',
-              lineHeight: '1.2',
-              whiteSpace: 'nowrap',
-              flexShrink: 0
-            }}>
-              <span style={{ color: 'var(--text-secondary)' }}>{t('header_dir')}</span>
-              <strong style={{ color: 'var(--text-glow)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }} title={folderName.toUpperCase()}>{folderName.toUpperCase()}</strong>
+            <div className="header-status">
+              <span className="header-status-label">{t('header_dir')}</span>
+              <strong className="header-status-value" title={folderName.toUpperCase()}>{folderName.toUpperCase()}</strong>
               <button 
                 onClick={handleDisconnect} 
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--danger-color)',
-                  cursor: 'pointer',
-                  padding: '0 4px',
-                  fontWeight: 'bold',
-                  fontFamily: 'var(--font-heading)',
-                  marginLeft: '4px',
-                  fontSize: '10px',
-                  letterSpacing: '1px',
-                  whiteSpace: 'nowrap'
-                }}
+                className="header-status-btn"
                 title={t('header_disconnect')}
               >
-                {t('header_disconnect')}
+                <span className="btn-text-responsive">{t('header_disconnect')}</span>
+                <span className="btn-icon-responsive">✖</span>
               </button>
             </div>
           )}
-
-          {/* Navigation tabs */}
-          <nav className="header-nav-tabs" style={{ display: 'flex', marginLeft: '12px', gap: '2px', overflowX: 'auto', flexShrink: 1, minWidth: 0, scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            <TabBtn id="dashboard"  label={t('tab_dashboard')} />
-            <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy} />
-            <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests} />
-            <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots} />
-            <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings} />
-            <TabBtn id="map"        label={t('tab_map')} />
-            <TabBtn id="raw_editor" label={t('tab_raw_editor')} />
-          </nav>
         </div>
 
+        {/* Navigation tabs */}
+        <nav className="header-nav-tabs">
+          <TabBtn id="dashboard"  label={t('tab_dashboard')} />
+          <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy} />
+          <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests} />
+          <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots} />
+          <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings} />
+          <TabBtn id="map"        label={t('tab_map')} />
+          <TabBtn id="raw_editor" label={t('tab_raw_editor')} />
+        </nav>
+
         {/* Actions row */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-          {/* Unsaved indicator */}
-          {dirtyFiles.size > 0 ? (
-            <>
-              <span style={{ fontSize: '11px', color: 'var(--warning-color)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                <span className="pulse-dot" />
-                {t('header_unsaved')} ({dirtyFiles.size})
-              </span>
-              <button onClick={handleSaveAll} className="btn btn-warning" style={{ whiteSpace: 'nowrap' }}>
-                {t('header_export_package')}
-              </button>
-              <button onClick={handleDiscardAll} className="btn btn-danger" style={{ whiteSpace: 'nowrap' }}>
-                {t('header_discard')}
-              </button>
-            </>
-          ) : (
-            !loading && (
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
-                {t('all_saved')}
-              </span>
-            )
-          )}
+        <div className="header-actions">
 
           {/* Search button */}
           <button
             className="btn"
             onClick={() => setIsSearchOpen(true)}
             title="Global Search (Ctrl+K)"
-            style={{ padding: '8px 12px', fontSize: '14px', whiteSpace: 'nowrap' }}
+            style={{ padding: '8px 12px', fontSize: '14px' }}
           >
             🔍
           </button>
@@ -1138,15 +1234,15 @@ function AppContent() {
           <button
             className="btn btn-accent"
             onClick={() => setLang(prev => prev === 'ru' ? 'en' : 'ru')}
-            style={{ padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}
+            style={{ fontFamily: 'var(--font-mono)' }}
             title="Switch Language / Смена языка"
           >
-            {lang === 'ru' ? '🇬🇧 EN' : '🇷🇺 RU'}
+            {renderResponsiveButtonText(lang === 'ru' ? 'EN' : 'RU')}
           </button>
 
           {/* Reload */}
-          <button onClick={fetchConfigs} className="btn" title={t('header_reload')} style={{ whiteSpace: 'nowrap' }}>
-            {t('header_reload')}
+          <button onClick={fetchConfigs} className="btn" title={t('header_reload')}>
+            {renderResponsiveButtonText(t('header_reload'))}
           </button>
 
           {/* Hotkey cheat sheet */}
@@ -1154,7 +1250,7 @@ function AppContent() {
             className="btn"
             onClick={() => setIsHotkeyOpen(true)}
             title={t('header_shortcuts')}
-            style={{ padding: '8px 10px', fontSize: '13px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}
+            style={{ fontFamily: 'var(--font-mono)' }}
           >
             ?
           </button>
@@ -1183,7 +1279,6 @@ function AppContent() {
                 selectedFilePath={selectedFilePath}
                 onSelectFile={setSelectedFilePath}
                 dirtyFiles={dirtyFiles}
-                lang={lang}
               />
             )}
 
@@ -1205,10 +1300,12 @@ function AppContent() {
                     onFixStructuralError={handleFixStructuralError}
                     onFixAllErrors={handleFixAllErrors}
                     xmlItems={xmlItems}
-                    onUpdateXmlItems={setXmlItems}
+                    onUpdateXmlItems={handleUpdateXmlItems}
                     fetchConfigs={fetchConfigs}
                     onShowConfirm={setConfirmDialog}
-                    lang={lang}
+                    initialSubTab={dashboardSubTab}
+                    onSubTabChange={setDashboardSubTab}
+                    onNavigateToQuestGraph={handleNavigateToQuestGraph}
                   />
                 </ErrorBoundary>
               )}
@@ -1221,7 +1318,6 @@ function AppContent() {
                     onSaveFile={handleSaveFile}
                     xmlItems={xmlItems}
                     onShowConfirm={setConfirmDialog}
-                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1238,7 +1334,7 @@ function AppContent() {
                     onSelectQuest={setSelectedQuestId}
                     onNavigateToMap={handleNavigateToMap}
                     xmlItems={xmlItems}
-                    lang={lang}
+                    highlightedQuestIds={highlightedQuestIds}
                   />
                 </ErrorBoundary>
               )}
@@ -1254,7 +1350,6 @@ function AppContent() {
                     onSaveFile={handleSaveFile}
                     xmlItems={xmlItems}
                     setActiveTab={setActiveTab}
-                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1269,7 +1364,6 @@ function AppContent() {
                     onSaveFile={handleSaveFile}
                     inferredEnums={schemaReport ? schemaReport.inferredEnums : {}}
                     onNavigateToMap={handleNavigateToMap}
-                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1286,7 +1380,6 @@ function AppContent() {
                     onSelectQuest={setSelectedQuestId}
                     setActiveTab={setActiveTab}
                     onOpenFile={handleOpenFile}
-                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1302,7 +1395,6 @@ function AppContent() {
                     onSaveFile={handleSaveFile}
                     inferredEnums={schemaReport ? schemaReport.inferredEnums : {}}
                     onNavigateToMap={handleNavigateToMap}
-                    lang={lang}
                   />
                 </ErrorBoundary>
               )}
@@ -1310,6 +1402,42 @@ function AppContent() {
           </>
         )}
       </main>
+
+      {/* Floating Save Bar */}
+      {dirtyFiles.size > 0 && (
+        <div className="floating-save-bar">
+          <div className="floating-save-bar-content">
+            <div className="floating-save-bar-info">
+              <span className="pulse-dot-warning" />
+              <span className="floating-save-bar-text">
+                {lang === 'ru' 
+                  ? `Обнаружены несохраненные изменения (${dirtyFiles.size})` 
+                  : `Unsaved changes detected (${dirtyFiles.size})`}
+              </span>
+              <button 
+                className="btn-list-changes" 
+                title={lang === 'ru' ? "Показать измененные файлы" : "Show modified files"}
+                onClick={() => {
+                  toast.info(
+                    (lang === 'ru' ? "Измененные файлы: " : "Modified files: ") +
+                    Array.from(dirtyFiles).map(f => f.split('/').pop()).join(', ')
+                  );
+                }}
+              >
+                ℹ️
+              </button>
+            </div>
+            <div className="floating-save-bar-actions">
+              <button onClick={handleDiscardAll} className="btn btn-danger btn-glass">
+                ✖ {t('header_discard')}
+              </button>
+              <button onClick={handleSaveAll} className="btn btn-warning btn-glass btn-glow-pulse">
+                {renderResponsiveButtonText(t('header_export_package'))}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

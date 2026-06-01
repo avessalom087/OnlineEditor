@@ -1,7 +1,7 @@
 import React from 'react';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 
-export default class ErrorBoundary extends React.Component {
+class ErrorBoundaryInner extends React.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null, errorInfo: null, showStack: false };
@@ -21,12 +21,7 @@ export default class ErrorBoundary extends React.Component {
   };
 
   render() {
-    const lang = this.props.lang || 'ru';
-    const t = (key, replacements = {}) => {
-      let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-      Object.entries(replacements).forEach(([k, v]) => { text = text.replace(`{${k}}`, v); });
-      return text;
-    };
+    const { t } = this.props;
     if (this.state.hasError) {
       return (
         <div style={{
@@ -130,4 +125,9 @@ export default class ErrorBoundary extends React.Component {
 
     return this.props.children;
   }
+}
+
+export default function ErrorBoundary(props) {
+  const { t } = useTranslation();
+  return <ErrorBoundaryInner {...props} t={t} />;
 }

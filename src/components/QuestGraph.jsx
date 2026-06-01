@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 
 // Topological sorting layer layout for quest nodes
 function layoutQuests(quests, nodeOffsets) {
@@ -64,10 +64,10 @@ function layoutQuests(quests, nodeOffsets) {
       let x = colIdx * colWidth + 50;
       let y = rowIdx * rowHeight + 50;
 
-      // Add manual offset if dragged
+      // Use manual absolute position if dragged
       if (nodeOffsets[node.id]) {
-        x += nodeOffsets[node.id].x;
-        y += nodeOffsets[node.id].y;
+        x = nodeOffsets[node.id].x;
+        y = nodeOffsets[node.id].y;
       }
 
       nodes.push({
@@ -125,17 +125,16 @@ export default function QuestGraph({
   selectedQuestId,
   onSelectQuest,
   xmlItems = [],
-  lang = 'ru'
+  highlightedQuestIds = []
 }) {
   const containerRef = useRef(null);
+  const { t } = useTranslation();
 
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, v);
-    });
-    return text;
-  };
+
+
+  const highlightSet = useMemo(() => {
+    return new Set(Array.isArray(highlightedQuestIds) ? highlightedQuestIds.map(Number) : []);
+  }, [highlightedQuestIds]);
 
   // Canvas pan & zoom states
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -144,7 +143,18 @@ export default function QuestGraph({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
   // Drag offsets for individual node positioning
-  const [nodeOffsets, setNodeOffsets] = useState({});
+  const [nodeOffsets, setNodeOffsets] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dayz_editor_quest_node_offsets');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dayz_editor_quest_node_offsets', JSON.stringify(nodeOffsets));
+  }, [nodeOffsets]);
   const [draggedNode, setDraggedNode] = useState(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
@@ -254,7 +264,9 @@ export default function QuestGraph({
       }
     }
     
-    xmlItems.forEach(item => classnames.add(item));
+    (Array.isArray(xmlItems) ? xmlItems : []).forEach(item => {
+      if (typeof item === 'string') classnames.add(item);
+    });
     
     questList.sort((a, b) => a.id - b.id);
     setQuests(questList);
@@ -266,7 +278,7 @@ export default function QuestGraph({
         setSelectedQuest(updatedSelected);
       }
     }
-  }, [configs]);
+  }, [configs, xmlItems]);
 
   const positionedNodes = layoutQuests(quests, nodeOffsets);
   const nodesMap = new Map(positionedNodes.map(n => [n.id, n]));
@@ -303,13 +315,18 @@ export default function QuestGraph({
       const dx = (e.clientX - dragStart.x) / zoom;
       const dy = (e.clientY - dragStart.y) / zoom;
 
-      setNodeOffsets(prev => ({
-        ...prev,
-        [draggedNode]: {
-          x: (prev[draggedNode]?.x || 0) + dx,
-          y: (prev[draggedNode]?.y || 0) + dy
-        }
-      }));
+      setNodeOffsets(prev => {
+        const currentNode = positionedNodes.find(n => n.id === draggedNode);
+        const currentX = currentNode ? currentNode.x : 0;
+        const currentY = currentNode ? currentNode.y : 0;
+        return {
+          ...prev,
+          [draggedNode]: {
+            x: currentX + dx,
+            y: currentY + dy
+          }
+        };
+      });
 
       setDragStart({ x: e.clientX, y: e.clientY });
       return;
@@ -423,7 +440,7 @@ export default function QuestGraph({
 
   // QUEST CREATION & DELETION
   const handleCreateQuest = () => {
-    const nextId = quests.length > 0 ? Math.max(...quests.map(q => q.id)) + 1 : 1;
+    const nextId = quests.length > 0 ? Math.max(...quests.map(q => Number(q.id) || 0)) + 1 : 1;
     const newQuestTemplate = {
       ConfigVersion: 22,
       ID: nextId,
@@ -680,16 +697,31 @@ export default function QuestGraph({
                   const cp2X = endX - 50;
                   const cp2Y = endY;
 
+                  const isHighlight = highlightSet.has(Number(preId)) && highlightSet.has(Number(node.id));
+
+                  if (isHighlight) {
+                    lines.push(
+                      <path
+                        key={`prereq-glow-${preId}-${node.id}`}
+                        d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
+                        fill="none"
+                        stroke="rgba(255, 74, 74, 0.4)"
+                        strokeWidth="6"
+                        opacity="0.8"
+                      />
+                    );
+                  }
+
                   lines.push(
                     <path
                       key={`prereq-${preId}-${node.id}`}
                       d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
                       fill="none"
-                      stroke="#44aacc"
-                      strokeWidth="1.5"
-                      strokeDasharray="4,4"
+                      stroke={isHighlight ? '#ff4a4a' : '#44aacc'}
+                      strokeWidth={isHighlight ? '2.5' : '1.5'}
+                      strokeDasharray={isHighlight ? undefined : '4,4'}
                       markerEnd="url(#arrow-prereq)"
-                      opacity="0.65"
+                      opacity={isHighlight ? '1.0' : '0.65'}
                     />
                   );
                 }
@@ -708,15 +740,30 @@ export default function QuestGraph({
                   const cp2X = endX - 50;
                   const cp2Y = endY;
 
+                  const isHighlight = highlightSet.has(Number(node.id)) && highlightSet.has(Number(node.followUpQuest));
+
+                  if (isHighlight) {
+                    lines.push(
+                      <path
+                        key={`follow-glow-${node.id}-${node.followUpQuest}`}
+                        d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
+                        fill="none"
+                        stroke="rgba(255, 74, 74, 0.4)"
+                        strokeWidth="6"
+                        opacity="0.8"
+                      />
+                    );
+                  }
+
                   lines.push(
                     <path
                       key={`follow-${node.id}-${node.followUpQuest}`}
                       d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
                       fill="none"
-                      stroke="#b2fa9e"
-                      strokeWidth="2"
+                      stroke={isHighlight ? '#ff4a4a' : '#b2fa9e'}
+                      strokeWidth={isHighlight ? '3' : '2'}
                       markerEnd="url(#arrow-followup)"
-                      opacity="0.8"
+                      opacity={isHighlight ? '1.0' : '0.8'}
                     />
                   );
                 }
@@ -760,6 +807,7 @@ export default function QuestGraph({
                   transform={`translate(${node.x}, ${node.y})`}
                   onMouseDown={(e) => handleNodeDragStart(e, node.id)}
                   onClick={() => { setSelectedQuest(node); if (onSelectQuest) onSelectQuest(node.id); }}
+                  onDoubleClick={() => { if (onOpenFile) onOpenFile(node.filePath); }}
                   style={{ cursor: 'grab' }}
                 >
                   <rect
@@ -767,10 +815,10 @@ export default function QuestGraph({
                     height={node.height}
                     rx="4"
                     fill={isSelected ? 'var(--bg-tertiary)' : 'var(--bg-secondary)'}
-                    stroke={isSelected ? 'var(--text-glow)' : hasUnsaved ? 'var(--warning-color)' : 'var(--border-color)'}
-                    strokeWidth={isSelected ? '2' : '1.5'}
+                    stroke={highlightSet.has(Number(node.id)) ? '#ff4a4a' : (isSelected ? 'var(--text-glow)' : hasUnsaved ? 'var(--warning-color)' : 'var(--border-color)')}
+                    strokeWidth={highlightSet.has(Number(node.id)) ? '2.5' : (isSelected ? '2' : '1.5')}
                     style={{
-                      filter: isSelected ? 'drop-shadow(0 0 6px rgba(178, 250, 158, 0.25))' : 'none',
+                      filter: highlightSet.has(Number(node.id)) ? 'drop-shadow(0 0 10px rgba(255, 74, 74, 0.6))' : (isSelected ? 'drop-shadow(0 0 6px rgba(178, 250, 158, 0.25))' : 'none'),
                       transition: 'fill 0.15s, stroke 0.15s'
                     }}
                   />
@@ -857,7 +905,8 @@ export default function QuestGraph({
           <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
           <button className="btn" onClick={() => setZoom(prev => Math.min(prev * 1.2, 3))} style={{ padding: '4px 8px', fontSize: '12px' }}>+</button>
           <button className="btn" onClick={() => setZoom(prev => Math.max(prev / 1.2, 0.3))} style={{ padding: '4px 8px', fontSize: '12px' }}>-</button>
-          <button className="btn" onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }} style={{ padding: '4px 8px', fontSize: '11px' }}>{t('config_reset')}</button>
+          <button className="btn" onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }} style={{ padding: '4px 8px', fontSize: '11px' }} title="Reset Pan & Zoom">{t('config_reset')}</button>
+          <button className="btn" onClick={() => setNodeOffsets({})} style={{ padding: '4px 8px', fontSize: '11px' }} title="Auto-align all nodes to default columns">{t('quest_btn_reset_layout') || 'Auto-Layout'}</button>
         </div>
       </div>
 
@@ -999,7 +1048,9 @@ export default function QuestGraph({
               {activeAccordion === 'general' && (
                 <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_title')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {t('quest_label_title')}
+                    </label>
                     <input 
                       type="text" 
                       value={activeQuestConfig.Title || ''} 
@@ -1007,7 +1058,9 @@ export default function QuestGraph({
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_summary')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {t('quest_label_summary')}
+                    </label>
                     <input 
                       type="text" 
                       value={activeQuestConfig.ObjectiveText || ''} 
@@ -1015,7 +1068,9 @@ export default function QuestGraph({
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_start')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {t('quest_label_start')}
+                    </label>
                     <textarea 
                       rows="3" 
                       value={activeQuestConfig.Descriptions?.[0] || ''} 
@@ -1024,7 +1079,9 @@ export default function QuestGraph({
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_progress')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {t('quest_label_progress')}
+                    </label>
                     <textarea 
                       rows="2" 
                       value={activeQuestConfig.Descriptions?.[1] || ''} 
@@ -1033,7 +1090,9 @@ export default function QuestGraph({
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_completion')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {t('quest_label_completion')}
+                    </label>
                     <textarea 
                       rows="2" 
                       value={activeQuestConfig.Descriptions?.[2] || ''} 

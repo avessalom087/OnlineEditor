@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './ToastManager';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 
 const MAP_PRESETS = [
   { name: '10km Grid (10000m)', size: 10000 },
@@ -38,16 +38,9 @@ export default function TacticalMap({
   onDeleteFile,
   onSelectQuest,
   setActiveTab,
-  onOpenFile,
-  lang = 'ru'
+  onOpenFile
 }) {
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, v);
-    });
-    return text;
-  };
+  const { t } = useTranslation();
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -104,6 +97,11 @@ export default function TacticalMap({
   const [activePatrolDrawIndex, setActivePatrolDrawIndex] = useState(-1); // -1 = disabled
   const [isDrawModeActive, setIsDrawModeActive] = useState(false);
   const [mergeTargetPatrolIndex, setMergeTargetPatrolIndex] = useState(-1);
+
+  // Visual Safezone drawing states
+  const [isSafezoneDrawing, setIsSafezoneDrawing] = useState(false);
+  const [safezoneDrawCenter, setSafezoneDrawCenter] = useState(null); // {x, z} in game coords
+  const [safezoneDrawRadius, setSafezoneDrawRadius] = useState(100);
 
   // Spawn Modal state
   const [showSpawnModal, setShowSpawnModal] = useState(false);
@@ -651,6 +649,30 @@ export default function TacticalMap({
       });
     }
 
+    // Draw Safezone preview during drawing
+    if (isSafezoneDrawing && safezoneDrawCenter) {
+      const centerPos = gameToPixels(safezoneDrawCenter.x, safezoneDrawCenter.z);
+      const rad = (safezoneDrawRadius / mapSize) * 1024 * scale;
+
+      ctx.save();
+      // Draw outer circle
+      ctx.beginPath();
+      ctx.arc(centerPos.x, centerPos.y, rad, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(74, 154, 120, 0.25)'; // semi-transparent green
+      ctx.fill();
+      ctx.strokeStyle = '#2ebd59';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.stroke();
+      
+      // Draw center dot
+      ctx.beginPath();
+      ctx.arc(centerPos.x, centerPos.y, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.restore();
+    }
+
     // Draw NoGo Areas
     if (layers.nogoareas && entities.nogoareas) {
       entities.nogoareas.forEach(nogo => {
@@ -754,14 +776,6 @@ export default function TacticalMap({
         wps.sort((a, b) => a.wpIdx - b.wpIdx);
         const isActivePatrol = activePatrolDrawIndex === parseInt(pIdx);
         
-        ctx.save();
-        ctx.beginPath();
-        wps.forEach((wp, wIdx) => {
-          const pos = gameToPixels(wp.x, wp.z);
-          if (wIdx === 0) ctx.moveTo(pos.x, pos.y);
-          else ctx.lineTo(pos.x, pos.y);
-        });
-
         // Set faction coloring
         const firstFile = configs['expansion/settings/AIPatrolSettings.json'];
         const faction = (firstFile?.content?.Patrols[parseInt(pIdx)]?.Faction || 'West').toLowerCase();
@@ -769,6 +783,14 @@ export default function TacticalMap({
         if (faction === 'west') factionColor = '#4a9acc';
         else if (faction === 'east') factionColor = '#cc4a4a';
         else if (faction === 'guards') factionColor = '#ebd667';
+
+        ctx.save();
+        ctx.beginPath();
+        wps.forEach((wp, wIdx) => {
+          const pos = gameToPixels(wp.x, wp.z);
+          if (wIdx === 0) ctx.moveTo(pos.x, pos.y);
+          else ctx.lineTo(pos.x, pos.y);
+        });
 
         ctx.strokeStyle = factionColor;
         if (isActivePatrol) {
@@ -780,6 +802,34 @@ export default function TacticalMap({
           ctx.shadowBlur = 0;
         }
         ctx.stroke();
+        ctx.restore();
+
+        // Draw directional arrows at the midpoints of segments
+        ctx.save();
+        ctx.fillStyle = factionColor;
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        wps.forEach((wp, wIdx) => {
+          if (wIdx === 0) return;
+          const posA = gameToPixels(wps[wIdx - 1].x, wps[wIdx - 1].z);
+          const posB = gameToPixels(wp.x, wp.z);
+          
+          const midX = (posA.x + posB.x) / 2;
+          const midY = (posA.y + posB.y) / 2;
+          const angle = Math.atan2(posB.y - posA.y, posB.x - posA.x);
+          
+          ctx.save();
+          ctx.translate(midX, midY);
+          ctx.rotate(angle);
+          ctx.beginPath();
+          ctx.moveTo(-6, -4);
+          ctx.lineTo(6, 0);
+          ctx.lineTo(-6, 4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        });
         ctx.restore();
 
         // Draw dashed preview line to current mouse position
@@ -901,6 +951,15 @@ export default function TacticalMap({
       if (hoveredEntity.type === 'quest_objective') {
         label = `QUEST: ${hoveredEntity.questTitle}`;
         subLabel = `OBJ: ${hoveredEntity.name}`;
+      } else if (hoveredEntity.type === 'patrol_waypoint') {
+        label = `WAYPOINT #${hoveredEntity.wpIdx + 1}`;
+        subLabel = `Patrol #${hoveredEntity.patrolIdx + 1} · GRID: ${Math.round(hoveredEntity.x)}, ${Math.round(hoveredEntity.z)}`;
+      }
+      
+      let showDeleteBtn = false;
+      if (hoveredEntity.type === 'patrol_waypoint' && isDrawModeActive && hoveredEntity.patrolIdx === activePatrolDrawIndex) {
+        subLabel += " | [X] DELETE";
+        showDeleteBtn = true;
       }
       
       const width = Math.max(ctx.measureText(label).width, ctx.measureText(subLabel).width) + 16;
@@ -923,6 +982,24 @@ export default function TacticalMap({
       ctx.fillText(label, pos.x + 18, pos.y - 32);
       ctx.fillStyle = 'var(--text-secondary)';
       ctx.fillText(subLabel, pos.x + 18, pos.y - 18);
+
+      if (showDeleteBtn) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(pos.x + 15, pos.y - 15, 8, 0, 2 * Math.PI);
+        ctx.fillStyle = '#cc4a4a';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('×', pos.x + 15, pos.y - 15);
+        ctx.restore();
+      }
     }
 
     // Draw ruler line if active and points are defined
@@ -972,11 +1049,16 @@ export default function TacticalMap({
       ctx.textAlign = 'left'; // Restore
       ctx.textBaseline = 'alphabetic'; // Restore
     }
-  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints]);
+  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive]);
 
   // Handle Zooming
   const handleWheel = (e) => {
     e.preventDefault();
+    if (isSafezoneDrawing && safezoneDrawCenter) {
+      const delta = e.deltaY < 0 ? 10 : -10;
+      setSafezoneDrawRadius(r => Math.max(10, r + delta));
+      return;
+    }
     const zoomFactor = 1.1;
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -1059,20 +1141,24 @@ export default function TacticalMap({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    if (isDrawModeActive && activePatrolDrawIndex !== -1) {
-      if (e.button === 0) { // Left-click
-        const game = pixelsToGame(mouseX, mouseY);
-        const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
-        const patrolFile = configs[patrolConfigPath];
-        if (patrolFile?.success && Array.isArray(patrolFile.content.Patrols)) {
-          const patrol = patrolFile.content.Patrols[activePatrolDrawIndex];
-          if (patrol) {
-            const currentWps = Array.isArray(patrol.Waypoints) ? patrol.Waypoints : [];
-            const newWp = [game.x, 0.0, game.z];
-            onChangeField(patrolConfigPath, ['Patrols', activePatrolDrawIndex, 'Waypoints'], [...currentWps, newWp]);
-            toast.success(`Waypoint #${currentWps.length + 1} added to ${patrol.Name || `Patrol #${activePatrolDrawIndex + 1}`}`);
-            return;
-          }
+    if (isSafezoneDrawing) {
+      if (e.button === 0) {
+        const gameCoords = pixelsToGame(mouseX, mouseY);
+        setSafezoneDrawCenter(gameCoords);
+        setSafezoneDrawRadius(50); // initial radius
+        setIsPanning(false);
+        return;
+      }
+    }
+
+    if (isDrawModeActive && activePatrolDrawIndex !== -1 && hoveredEntity && hoveredEntity.type === 'patrol_waypoint' && hoveredEntity.patrolIdx === activePatrolDrawIndex) {
+      if (e.button === 0) {
+        const wpPos = gameToPixels(hoveredEntity.x, hoveredEntity.z);
+        const delX = wpPos.x + 15;
+        const delY = wpPos.y - 15;
+        if (Math.hypot(mouseX - delX, mouseY - delY) <= 10) {
+          handleDeleteWaypoint(hoveredEntity.patrolIdx, hoveredEntity.wpIdx);
+          return;
         }
       }
     }
@@ -1111,6 +1197,14 @@ export default function TacticalMap({
 
     const game = pixelsToGame(mouseX, mouseY);
     setMouseCoords(game);
+
+    if (isSafezoneDrawing && safezoneDrawCenter) {
+      const centerPos = gameToPixels(safezoneDrawCenter.x, safezoneDrawCenter.z);
+      const distPx = Math.hypot(mouseX - centerPos.x, mouseY - centerPos.y);
+      const distGame = (distPx / (1024 * scale)) * mapSize;
+      setSafezoneDrawRadius(Math.max(10, Math.round(distGame)));
+      return;
+    }
 
     if (isRulerActive && isMeasuring) {
       setRulerPoints(prev => prev ? {
@@ -1158,10 +1252,24 @@ export default function TacticalMap({
 
     const hit = getEntityAt(mouseX, mouseY);
     setHoveredEntity(hit);
-    canvas.style.cursor = isRulerActive ? 'crosshair' : hit ? 'move' : isPanning ? 'grabbing' : 'default';
+    canvas.style.cursor = isRulerActive ? 'crosshair' : isSafezoneDrawing ? 'crosshair' : hit ? 'move' : isPanning ? 'grabbing' : 'default';
   };
 
   const handleMouseUp = () => {
+    if (isSafezoneDrawing && safezoneDrawCenter) {
+      const currentCenter = safezoneDrawCenter;
+      const currentRadius = safezoneDrawRadius;
+      
+      setSafezoneDrawCenter(null);
+      
+      const confirmMsg = `Create a new Safezone at [${Math.round(currentCenter.x)}, ${Math.round(currentCenter.z)}] with radius ${Math.round(currentRadius)}m?`;
+      if (window.confirm(confirmMsg)) {
+        handleSaveNewSafezone(currentCenter.x, currentCenter.z, currentRadius);
+      }
+      setIsSafezoneDrawing(false);
+      return;
+    }
+
     if (isRulerActive && isMeasuring) {
       setIsMeasuring(false);
       if (rulerPoints && Math.hypot(rulerPoints.start.x - rulerPoints.end.x, rulerPoints.start.y - rulerPoints.end.y) < 2) {
@@ -1186,6 +1294,26 @@ export default function TacticalMap({
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
+
+    if (isDrawModeActive && activePatrolDrawIndex !== -1) {
+      const hit = getEntityAt(mouseX, mouseY);
+      if (hit) return; // Ignore double clicks on existing waypoints
+      
+      const game = pixelsToGame(mouseX, mouseY);
+      const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
+      const patrolFile = configs[patrolConfigPath];
+      if (patrolFile?.success && Array.isArray(patrolFile.content.Patrols)) {
+        const patrol = patrolFile.content.Patrols[activePatrolDrawIndex];
+        if (patrol) {
+          const currentWps = Array.isArray(patrol.Waypoints) ? patrol.Waypoints : [];
+          const newWp = [parseFloat(game.x.toFixed(3)), 0.0, parseFloat(game.z.toFixed(3))];
+          onChangeField(patrolConfigPath, ['Patrols', activePatrolDrawIndex, 'Waypoints'], [...currentWps, newWp]);
+          toast.success(`Waypoint #${currentWps.length + 1} added to ${patrol.Name || `Patrol #${activePatrolDrawIndex + 1}`}`);
+          return;
+        }
+      }
+      return;
+    }
 
     const hit = getEntityAt(mouseX, mouseY);
     if (hit) {
@@ -1245,6 +1373,36 @@ export default function TacticalMap({
 
     setHoveredEntity(null);
     setSelectedEntity(null);
+  };
+
+  const handleDeleteWaypoint = (patrolIdx, wpIdx) => {
+    const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
+    const file = configs[patrolConfigPath];
+    if (file?.success && Array.isArray(file.content.Patrols)) {
+      const patrol = file.content.Patrols[patrolIdx];
+      if (patrol && Array.isArray(patrol.Waypoints)) {
+        const newWaypoints = patrol.Waypoints.filter((_, idx) => idx !== wpIdx);
+        onChangeField(patrolConfigPath, ['Patrols', patrolIdx, 'Waypoints'], newWaypoints);
+        toast.success(`Deleted Waypoint #${wpIdx + 1}`);
+      }
+    }
+  };
+
+  const handleSaveNewSafezone = (x, z, radius) => {
+    const safezonesConfigPath = Object.keys(configs).find(p => p.toLowerCase() === 'expansion/settings/safezonesettings.json') || 'expansion/settings/safezonesettings.json';
+    const file = configs[safezonesConfigPath];
+    if (file?.success && file.content) {
+      const cylinderZones = Array.isArray(file.content.CylinderZones) ? file.content.CylinderZones : [];
+      const newZone = {
+        Name: `SafeZone Cylinder #${cylinderZones.length + 1}`,
+        Center: [parseFloat(x.toFixed(3)), 0.0, parseFloat(z.toFixed(3))],
+        Radius: parseFloat(radius.toFixed(3))
+      };
+      onChangeField(safezonesConfigPath, ['CylinderZones'], [...cylinderZones, newZone]);
+      toast.success(t('map_safezone_created_success', { x: Math.round(x), z: Math.round(z), radius: Math.round(radius) }));
+    } else {
+      toast.error("Could not find safezonesettings.json configuration.");
+    }
   };
 
   const handleMergePatrols = () => {
@@ -1523,35 +1681,74 @@ export default function TacticalMap({
             />
           </label>
 
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-            <button 
-              onClick={() => {
-                setIsRulerActive(!isRulerActive);
-                setRulerPoints(null);
-              }}
-              className="btn"
-              style={{ 
-                flex: 1,
-                padding: '6px 12px', 
-                fontSize: '10px', 
-                fontWeight: 'bold',
-                justifyContent: 'center',
-                borderColor: isRulerActive ? '#2ebd59' : 'var(--border-color)',
-                background: isRulerActive ? 'rgba(46, 189, 89, 0.15)' : 'transparent',
-                color: isRulerActive ? '#2ebd59' : 'var(--text-primary)'
-              }}
-            >
-              📏 {isRulerActive ? t('map_measure_on') : t('map_measure_btn')}
-            </button>
-            {isRulerActive && rulerPoints && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
               <button 
-                onClick={() => setRulerPoints(null)}
-                className="btn btn-danger"
-                style={{ padding: '6px 8px', fontSize: '10px' }}
+                onClick={() => {
+                  setIsRulerActive(!isRulerActive);
+                  setRulerPoints(null);
+                  setIsSafezoneDrawing(false);
+                  setSafezoneDrawCenter(null);
+                }}
+                className="btn"
+                style={{ 
+                  flex: 1,
+                  padding: '6px 12px', 
+                  fontSize: '10px', 
+                  fontWeight: 'bold',
+                  justifyContent: 'center',
+                  borderColor: isRulerActive ? '#2ebd59' : 'var(--border-color)',
+                  background: isRulerActive ? 'rgba(46, 189, 89, 0.15)' : 'transparent',
+                  color: isRulerActive ? '#2ebd59' : 'var(--text-primary)'
+                }}
               >
-                {t('modal_confirm_cancel')}
+                📏 {isRulerActive ? t('map_measure_on') : t('map_measure_btn')}
               </button>
-            )}
+              {isRulerActive && rulerPoints && (
+                <button 
+                  onClick={() => setRulerPoints(null)}
+                  className="btn btn-danger"
+                  style={{ padding: '6px 8px', fontSize: '10px' }}
+                >
+                  {t('modal_confirm_cancel')}
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => {
+                  setIsSafezoneDrawing(!isSafezoneDrawing);
+                  setSafezoneDrawCenter(null);
+                  setIsRulerActive(false);
+                  setRulerPoints(null);
+                }}
+                className="btn"
+                style={{
+                  flex: 1,
+                  padding: '6px 12px',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                  justifyContent: 'center',
+                  borderColor: isSafezoneDrawing ? '#559655' : 'var(--border-color)',
+                  background: isSafezoneDrawing ? 'rgba(85, 150, 85, 0.15)' : 'transparent',
+                  color: isSafezoneDrawing ? '#559655' : 'var(--text-primary)'
+                }}
+              >
+                🛡️ {isSafezoneDrawing ? t('map_draw_safezone_mode') + " (ON)" : t('map_draw_safezone_mode')}
+              </button>
+              {isSafezoneDrawing && safezoneDrawCenter && (
+                <button
+                  onClick={() => {
+                    setSafezoneDrawCenter(null);
+                  }}
+                  className="btn btn-danger"
+                  style={{ padding: '6px 8px', fontSize: '10px' }}
+                >
+                  {t('modal_confirm_cancel')}
+                </button>
+              )}
+            </div>
           </div>
 
           <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold', marginBottom: '8px' }}>

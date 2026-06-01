@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { validateConfig } from '../utils/diagnostics';
+import { validateConfig, cleanJsonComments } from '../utils/diagnostics';
 import { useToast } from './ToastManager';
 import * as fileService from '../services/fileService';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 
 function getDiffPaths(obj1, obj2, currentPath = []) {
   if (obj1 === obj2) return [];
@@ -49,19 +49,27 @@ export default function Dashboard({
   onUpdateXmlItems,
   fetchConfigs,
   onShowConfirm,
-  lang = 'ru'
+  initialSubTab,
+  onSubTabChange,
+  onNavigateToQuestGraph
 }) {
   const toast = useToast();
+  const { t, lang } = useTranslation();
 
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, v);
-    });
-    return text;
+  const [activeSubTab, setActiveSubTabState] = useState(initialSubTab || 'status');
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTabState(initialSubTab);
+    }
+  }, [initialSubTab]);
+
+  const setActiveSubTab = (tab) => {
+    setActiveSubTabState(tab);
+    if (onSubTabChange) {
+      onSubTabChange(tab);
+    }
   };
-
-  const [activeSubTab, setActiveSubTab] = useState('status');
   const [backups, setBackups] = useState([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [errorBackups, setErrorBackups] = useState(null);
@@ -77,7 +85,10 @@ export default function Dashboard({
     totalSafeZones,
     syntaxErrors,
     structuralWarnings,
-    dirtyFiles
+    dirtyFiles,
+    allQuestsIds,
+    marketCategories,
+    marketItems
   } = useMemo(() => {
     let tQuests = 0;
     let tNPCs = 0;
@@ -153,7 +164,7 @@ export default function Dashboard({
       // Run structural validator using schema report
       const fileSchema = schemaReport?.files?.[filePath]?.schema;
       if (fileSchema) {
-        const fileErrors = validateConfig(content, fileSchema, filePath, allQuestsIds, marketCategories, marketItems);
+        const fileErrors = validateConfig(content, fileSchema, filePath, allQuestsIds, marketCategories, marketItems, configs);
         if (fileErrors.length > 0) {
           structWarnings.push({
             filePath,
@@ -171,7 +182,10 @@ export default function Dashboard({
       totalSafeZones: tSafeZones,
       syntaxErrors: synErrors,
       structuralWarnings: structWarnings,
-      dirtyFiles: dFiles
+      dirtyFiles: dFiles,
+      allQuestsIds,
+      marketCategories,
+      marketItems
     };
   }, [configs, schemaReport, paths.length]); // paths.length is added just in case files are added/deleted
 
@@ -260,7 +274,8 @@ export default function Dashboard({
         {[
           { id: 'status', label: t('dash_sub_status'), icon: '🖥️' },
           { id: 'changelog', label: t('dash_sub_changelog'), icon: '📊', count: dirtyFiles.length },
-          { id: 'backups', label: t('dash_sub_backups'), icon: '📂' }
+          { id: 'backups', label: t('dash_sub_backups'), icon: '📂' },
+          { id: 'validator', label: t('tab_validator'), icon: '🔍' }
         ].map(tab => (
           <button
             key={tab.id}
@@ -507,6 +522,25 @@ export default function Dashboard({
                               </span>{' '}
                               {err.message}
                             </div>
+                            {err.type === 'quest_cycle' && (
+                              <button
+                                className="btn btn-accent"
+                                onClick={() => {
+                                  const match = err.message.match(/cycle:\s*([\d\s\->]+)/i);
+                                  if (match) {
+                                    const ids = match[1].split('->').map(s => Number(s.trim())).filter(id => !isNaN(id));
+                                    if (ids.length > 0) {
+                                      if (onNavigateToQuestGraph) {
+                                        onNavigateToQuestGraph(ids[0], ids);
+                                      }
+                                    }
+                                  }
+                                }}
+                                style={{ padding: '2px 6px', fontSize: '9px', marginRight: '6px' }}
+                              >
+                                🔍 {lang === 'ru' ? 'Показать цикл' : 'Show cycle'}
+                              </button>
+                            )}
                             {err.fixable && (
                               <button
                                 className="btn btn-warning"
@@ -535,7 +569,7 @@ export default function Dashboard({
                 <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('db_title')}</div>
                 <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('db_header')}</h2>
               </div>
-              {xmlItems.length > 0 && (
+              {Array.isArray(xmlItems) && xmlItems.length > 0 && (
                 <button 
                   className="btn btn-danger" 
                   onClick={() => {
@@ -604,7 +638,7 @@ export default function Dashboard({
                           let databaseDuplicatesCount = 0;
                           let mergedMode = false;
 
-                          if (xmlItems.length > 0) {
+                          if (Array.isArray(xmlItems) && xmlItems.length > 0) {
                             const mergeChoice = window.confirm(
                               t('db_merge_confirm', { count: xmlItems.length })
                             );
@@ -662,8 +696,8 @@ export default function Dashboard({
                   />
                 </label>
 
-                <div style={{ fontSize: '13px', color: xmlItems.length > 0 ? '#a6f5a6' : 'var(--text-secondary)' }}>
-                  {xmlItems.length > 0 ? (
+                <div style={{ fontSize: '13px', color: (Array.isArray(xmlItems) && xmlItems.length > 0) ? '#a6f5a6' : 'var(--text-secondary)' }}>
+                  {(Array.isArray(xmlItems) && xmlItems.length > 0) ? (
                     <strong>{t('db_active_db', { count: xmlItems.length })}</strong>
                   ) : (
                     t('db_no_db')
@@ -953,6 +987,252 @@ export default function Dashboard({
         </div>
       )}
 
+      {activeSubTab === 'validator' && (
+        <ValidatorPanel schemaReport={schemaReport} t={t} />
+      )}
+
+    </div>
+  );
+}
+
+function ValidatorPanel({ schemaReport, t }) {
+  const [inputText, setInputText] = useState('');
+  const [schemaKey, setSchemaKey] = useState('auto');
+  const [validationResult, setValidationResult] = useState(null);
+
+  const schemaOptions = useMemo(() => {
+    if (!schemaReport || !schemaReport.files) return [];
+    return Object.entries(schemaReport.files)
+      .map(([filePath, info]) => ({
+        filePath,
+        name: filePath.split('/').pop().replace('.json', '')
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [schemaReport]);
+
+  const handleValidate = () => {
+    if (!inputText.trim()) {
+      setValidationResult(null);
+      return;
+    }
+
+    try {
+      const cleaned = cleanJsonComments(inputText);
+      let parsed;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (err) {
+        setValidationResult({
+          success: false,
+          syntaxError: err.message,
+          errors: []
+        });
+        return;
+      }
+
+      let activeSchema = null;
+      let matchedPath = schemaKey;
+      if (schemaKey === 'auto') {
+        if (parsed.Patrols !== undefined) {
+          matchedPath = 'expansion/settings/AIPatrolSettings.json';
+        } else if (parsed.CircleZones !== undefined || parsed.PolygonZones !== undefined) {
+          matchedPath = 'expansion/settings/SafeZoneSettings.json';
+        } else if (parsed.FollowUpQuest !== undefined || parsed.PreQuestIDs !== undefined) {
+          matchedPath = 'expansionmod/quests/quests/quest_1.json';
+        } else if (parsed.NPCName !== undefined || parsed.NPCClassName !== undefined) {
+          matchedPath = 'expansionmod/quests/npcs/questnpc_1.json';
+        } else if (parsed.Items !== undefined && parsed.DisplayName === undefined) {
+          matchedPath = 'expansionmod/market/category_example.json';
+        } else if (parsed.ShoryukenChance !== undefined || parsed.AccuracyMin !== undefined) {
+          matchedPath = 'ExpansionMod/Settings/AISettings.json';
+        } else {
+          const parsedKeys = Object.keys(parsed);
+          const bestMatch = schemaOptions.find(opt => {
+            const sch = schemaReport.files[opt.filePath]?.schema;
+            if (sch && sch.properties) {
+              const schKeys = Object.keys(sch.properties);
+              const overlap = parsedKeys.filter(k => schKeys.includes(k)).length;
+              return overlap > parsedKeys.length * 0.5;
+            }
+            return false;
+          });
+          if (bestMatch) {
+            matchedPath = bestMatch.filePath;
+          }
+        }
+      }
+
+      if (matchedPath === 'auto' || !schemaReport?.files?.[matchedPath]?.schema) {
+        setValidationResult({
+          success: false,
+          schemaError: t('val_err_no_schema'),
+          errors: []
+        });
+        return;
+      }
+
+      const schema = schemaReport.files[matchedPath].schema;
+      const errors = validateConfig(parsed, schema, matchedPath, allQuestsIds, marketCategories, marketItems, configs);
+      setValidationResult({
+        success: errors.length === 0,
+        errors,
+        detectedSchema: matchedPath.split('/').pop().replace('.json', ''),
+        cleanText: JSON.stringify(parsed, null, 4)
+      });
+
+    } catch (e) {
+      setValidationResult({
+        success: false,
+        syntaxError: e.message,
+        errors: []
+      });
+    }
+  };
+
+  const handleCleanAndFormat = () => {
+    if (!inputText.trim()) return;
+    try {
+      const cleaned = cleanJsonComments(inputText);
+      const parsed = JSON.parse(cleaned);
+      setInputText(JSON.stringify(parsed, null, 4));
+      setTimeout(() => handleValidate(), 50);
+    } catch (err) {
+      alert(t('val_err_invalid_json', { error: err.message }));
+    }
+  };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '16px' }}>
+      {/* Input panel */}
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div>
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('val_title')}</div>
+          <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('val_header')}</h2>
+          <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>{t('val_desc')}</p>
+        </div>
+
+        <div className="form-group">
+          <label style={{ fontSize: '12px' }}>{t('val_label_select_schema')}</label>
+          <select value={schemaKey} onChange={(e) => setSchemaKey(e.target.value)}>
+            <option value="auto">{t('val_opt_autodetect')}</option>
+            {schemaOptions.map(opt => (
+              <option key={opt.filePath} value={opt.filePath}>{opt.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <textarea
+            style={{ 
+              flex: 1, 
+              minHeight: '260px', 
+              fontFamily: 'var(--font-mono)', 
+              fontSize: '12px', 
+              background: 'var(--bg-primary)', 
+              color: 'var(--text-primary)', 
+              border: '1px solid var(--border-color)', 
+              padding: '12px',
+              resize: 'vertical',
+              lineHeight: '1.5'
+            }}
+            placeholder='{ "Patrols": [...] }'
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button className="btn btn-accent" onClick={handleValidate} style={{ flex: 1, justifyContent: 'center' }}>
+            {t('val_btn_validate')}
+          </button>
+          <button className="btn" onClick={handleCleanAndFormat}>
+            {t('val_btn_clean')}
+          </button>
+        </div>
+      </div>
+
+      {/* Results panel */}
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <h3 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+          {t('status_healing_title')}
+        </h3>
+
+        {validationResult === null ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', padding: '40px', textAlign: 'center' }}>
+            <div>
+              <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }}>📋</span>
+              <span>Paste JSON and click Validate to view results</span>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1 }}>
+            
+            {validationResult.detectedSchema && (
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                Schema Matched: <span style={{ color: 'var(--text-glow)', fontWeight: 'bold' }}>{validationResult.detectedSchema}</span>
+              </div>
+            )}
+
+            {validationResult.success && (
+              <div style={{ padding: '20px', textAlign: 'center', border: '1px solid #a6f5a6', color: '#a6f5a6', borderRadius: '2px', background: 'rgba(74, 154, 74, 0.04)' }}>
+                <span style={{ fontSize: '24px', display: 'block', marginBottom: '8px' }}>✓</span>
+                <span>{t('val_status_success')}</span>
+              </div>
+            )}
+
+            {validationResult.syntaxError && (
+              <div style={{ background: 'rgba(235, 103, 103, 0.04)', border: '1px solid var(--danger-color)', borderRadius: '2px', padding: '12px' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--danger-color)', fontWeight: 'bold', marginBottom: '6px' }}>
+                  Syntax Error
+                </div>
+                <div style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--bg-primary)', padding: '8px', border: '1px solid #2a1414', borderRadius: '2px', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                  {validationResult.syntaxError}
+                </div>
+              </div>
+            )}
+
+            {validationResult.schemaError && (
+              <div style={{ background: 'rgba(235, 214, 103, 0.04)', border: '1px solid var(--warning-color)', borderRadius: '2px', padding: '12px', color: 'var(--warning-color)', fontSize: '13px' }}>
+                {validationResult.schemaError}
+              </div>
+            )}
+
+            {validationResult.errors.length > 0 && (
+              <div>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: 'var(--warning-color)' }}>
+                  {t('val_list_errors', { count: validationResult.errors.length })}
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {validationResult.errors.map((err, idx) => (
+                    <div 
+                      key={idx}
+                      style={{
+                        fontSize: '12px',
+                        color: 'var(--text-primary)',
+                        background: 'var(--bg-primary)',
+                        padding: '8px 12px',
+                        border: '1px solid rgba(235, 214, 103, 0.15)',
+                        borderRadius: '2px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px'
+                      }}
+                    >
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--warning-color)' }}>
+                        {err.path.join('.') || 'root'} ({err.type})
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                        {err.message}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+          </div>
+        )}
+      </div>
     </div>
   );
 }

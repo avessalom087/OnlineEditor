@@ -1,3 +1,30 @@
+/**
+ * Strips UTF-8 BOM, single-line (//) and multi-line block comments, 
+ * and trailing commas from raw JSON text before parsing.
+ * @param {string} rawText 
+ * @returns {string} Cleaned JSON string
+ */
+export function cleanJsonComments(rawText) {
+  if (!rawText) return "";
+  const contentCleaned = rawText.replace(/^\uFEFF/, '');
+  try {
+    JSON.parse(contentCleaned);
+    return contentCleaned;
+  } catch (e) {
+    const strippedComments = contentCleaned
+      .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|\/\*[\s\S]*?\*\/|\/\/.*$/gm, (match, stringGroup) => {
+        return stringGroup ? stringGroup : '';
+      });
+    
+    const strippedCommas = strippedComments
+      .replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^"\\])*")|,\s*([\]}])/g, (match, stringGroup, brace) => {
+        return stringGroup ? stringGroup : brace;
+      });
+
+    return strippedCommas;
+  }
+}
+
 // Helper to get default value based on schema type
 export function getDefaultValueForType(propSchema) {
   if (propSchema.sample !== undefined && propSchema.sample !== null) {
@@ -16,7 +43,7 @@ export function getDefaultValueForType(propSchema) {
 }
 
 // Recursively traverse and validate a JSON object against its schema
-export function validateConfig(content, schema, filePath, allQuestsIds = new Set(), marketCategories = new Set(), marketItems = new Set()) {
+export function validateConfig(content, schema, filePath, allQuestsIds = new Set(), marketCategories = new Set(), marketItems = new Set(), configs = {}) {
   const errors = [];
 
   function validateNode(node, nodeSchema, pathArray) {
@@ -172,7 +199,7 @@ export function validateConfig(content, schema, filePath, allQuestsIds = new Set
     validateNode(content, schema, []);
   }
 
-  // 6. Cross-reference validations (broken quest links)
+  // 6. Cross-reference validations (broken quest links, cycles, orphans, objectives)
   const isQuestFile = filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_');
   if (isQuestFile && content && typeof content === 'object') {
     // Check FollowUpQuest link
@@ -202,6 +229,121 @@ export function validateConfig(content, schema, filePath, allQuestsIds = new Set
           defaultValue: content.PreQuestIDs.filter(id => !invalidPre.includes(id))
         });
       }
+    }
+
+    // Prerequisite Cycles Check
+    if (content.ID !== undefined && configs && Object.keys(configs).length > 0) {
+      const questPrereqs = {};
+      Object.values(configs).forEach(f => {
+        if (f && f.success && f.content && f.filePath && f.filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_')) {
+          if (f.content.ID !== undefined) {
+            questPrereqs[f.content.ID] = Array.isArray(f.content.PreQuestIDs) ? f.content.PreQuestIDs : [];
+          }
+        }
+      });
+
+      const findCycle = (startId) => {
+        const visited = new Set();
+        const recStack = new Set();
+        const path = [];
+
+        const dfs = (id) => {
+          visited.add(id);
+          recStack.add(id);
+          path.push(id);
+
+          const pres = questPrereqs[id] || [];
+          for (const preId of pres) {
+            if (!visited.has(preId)) {
+              if (dfs(preId)) return true;
+            } else if (recStack.has(preId)) {
+              const idx = path.indexOf(preId);
+              if (idx !== -1) {
+                path.push(preId);
+                return true;
+              }
+            }
+          }
+
+          recStack.delete(id);
+          path.pop();
+          return false;
+        };
+
+        if (dfs(startId)) {
+          return path;
+        }
+        return null;
+      };
+
+      const cycle = findCycle(content.ID);
+      if (cycle) {
+        errors.push({
+          path: ['PreQuestIDs'],
+          type: 'quest_cycle',
+          value: content.PreQuestIDs,
+          message: `Prerequisite Cycle Detected: Quest forms a cycle: ${cycle.join(' -> ')}`,
+          fixable: false
+        });
+      }
+    }
+
+    // Orphan Quests Check
+    const hasPreQuests = Array.isArray(content.PreQuestIDs) && content.PreQuestIDs.length > 0;
+    const hasQuestGivers = Array.isArray(content.QuestGiverIDs) && content.QuestGiverIDs.length > 0;
+    if (!hasPreQuests && !hasQuestGivers) {
+      errors.push({
+        path: [],
+        type: 'orphan_quest',
+        value: content.ID,
+        message: `Orphaned Quest: Quest ID ${content.ID} has no prerequisites (PreQuestIDs) and no quest givers (QuestGiverIDs). It cannot be started.`,
+        fixable: false
+      });
+    }
+
+    // Broken Objectives Check
+    if (Array.isArray(content.Objectives) && configs && Object.keys(configs).length > 0) {
+      const OBJECTIVE_TYPES = {
+        10: { folder: 'Action', prefix: 'A', label: 'Action' },
+        8: { folder: 'AICamp', prefix: 'AIC', label: 'AI Camp' },
+        7: { folder: 'AIPatrol', prefix: 'AIP', label: 'AI Patrol' },
+        9: { folder: 'AIVIP', prefix: 'AIESCORT', label: 'AI VIP Escort' },
+        4: { folder: 'Collection', prefix: 'C', label: 'Collection' },
+        11: { folder: 'Crafting', prefix: 'CR', label: 'Crafting' },
+        5: { folder: 'Delivery', prefix: 'D', label: 'Delivery' },
+        2: { folder: 'Target', prefix: 'TA', label: 'Target (Kill)' },
+        3: { folder: 'Travel', prefix: 'T', label: 'Travel' },
+        6: { folder: 'TreasureHunt', prefix: 'TH', label: 'Treasure Hunt' }
+      };
+
+      content.Objectives.forEach((obj, idx) => {
+        if (obj && obj.ID !== undefined && obj.ObjectiveType !== undefined) {
+          const typeId = obj.ObjectiveType;
+          const objId = obj.ID;
+          const info = OBJECTIVE_TYPES[typeId];
+          if (!info) {
+            errors.push({
+              path: ['Objectives', idx],
+              type: 'broken_link',
+              value: obj,
+              message: `Unknown Objective Type: Objective #${idx + 1} has invalid ObjectiveType ${typeId}`,
+              fixable: false
+            });
+          } else {
+            const targetPath = `expansionmod/quests/objectives/${info.folder.toLowerCase()}/objective_${info.prefix.toLowerCase()}_${objId}.json`;
+            const exists = Object.keys(configs).some(k => k.toLowerCase() === targetPath);
+            if (!exists) {
+              errors.push({
+                path: ['Objectives', idx],
+                type: 'broken_link',
+                value: obj,
+                message: `Broken Objective Link: Objective #${idx + 1} (Type: ${info.label}, ID: ${objId}) references file that does not exist in objectives folder.`,
+                fixable: false
+              });
+            }
+          }
+        }
+      });
     }
   }
 

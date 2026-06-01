@@ -1,3 +1,5 @@
+import React, { createContext, useContext, useState } from 'react';
+
 export const translations = {
   en: {
     // Welcome Screen
@@ -356,6 +358,8 @@ export const translations = {
 
     // Quest Graph New Keys
     quest_btn_create: "[+] CREATE NEW QUEST",
+    quest_btn_reset_layout: "AUTO-LAYOUT",
+    btn_translate: "Translate",
     quest_editor_title: "QUEST_EDITOR",
     quest_delete_tooltip: "Delete quest config from disk",
     quest_btn_open_raw: "✎ OPEN RAW JSON",
@@ -687,7 +691,94 @@ export const translations = {
     econ_search_all_categories_tooltip: "Search across all categories",
     econ_item_missing_tooltip: "Not found in types.xml database.",
     econ_copy_item_tooltip: "Copy item",
-    econ_item_missing_trader_tooltip: "Not in types.xml"
+    econ_item_missing_trader_tooltip: "Not in types.xml",
+
+    // Global AISettings.json keys
+    ai_combat_defaults: "COMBAT & ACCURACY DEFAULTS",
+    ai_label_accuracy_min: "Global Accuracy Min",
+    ai_label_accuracy_max: "Global Accuracy Max",
+    ai_label_threat_distance_limit: "Threat Distance Limit (m)",
+    ai_label_noise_investigation_distance_limit: "Noise Investigation Limit (m)",
+    ai_label_max_flanking_distance: "Max Flanking Distance (m)",
+    ai_label_enable_flanking_outside_combat: "Enable Flanking Outside Combat",
+    ai_label_damage_multiplier_global: "Global Damage Multiplier (Dealt)",
+    ai_label_damage_received_multiplier_global: "Global Damage Received Multiplier",
+    ai_label_manners: "AI Behavior Mode (Manners)",
+    ai_opt_manners_neutral: "0 - Neutral",
+    ai_opt_manners_aggressive: "1 - Aggressive",
+    ai_label_meme_level: "AI Meme Level (0-3)",
+    ai_label_sniper_prone_distance: "Sniper Prone Distance (m)",
+    ai_networking_compat: "NETWORKING & COMPATIBILITY",
+    ai_label_override_client_weapon_firing: "Override Client Weapon Firing",
+    ai_label_recreate_weapon_network_representation: "Recreate Weapon Network Representation",
+    ai_logging_zombies: "LOGGING & VEHICLE ATTACKS",
+    ai_label_log_ai_hit_by: "Log AI Hit By",
+    ai_label_log_ai_killed: "Log AI Killed",
+    ai_label_zombie_vehicle_handler: "Zombie Vehicle Attack Handler",
+    ai_label_zombie_vehicle_physics: "Zombie Vehicle Attack Physics",
+    ai_night_visibility: "NIGHT VISIBILITY RANGE (M)",
+    ai_label_night_visibility_0: "Visibility at light level 0 (Night)",
+    ai_label_night_visibility_1: "Visibility at light level 1 (Day/Twilight)",
+    ai_list_management: "GLOBAL LISTS MANAGEMENT",
+    ai_label_admins: "Admin Steam64 IDs",
+    ai_label_player_factions: "Player Factions",
+    ai_label_prevent_climb: "Prevent Climb Buildings (Classnames)",
+    ai_btn_add: "[+] ADD",
+    ai_ph_steam_id: "Enter 17-digit Steam64 ID...",
+    ai_ph_faction: "Enter faction name...",
+    ai_ph_classname: "Enter building classname...",
+
+    // Bulk actions
+    ai_bulk_edit_title: "Bulk Edit ({count} Patrols)",
+    ai_bulk_edit_desc: "Select values to apply to all selected patrols. Fields left empty will not be changed.",
+    ai_bulk_apply_btn: "APPLY TO {count} SELECTED PATROLS",
+    ai_bulk_applied_success: "Successfully applied bulk changes to {count} patrols!",
+    ai_select_all_patrols: "SELECT ALL PATROLS ({count})",
+
+    // Validator
+    tab_validator: "Validator",
+    val_title: "// DAYZ_SCHEMA_VALIDATOR",
+    val_header: "DayZ Config Schema Validator",
+    val_desc: "Paste raw JSON configuration text below to validate it against official schemas and logical rules. Single-line/block comments and trailing commas are parsed and ignored.",
+    val_label_select_schema: "Target Configuration Schema",
+    val_opt_autodetect: "🔍 Auto-detect schema",
+    val_btn_validate: "✓ VALIDATE JSON",
+    val_btn_clean: "✨ CLEAN & FORMAT JSON",
+    val_status_success: "JSON is valid and conforms to the schema!",
+    val_err_invalid_json: "Invalid JSON: {error}",
+    val_err_no_schema: "Unable to auto-detect schema for this JSON structure. Please select a schema manually.",
+    val_list_errors: "Validation Errors ({count})",
+
+    // Quest Integrity
+    diag_quest_cycle: "Quest loop detected: Quest {id} has a cyclic prerequisite chain.",
+    diag_quest_orphan: "Quest {id} is orphaned: it has no prerequisites and no Quest Givers assigned.",
+    diag_quest_broken_obj: "Broken objective reference: Quest {id} references missing objective {objId} ({type}).",
+
+    // Bulk Pricing
+    econ_bulk_price_btn: "💸 BULK PRICING",
+    econ_bulk_price_title: "Bulk Price Adjustments",
+    econ_bulk_price_desc: "Apply adjustments to all items inside this category. Enter multipliers or ratio lock parameters.",
+    econ_bulk_scale_label: "Scale Prices (Multiplier, e.g. 1.10 = +10%, 0.85 = -15%)",
+    econ_bulk_min_ratio_label: "Set Min Price as percentage of Max Price",
+    econ_bulk_apply_success: "Successfully adjusted prices for {count} items!",
+
+    // Map Tools
+    map_draw_waypoints_mode: "Patrol Route Planner",
+    map_draw_safezone_mode: "Create Safezone",
+    map_safezone_radius_label: "Safezone Radius (m)",
+    map_safezone_created_success: "Safezone created at [{x}, {z}] with radius {radius}m!",
+    map_patrol_select_desc: "Select a patrol to edit its waypoints on the map",
+
+    // Command Menu
+    cmd_palette_go_dashboard: "Go to Dashboard",
+    cmd_palette_go_economy: "Go to Economy & Traders",
+    cmd_palette_go_quests: "Go to Quests Designer",
+    cmd_palette_go_aibots: "Go to AI Bots Settings",
+    cmd_palette_go_settings: "Go to Global Settings",
+    cmd_palette_go_map: "Go to Interactive Map",
+    cmd_palette_run_validate: "Run Diagnostics & Healing",
+    cmd_palette_clear_db: "Clear Server Items Database",
+    cmd_palette_backup: "Manage Backups"
   },
   ru: {
     // Welcome Screen
@@ -711,7 +802,7 @@ export const translations = {
     tab_quests: "Квесты",
     tab_aibots: "ИИ Боты",
     tab_settings: "Настройки",
-    tab_map: "Интерактивная карта",
+    tab_map: "Карта",
     tab_raw_editor: "JSON",
     header_unsaved: "НЕ СОХРАНЕНО",
     header_export_package: "💾 ЭКСПОРТ ПАКЕТА",
@@ -1046,6 +1137,8 @@ export const translations = {
 
     // Quest Graph New Keys
     quest_btn_create: "[+] СОЗДАТЬ НОВЫЙ КВЕСТ",
+    quest_btn_reset_layout: "АВТО-РАЗМЕТКА",
+    btn_translate: "Перевести",
     quest_editor_title: "РЕДАКТОР КВЕСТОВ",
     quest_delete_tooltip: "Удалить конфигурацию квеста с диска",
     quest_btn_open_raw: "✎ ОТКРЫТЬ СЫРОЙ JSON",
@@ -1217,8 +1310,8 @@ export const translations = {
     ai_ph_cargo_class: "Введите класс оружия или предмета...",
     ai_select_loadout_sidebar: "ВЫБЕРИТЕ ПРОФИЛЬ СНАРЯЖЕНИЯ В БОКОВОЙ ПАНЕЛИ",
     ai_visual_roaming_title: "ВИЗУАЛЬНЫЙ РЕДАКТОР ЗОН БРОДЯЧИХ БОТОВ",
-    ai_visual_roaming_desc: "Зоны бродячих ботов, центры поселений и границы спавна полностью перенесены на вкладку «Интерактивная карта». Это позволяет перетаскивать поселения, изменять радиус спавна и управлять зонами запрета ИИ визуально в реальном времени. Исключения для зданий также доступны в боковой панели карты.",
-    ai_btn_goto_map: "ПЕРЕЙТИ НА ИНТЕРАКТИВНУЮ КАРТУ",
+    ai_visual_roaming_desc: "Зоны бродячих ботов, центры поселений и границы спавна полностью перенесены на вкладку «Карта». Это позволяет перетаскивать поселения, изменять радиус спавна и управлять зонами запрета ИИ визуально в реальном времени. Исключения для зданий также доступны в боковой панели карты.",
+    ai_btn_goto_map: "ПЕРЕЙТИ НА КАРТУ",
     ai_loot_tables: "// ТАБЛИЦЫ_ВЫПАДЕНИЯ_ЛУТА",
     ai_total_loot_profiles: "ВСЕГО: {count} ПРОФИЛЕЙ",
     ai_btn_create_loot_profile: "[+] СОЗДАТЬ ТАБЛИЦУ ЛУТА",
@@ -1377,6 +1470,125 @@ export const translations = {
     econ_search_all_categories_tooltip: "Поиск по всем категориям",
     econ_item_missing_tooltip: "Не найдено в базе данных types.xml.",
     econ_copy_item_tooltip: "Копировать предмет",
-    econ_item_missing_trader_tooltip: "Не найдено в types.xml"
+    econ_item_missing_trader_tooltip: "Не найдено в types.xml",
+
+    // Global AISettings.json keys
+    ai_combat_defaults: "ГЛОБАЛЬНЫЕ НАСТРОЙКИ БОЯ И ТОЧНОСТИ",
+    ai_label_accuracy_min: "Глобальная мин. точность",
+    ai_label_accuracy_max: "Глобальная макс. точность",
+    ai_label_threat_distance_limit: "Лимит дистанции угрозы (м)",
+    ai_label_noise_investigation_distance_limit: "Лимит расследования шума (м)",
+    ai_label_max_flanking_distance: "Макс. дистанция обхода (м)",
+    ai_label_enable_flanking_outside_combat: "Обход с флангов вне боя",
+    ai_label_damage_multiplier_global: "Глобальный множитель урона ботов",
+    ai_label_damage_received_multiplier_global: "Глобальный множитель входящего урона",
+    ai_label_manners: "Режим поведения (Manners)",
+    ai_opt_manners_neutral: "0 - Нейтральный",
+    ai_opt_manners_aggressive: "1 - Агрессивный",
+    ai_label_meme_level: "Уровень мемности ИИ (0-3)",
+    ai_label_sniper_prone_distance: "Снайпер ложится при дистанции (м)",
+    ai_networking_compat: "СЕТЬ И СОВМЕСТИМОСТЬ",
+    ai_label_override_client_weapon_firing: "Серверный контроль стрельбы",
+    ai_label_recreate_weapon_network_representation: "Сетевое пересоздание оружия",
+    ai_logging_zombies: "ЛОГИРОВАНИЕ И ЗОМБИ/ТРАНСПОРТ",
+    ai_label_log_ai_hit_by: "Логировать попадания в ИИ",
+    ai_label_log_ai_killed: "Логировать смерти ИИ",
+    ai_label_zombie_vehicle_handler: "Обработчик атак зомби на авто",
+    ai_label_zombie_vehicle_physics: "Физика атак зомби на авто",
+    ai_night_visibility: "ДАЛЬНОСТЬ ВИДИМОСТИ НОЧЬЮ (М)",
+    ai_label_night_visibility_0: "Видимость при освещении 0 (Ночь)",
+    ai_label_night_visibility_1: "Видимость при освещении 1 (День/Сумерки)",
+    ai_list_management: "УПРАВЛЕНИЕ ГЛОБАЛЬНЫМИ СПИСКАМИ",
+    ai_label_admins: "Steam64 ID Администраторов",
+    ai_label_player_factions: "Фракции игроков",
+    ai_label_prevent_climb: "Запрет лазания по зданиям (Classnames)",
+    ai_btn_add: "[+] ДОБАВИТЬ",
+    ai_ph_steam_id: "Введите 17-значный Steam64 ID...",
+    ai_ph_faction: "Введите название фракции...",
+    ai_ph_classname: "Введите класс здания...",
+
+    // Bulk actions
+    ai_bulk_edit_title: "Групповое редактирование ({count} патрулей)",
+    ai_bulk_edit_desc: "Выберите значения для применения ко всем выбранным патрулям. Пустые поля изменены не будут.",
+    ai_bulk_apply_btn: "ПРИМЕНИТЬ К {count} ВЫБРАННЫМ ПАТРУЛЯМ",
+    ai_bulk_applied_success: "Успешно применены изменения к {count} патрулям!",
+    ai_select_all_patrols: "ВЫБРАТЬ ВСЕ ПАТРУЛИ ({count})",
+
+    // Validator
+    tab_validator: "Валидатор",
+    val_title: "// DAYZ_SCHEMA_VALIDATOR",
+    val_header: "Валидатор схем конфигурации DayZ",
+    val_desc: "Вставьте текст конфигурации JSON ниже, чтобы проверить его на соответствие официальным схемам и логическим правилам. Комментарии и висящие запятые будут автоматически вырезаны.",
+    val_label_select_schema: "Целевая схема конфигурации",
+    val_opt_autodetect: "🔍 Автоопределение схемы",
+    val_btn_validate: "✓ ПРОВЕРИТЬ JSON",
+    val_btn_clean: "✨ ОЧИСТИТЬ И ФОРМАТИРОВАТЬ",
+    val_status_success: "JSON валиден и соответствует схеме!",
+    val_err_invalid_json: "Невалидный JSON: {error}",
+    val_err_no_schema: "Не удалось автоматически определить схему для этой структуры JSON. Пожалуйста, выберите схему вручную.",
+    val_list_errors: "Ошибки валидации ({count})",
+
+    // Quest Integrity
+    diag_quest_cycle: "Обнаружен цикл в квестах: Квест {id} имеет циклическую цепочку требований.",
+    diag_quest_orphan: "Квест {id} изолирован: у него нет ни требований, ни назначенных квестодателей.",
+    diag_quest_broken_obj: "Битая ссылка на цель: Квест {id} ссылается на отсутствующую цель {objId} ({type}).",
+
+    // Bulk Pricing
+    econ_bulk_price_btn: "💸 МАССОВЫЕ ЦЕНЫ",
+    econ_bulk_price_title: "Массовое изменение цен",
+    econ_bulk_price_desc: "Примените изменения ко всем предметам в этой категории. Укажите множитель цены или параметры соотношения цен.",
+    econ_bulk_scale_label: "Масштабировать цены (Множитель, например, 1.10 = +10%, 0.85 = -15%)",
+    econ_bulk_min_ratio_label: "Установить минимальную цену как процент от максимальной",
+    econ_bulk_apply_success: "Цены успешно изменены для {count} предметов!",
+
+    // Map Tools
+    map_draw_waypoints_mode: "Планировщик маршрутов патрулей",
+    map_draw_safezone_mode: "Создать безопасную зону",
+    map_safezone_radius_label: "Радиус безопасной зоны (м)",
+    map_safezone_created_success: "Безопасная зона создана в [{x}, {z}] с радиусом {radius}м!",
+    map_patrol_select_desc: "Выберите патруль для редактирования его точек на карте",
+
+    // Command Menu
+    cmd_palette_go_dashboard: "Перейти к панели управления",
+    cmd_palette_go_economy: "Перейти к экономике и торговцам",
+    cmd_palette_go_quests: "Перейти к дизайнеру квестов",
+    cmd_palette_go_aibots: "Перейти к настройкам ИИ ботов",
+    cmd_palette_go_settings: "Перейти к глобальным настройкам",
+    cmd_palette_go_map: "Перейти к карте",
+    cmd_palette_run_validate: "Запустить диагностику и исправление",
+    cmd_palette_clear_db: "Очистить базу данных предметов сервера",
+    cmd_palette_backup: "Управление резервными копиями"
   }
 };
+
+// --- Language Context & Provider ---
+const LanguageContext = createContext();
+
+export function LanguageProvider({ children }) {
+  const [lang, setLangState] = useState(() => {
+    return localStorage.getItem('dayz_editor_lang') || 'ru';
+  });
+
+  const setLang = (newLang) => {
+    setLangState(newLang);
+    localStorage.setItem('dayz_editor_lang', newLang);
+  };
+
+  const t = (key, replacements = {}) => {
+    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
+    Object.entries(replacements).forEach(([k, v]) => {
+      text = text.replace(`{${k}}`, v);
+    });
+    return text;
+  };
+
+  return React.createElement(LanguageContext.Provider, { value: { lang, setLang, t } }, children);
+}
+
+export function useTranslation() {
+  const context = useContext(LanguageContext);
+  if (!context) {
+    throw new Error('useTranslation must be used within a LanguageProvider');
+  }
+  return context;
+}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import { useToast } from './ToastManager';
 import { translateStrKey } from '../utils/strKeys';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 import { AutocompleteWorkerWrapper } from '../utils/autocompleteWorker';
 
 
@@ -71,16 +71,9 @@ function SortableHeader({ field, label, sortField, sortDir, onSort, style = {} }
 
 // ─── Main EconomyEditor ───────────────────────────────────────────────────────
 
-export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlItems = [], onShowConfirm, lang = 'ru' }) {
+export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlItems = [], onShowConfirm }) {
   const toast = useToast();
-
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, v);
-    });
-    return text;
-  };
+  const { t, lang } = useTranslation();
   // ─ Database helpers ────────────────────────────────────────────────────────
   const xmlItemsSet   = useMemo(() => {
     const items = Array.isArray(xmlItems) ? xmlItems : [];
@@ -157,6 +150,11 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
   const [defaultMinStock, setDefaultMinStock] = useState(1);
   const [defaultMaxStock, setDefaultMaxStock] = useState(100);
 
+  const [showBulkPricingModal, setShowBulkPricingModal] = useState(false);
+  const [bulkPriceMultiplier, setBulkPriceMultiplier] = useState(1.0);
+  const [bulkMinRatio, setBulkMinRatio] = useState(0.5); // 50%
+  const [enableMinRatioLock, setEnableMinRatioLock] = useState(false);
+
   const availableXmlItems = useMemo(() => {
     if (
       !activeCategoryConfig || 
@@ -174,6 +172,28 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
     );
     return xmlItems.filter(item => item && typeof item === 'string' && !existingSet.has(item.toLowerCase()));
   }, [activeCategoryConfig, xmlItems]);
+
+  const priceData = useMemo(() => {
+    if (!activeCategoryConfig || !activeCategoryConfig.success || !activeCategoryConfig.content || !Array.isArray(activeCategoryConfig.content.Items)) {
+      return null;
+    }
+    const items = activeCategoryConfig.content.Items
+      .filter(i => i && typeof i.ClassName === 'string' && typeof i.MaxPriceThreshold === 'number')
+      .map(i => ({
+        name: i.ClassName,
+        max: i.MaxPriceThreshold,
+        min: i.MinPriceThreshold || 0
+      }))
+      .sort((a, b) => b.max - a.max);
+    
+    if (items.length === 0) return null;
+
+    const avgMax = Math.round(items.reduce((sum, i) => sum + i.max, 0) / items.length);
+    const avgMin = Math.round(items.reduce((sum, i) => sum + i.min, 0) / items.length);
+    const peakMax = Math.max(...items.map(i => i.max));
+    
+    return { items, avgMax, avgMin, peakMax };
+  }, [activeCategoryConfig]);
 
   const [xmlFilteredItems, setXmlFilteredItems] = useState([]);
   const [xmlWorker, setXmlWorker] = useState(null);
@@ -454,6 +474,42 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
     });
   };
 
+  const handleApplyBulkPricing = () => {
+    if (!activeCategoryConfig || !activeCategoryConfig.content || !Array.isArray(activeCategoryConfig.content.Items)) return;
+
+    const items = activeCategoryConfig.content.Items.map(item => {
+      const updated = { ...item };
+      
+      if (bulkPriceMultiplier !== 1.0) {
+        if (updated.MinPriceThreshold !== undefined) {
+          const val = Number(updated.MinPriceThreshold);
+          if (!isNaN(val)) {
+            updated.MinPriceThreshold = Math.max(0, Math.round(val * bulkPriceMultiplier));
+          }
+        }
+        if (updated.MaxPriceThreshold !== undefined) {
+          const val = Number(updated.MaxPriceThreshold);
+          if (!isNaN(val)) {
+            updated.MaxPriceThreshold = Math.max(0, Math.round(val * bulkPriceMultiplier));
+          }
+        }
+      }
+
+      if (enableMinRatioLock && updated.MaxPriceThreshold !== undefined) {
+        const valMax = Number(updated.MaxPriceThreshold);
+        if (!isNaN(valMax)) {
+          updated.MinPriceThreshold = Math.max(0, Math.round(valMax * bulkMinRatio));
+        }
+      }
+
+      return updated;
+    });
+
+    onChangeField(selectedCategoryPath, ['Items'], items);
+    toast.success(t('econ_bulk_apply_success', { count: items.length }));
+    setShowBulkPricingModal(false);
+  };
+
   // ─ Trader handlers ─────────────────────────────────────────────────────────
   const handleTraderAddCurrency = (cn) => {
     if (!activeTraderConfig || !selectedTraderPath) return;
@@ -690,6 +746,15 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                       {t('econ_import_from_types')}
                     </button>
                   )}
+
+                  {/* B9: Bulk Pricing */}
+                  <button 
+                    className="btn btn-warning" 
+                    onClick={() => setShowBulkPricingModal(true)} 
+                    style={{ padding: '6px 12px', fontSize: '11px' }}
+                  >
+                    {t('econ_bulk_price_btn')}
+                  </button>
                 </div>
 
                 {/* B7: Import panel */}
@@ -778,6 +843,76 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
 
                 {/* Items table */}
                 <div style={{ padding: '20px' }}>
+                  {/* Economy Pricing Chart */}
+                  {priceData && (
+                    <div className="economy-chart-card">
+                      <div className="economy-chart-header">
+                        <div className="economy-chart-title">
+                          📊 {lang === 'ru' ? "Распределение цен категории" : "Category Price Distribution"}
+                        </div>
+                        <div className="economy-chart-summary">
+                          <div>{lang === 'ru' ? "Ср. покупка: " : "Avg Buy: "}<strong style={{ color: 'var(--accent-glow)' }}>{priceData.avgMax}</strong></div>
+                          <div>{lang === 'ru' ? "Ср. продажа: " : "Avg Sell: "}<strong style={{ color: 'var(--warning-color)' }}>{priceData.avgMin}</strong></div>
+                          <div>{lang === 'ru' ? "Пик: " : "Peak: "}<strong style={{ color: 'var(--danger-color)' }}>{priceData.peakMax}</strong></div>
+                          <div>{lang === 'ru' ? "Товаров: " : "Items: "}<strong style={{ color: 'var(--text-glow)' }}>{priceData.items.length}</strong></div>
+                        </div>
+                      </div>
+                      <div className="economy-chart-svg-container">
+                        <svg width="100%" height="100%" viewBox="0 0 600 120" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                          {/* Grid lines */}
+                          <line x1="40" y1="20" x2="580" y2="20" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
+                          <line x1="40" y1="60" x2="580" y2="60" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
+                          <line x1="40" y1="100" x2="580" y2="100" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
+                          
+                          {/* Price Area curves */}
+                          {(() => {
+                            const total = priceData.items.length;
+                            const peak = priceData.peakMax || 1;
+                            
+                            const maxPoints = priceData.items.map((item, idx) => {
+                              const x = (idx / Math.max(1, total - 1)) * 540 + 40;
+                              const y = 100 - (item.max / peak) * 80 + 10;
+                              return `${x},${y}`;
+                            }).join(' ');
+
+                            const minPoints = priceData.items.map((item, idx) => {
+                              const x = (idx / Math.max(1, total - 1)) * 540 + 40;
+                              const y = 100 - (item.min / peak) * 80 + 10;
+                              return `${x},${y}`;
+                            }).join(' ');
+
+                            const areaPoints = `40,110 ${maxPoints} 580,110`;
+
+                            return (
+                              <>
+                                {/* Area fill under max prices */}
+                                <polygon points={areaPoints} fill="rgba(149, 192, 149, 0.06)" />
+                                
+                                {/* Max Buy Price Line (accent-glow) */}
+                                <polyline points={maxPoints} fill="none" stroke="var(--accent-glow)" strokeWidth="2.5" />
+                                
+                                {/* Min Sell Price Line (warning) */}
+                                <polyline points={minPoints} fill="none" stroke="var(--warning-color)" strokeWidth="1.5" strokeDasharray="4 2" />
+                              </>
+                            );
+                          })()}
+
+                          {/* Axes */}
+                          <line x1="40" y1="10" x2="40" y2="110" stroke="var(--border-color)" strokeWidth="1" />
+                          <line x1="40" y1="110" x2="580" y2="110" stroke="var(--border-color)" strokeWidth="1" />
+
+                          {/* Labels */}
+                          <text x="32" y="23" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">{priceData.peakMax}</text>
+                          <text x="32" y="63" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">{Math.round(priceData.peakMax / 2)}</text>
+                          <text x="32" y="103" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">0</text>
+                          
+                          <text x="40" y="120" fill="var(--text-secondary)" fontSize="8" textAnchor="start" fontFamily="var(--font-mono)">{priceData.items[0]?.name || ''}</text>
+                          <text x="580" y="120" fill="var(--text-secondary)" fontSize="8" textAnchor="end" fontFamily="var(--font-mono)">{priceData.items[priceData.items.length - 1]?.name || ''}</text>
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+
                   {/* B4: Cross-category search results */}
                   {searchAllMode && itemQuery.trim() ? (
                     <>
@@ -1380,6 +1515,142 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 disabled={selectedXmlClassnames.size === 0}
               >
                 📥 {t('xml_import_selected_btn', { count: selectedXmlClassnames.size })}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💸 Bulk Price Modifier Modal */}
+      {showBulkPricingModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)', zIndex: 99995,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(3px)',
+        }}>
+          <div style={{
+            width: '480px',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-glow)',
+            borderRadius: '4px',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.8), 0 0 15px rgba(149,192,149,0.1)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            animation: 'toastIn 0.2s ease',
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              background: 'var(--bg-tertiary)',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ fontFamily: 'var(--font-heading)', fontSize: '15px', fontWeight: 'bold', color: 'var(--text-glow)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                💸 {t('econ_bulk_price_title')}
+              </span>
+              <button 
+                onClick={() => setShowBulkPricingModal(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '20px', cursor: 'pointer' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                {t('econ_bulk_price_desc')}
+              </div>
+
+              {/* Price scaling multiplier */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                  {t('econ_bulk_scale_label')}
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={bulkPriceMultiplier}
+                    onChange={(e) => setBulkPriceMultiplier(parseFloat(e.target.value) || 1.0)}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      color: 'var(--text-glow)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '14px',
+                      width: '120px',
+                      textAlign: 'center',
+                    }}
+                  />
+                  <span style={{ fontSize: '11px', color: 'var(--text-dark)' }}>
+                    (1.0 = no change, 1.1 = +10%, 0.9 = -10%)
+                  </span>
+                </div>
+              </div>
+
+              {/* Ratio lock enable/disable checkbox */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                <input
+                  id="ratio-lock-chk"
+                  type="checkbox"
+                  checked={enableMinRatioLock}
+                  onChange={(e) => setEnableMinRatioLock(e.target.checked)}
+                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <label htmlFor="ratio-lock-chk" style={{ fontSize: '12px', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 'bold' }}>
+                  {t('econ_bulk_min_ratio_label')}
+                </label>
+              </div>
+
+              {/* Min to Max price percentage slider */}
+              {enableMinRatioLock && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '26px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'Соотношение мин. цены:' : 'Min Price ratio:'}</span>
+                    <span style={{ color: 'var(--text-glow)', fontWeight: 'bold' }}>{Math.round(bulkMinRatio * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={bulkMinRatio}
+                    onChange={(e) => setBulkMinRatio(parseFloat(e.target.value))}
+                    style={{
+                      width: '100%',
+                      accentColor: 'var(--text-primary)',
+                      cursor: 'pointer',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '16px 20px',
+              background: 'var(--bg-tertiary)',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex', justifyContent: 'flex-end', gap: '12px',
+            }}>
+              <button 
+                className="btn" 
+                onClick={() => setShowBulkPricingModal(false)}
+                style={{ padding: '8px 16px' }}
+              >
+                {t('confirm_cancel') || "Cancel"}
+              </button>
+              <button 
+                className="btn btn-warning" 
+                onClick={handleApplyBulkPricing}
+                style={{ padding: '8px 20px', fontWeight: 'bold' }}
+              >
+                {lang === 'ru' ? 'Применить' : 'Apply'}
               </button>
             </div>
           </div>

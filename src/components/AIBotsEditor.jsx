@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 
 const FACTIONS = ['West', 'East', 'Guards', 'Civilian', 'Passive', 'Aggressive', 'Shamans', 'Survivors'];
 const BEHAVIOURS = ['ROAMING_LOCAL', 'HALT', 'ROAMING_SELF', 'PATROL_ROAMING', 'LOOP_OR_ALTERNATE', 'ROAMING_UNLIMITED'];
@@ -18,24 +18,34 @@ export default function AIBotsEditor({
   onDeleteFile, 
   onSaveFile,
   xmlItems = [],
-  setActiveTab: setGlobalActiveTab,
-  lang = 'ru'
+  setActiveTab: setGlobalActiveTab
 }) {
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, v);
-    });
-    return text;
-  };
+  const { t, lang } = useTranslation();
 
   const [activeTab, setActiveTab] = useState('patrols'); // 'patrols', 'loadouts', 'roaming', 'loot_drops'
-  const xmlItemsSet = React.useMemo(() => new Set((xmlItems || []).map(i => i.toLowerCase())), [xmlItems]);
+  const xmlItemsSet = React.useMemo(() => {
+    const arr = Array.isArray(xmlItems) ? xmlItems : [];
+    return new Set(arr.filter(i => typeof i === 'string').map(i => i.toLowerCase()));
+  }, [xmlItems]);
   const isItemMissing = (className) => {
-    if (!className || !xmlItems || xmlItems.length === 0) return false;
+    if (typeof className !== 'string' || !className) return false;
+    const arr = Array.isArray(xmlItems) ? xmlItems : [];
+    if (arr.length === 0) return false;
     return !xmlItemsSet.has(className.toLowerCase());
   };
   const [selectedPatrolIdx, setSelectedPatrolIdx] = useState(0);
+  const [selectedPatrols, setSelectedPatrols] = useState([]);
+  const [bulkFields, setBulkFields] = useState({
+    Faction: { enabled: false, value: 'West' },
+    Behaviour: { enabled: false, value: 'LOOP_OR_ALTERNATE' },
+    Speed: { enabled: false, value: 'JOG' },
+    UnderThreatSpeed: { enabled: false, value: 'SPRINT' },
+    DefaultStance: { enabled: false, value: 'CROUCHED' },
+    Loadout: { enabled: false, value: 'SurvivorLoadout' },
+    LootDropOnDeath: { enabled: false, value: '' },
+    NumberOfAI: { enabled: false, value: 1 },
+    NumberOfAIMax: { enabled: false, value: 2 }
+  });
   const [activeSubTab, setActiveSubTab] = useState('patrols'); // 'patrols', 'general'
   
   // Loadout editor states
@@ -51,6 +61,11 @@ export default function AIBotsEditor({
   // Loot drops editor states
   const [selectedLootDropPath, setSelectedLootDropPath] = useState(null);
   const [newDropItemInput, setNewDropItemInput] = useState('');
+
+  // Global AI list states
+  const [newAdminInput, setNewAdminInput] = useState('');
+  const [newFactionInput, setNewFactionInput] = useState('');
+  const [newClimbInput, setNewClimbInput] = useState('');
 
   const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
   const patrolFile = configs[patrolConfigPath];
@@ -94,11 +109,13 @@ export default function AIBotsEditor({
       }
     });
 
-    xmlItems.forEach(item => items.add(item));
+    (Array.isArray(xmlItems) ? xmlItems : []).forEach(item => {
+      if (typeof item === 'string') items.add(item);
+    });
     setLoadoutsList(loadouts.sort());
     setLootDropsList(lootDrops.sort());
     setItemSuggestions(Array.from(items).sort());
-  }, [configs]);
+  }, [configs, xmlItems]);
 
   // Set default loadout selection on load
   const loadoutPaths = Object.keys(configs).filter(p => 
@@ -123,6 +140,14 @@ export default function AIBotsEditor({
       setSelectedLootDropPath(lootDropPaths[0]);
     }
   }, [lootDropPaths, selectedLootDropPath]);
+
+  const patrolsCount = (patrolFile && patrolFile.success && patrolFile.content && Array.isArray(patrolFile.content.Patrols))
+    ? patrolFile.content.Patrols.length 
+    : 0;
+
+  useEffect(() => {
+    setSelectedPatrols([]);
+  }, [patrolsCount]);
 
   // -------------------------------------------------------------
   // PATROLS ACTIONS & RENDERING
@@ -250,6 +275,61 @@ export default function AIBotsEditor({
       onChangeField(patrolConfigPath, ['Patrols'], newList);
       setSelectedPatrolIdx(Math.max(0, selectedPatrolIdx - 1));
     }
+  };
+
+  const togglePatrolSelection = (idx, e) => {
+    e.stopPropagation();
+    setSelectedPatrols(prev => {
+      if (prev.includes(idx)) {
+        return prev.filter(i => i !== idx);
+      } else {
+        return [...prev, idx];
+      }
+    });
+  };
+
+  const handleSelectAllPatrols = (checked) => {
+    if (checked) {
+      setSelectedPatrols(patrols.map((_, idx) => idx));
+    } else {
+      setSelectedPatrols([]);
+    }
+  };
+
+  const handleToggleBulkField = (field) => {
+    setBulkFields(prev => ({
+      ...prev,
+      [field]: { ...prev[field], enabled: !prev[field].enabled }
+    }));
+  };
+
+  const handleUpdateBulkFieldValue = (field, value) => {
+    setBulkFields(prev => ({
+      ...prev,
+      [field]: { ...prev[field], value }
+    }));
+  };
+
+  const handleApplyBulkChanges = () => {
+    const fieldsToApply = {};
+    Object.entries(bulkFields).forEach(([field, data]) => {
+      if (data.enabled) {
+        fieldsToApply[field] = data.value;
+      }
+    });
+
+    if (Object.keys(fieldsToApply).length === 0) {
+      alert('Please select at least one property to update.');
+      return;
+    }
+
+    selectedPatrols.forEach(idx => {
+      Object.entries(fieldsToApply).forEach(([key, value]) => {
+        onChangeField(patrolConfigPath, ['Patrols', idx, key], value);
+      });
+    });
+
+    alert(t('ai_bulk_applied_success', { count: selectedPatrols.length }));
   };
 
   // -------------------------------------------------------------
@@ -503,6 +583,51 @@ export default function AIBotsEditor({
     }
   };
 
+  const handleAddAdmin = (steamId) => {
+    if (!aiSettingsFile?.success || !steamId.trim()) return;
+    const current = Array.isArray(aiSettingsFile.content.Admins) ? aiSettingsFile.content.Admins : [];
+    if (current.includes(steamId.trim())) return;
+    onChangeField(aiSettingsPath, ['Admins'], [...current, steamId.trim()]);
+    setNewAdminInput('');
+  };
+
+  const handleRemoveAdmin = (idx) => {
+    if (!aiSettingsFile?.success) return;
+    const current = [...(aiSettingsFile.content.Admins || [])];
+    current.splice(idx, 1);
+    onChangeField(aiSettingsPath, ['Admins'], current);
+  };
+
+  const handleAddFaction = (faction) => {
+    if (!aiSettingsFile?.success || !faction.trim()) return;
+    const current = Array.isArray(aiSettingsFile.content.PlayerFactions) ? aiSettingsFile.content.PlayerFactions : [];
+    if (current.includes(faction.trim())) return;
+    onChangeField(aiSettingsPath, ['PlayerFactions'], [...current, faction.trim()]);
+    setNewFactionInput('');
+  };
+
+  const handleRemoveFaction = (idx) => {
+    if (!aiSettingsFile?.success) return;
+    const current = [...(aiSettingsFile.content.PlayerFactions || [])];
+    current.splice(idx, 1);
+    onChangeField(aiSettingsPath, ['PlayerFactions'], current);
+  };
+
+  const handleAddPreventClimb = (className) => {
+    if (!aiSettingsFile?.success || !className.trim()) return;
+    const current = Array.isArray(aiSettingsFile.content.PreventClimb) ? aiSettingsFile.content.PreventClimb : [];
+    if (current.includes(className.trim())) return;
+    onChangeField(aiSettingsPath, ['PreventClimb'], [...current, className.trim()]);
+    setNewClimbInput('');
+  };
+
+  const handleRemovePreventClimb = (idx) => {
+    if (!aiSettingsFile?.success) return;
+    const current = [...(aiSettingsFile.content.PreventClimb || [])];
+    current.splice(idx, 1);
+    onChangeField(aiSettingsPath, ['PreventClimb'], current);
+  };
+
   const handleCloneLootDrop = () => {
     if (!selectedLootDropPath) return;
     const name = prompt(t('ai_prompt_clone_loot'));
@@ -657,9 +782,31 @@ export default function AIBotsEditor({
 
               {activeSubTab === 'patrols' ? (
                 <>
+                  <div style={{ 
+                    padding: '8px 16px', 
+                    background: 'var(--bg-primary)', 
+                    borderBottom: '1px solid var(--border-color)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px', 
+                    fontSize: '11px',
+                    color: 'var(--text-secondary)'
+                  }}>
+                    <input 
+                      type="checkbox" 
+                      id="bulk-select-all"
+                      checked={patrols.length > 0 && selectedPatrols.length === patrols.length}
+                      onChange={e => handleSelectAllPatrols(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <label htmlFor="bulk-select-all" style={{ cursor: 'pointer', flex: 1, fontWeight: 'bold' }}>
+                      {t('ai_select_all_patrols', { count: patrols.length }).toUpperCase()}
+                    </label>
+                  </div>
                   <div style={{ flex: 1, overflowY: 'auto' }}>
                     {patrols.map((patrol, idx) => {
                       const isSelected = idx === selectedPatrolIdx;
+                      const isChecked = selectedPatrols.includes(idx);
                       const origPatrols = patrolFile.originalContent?.Patrols || [];
                       const isPatrolDirty = JSON.stringify(patrol) !== JSON.stringify(origPatrols[idx]);
                       const pName = patrol.Name || `Patrol #${idx + 1} (${patrol.Faction})`;
@@ -667,28 +814,37 @@ export default function AIBotsEditor({
                       return (
                         <div
                           key={idx}
-                          onClick={() => setSelectedPatrolIdx(idx)}
+                          onClick={() => {
+                            setSelectedPatrolIdx(idx);
+                            setSelectedPatrols([idx]);
+                          }}
                           style={{
                             padding: '10px 16px',
                             cursor: 'pointer',
                             fontSize: '12px',
-                            background: isSelected ? 'rgba(149, 192, 149, 0.1)' : 'transparent',
+                            background: isSelected ? 'rgba(149, 192, 149, 0.1)' : (isChecked ? 'rgba(149, 192, 149, 0.05)' : 'transparent'),
                             borderLeft: isSelected ? '2px solid var(--text-primary)' : '2px solid transparent',
-                            color: isSelected ? 'var(--text-glow)' : 'var(--text-primary)',
+                            color: isSelected || isChecked ? 'var(--text-glow)' : 'var(--text-primary)',
                             borderBottom: '1px solid rgba(30, 48, 30, 0.1)',
                             display: 'flex',
-                            justifyContent: 'space-between',
+                            gap: '10px',
                             alignItems: 'center',
                             transition: 'all 0.1s'
                           }}
                           onMouseOver={e => {
-                            if (!isSelected) e.currentTarget.style.background = 'rgba(149, 192, 149, 0.03)';
+                            if (!isSelected && !isChecked) e.currentTarget.style.background = 'rgba(149, 192, 149, 0.03)';
                           }}
                           onMouseOut={e => {
-                            if (!isSelected) e.currentTarget.style.background = 'transparent';
+                            if (!isSelected && !isChecked) e.currentTarget.style.background = 'transparent';
                           }}
                         >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
+                          <input 
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => togglePatrolSelection(idx, e)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
                             <span style={{ fontFamily: 'var(--font-heading)', fontWeight: '700', textTransform: 'uppercase', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                               {pName}
                             </span>
@@ -782,24 +938,59 @@ export default function AIBotsEditor({
                         <h4>{t('ai_global_combat')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: '12px' }}>
                           <div className="form-group">
-                            <label>{t('ai_label_accuracy_min_ph')}</label>
-                            <input type="number" step="any" value={patrolContent.AccuracyMin ?? -1.0} onChange={e => handleUpdateGeneralVal('AccuracyMin', Number(e.target.value))} />
+                            <label>{t('ai_label_accuracy_min_ph')}: {patrolContent.AccuracyMin != null && patrolContent.AccuracyMin > -1 ? Number(patrolContent.AccuracyMin).toFixed(2) : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1.0"
+                              max="1.0"
+                              step="0.05"
+                              value={patrolContent.AccuracyMin ?? -1.0} 
+                              onChange={e => handleUpdateGeneralVal('AccuracyMin', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_accuracy_max_ph')}</label>
-                            <input type="number" step="any" value={patrolContent.AccuracyMax ?? -1.0} onChange={e => handleUpdateGeneralVal('AccuracyMax', Number(e.target.value))} />
+                            <label>{t('ai_label_accuracy_max_ph')}: {patrolContent.AccuracyMax != null && patrolContent.AccuracyMax > -1 ? Number(patrolContent.AccuracyMax).toFixed(2) : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1.0"
+                              max="1.0"
+                              step="0.05"
+                              value={patrolContent.AccuracyMax ?? -1.0} 
+                              onChange={e => handleUpdateGeneralVal('AccuracyMax', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_threat_distance')}</label>
-                            <input type="number" value={patrolContent.ThreatDistanceLimit ?? -1} onChange={e => handleUpdateGeneralVal('ThreatDistanceLimit', Number(e.target.value))} />
+                            <label>{t('ai_label_threat_distance')}: {patrolContent.ThreatDistanceLimit != null && patrolContent.ThreatDistanceLimit > -1 ? patrolContent.ThreatDistanceLimit + 'm' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1"
+                              max="2000"
+                              step="50"
+                              value={patrolContent.ThreatDistanceLimit ?? -1} 
+                              onChange={e => handleUpdateGeneralVal('ThreatDistanceLimit', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_noise_limit')}</label>
-                            <input type="number" value={patrolContent.NoiseInvestigationDistanceLimit ?? -1} onChange={e => handleUpdateGeneralVal('NoiseInvestigationDistanceLimit', Number(e.target.value))} />
+                            <label>{t('ai_label_noise_limit')}: {patrolContent.NoiseInvestigationDistanceLimit != null && patrolContent.NoiseInvestigationDistanceLimit > -1 ? patrolContent.NoiseInvestigationDistanceLimit + 'm' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1"
+                              max="1500"
+                              step="50"
+                              value={patrolContent.NoiseInvestigationDistanceLimit ?? -1} 
+                              onChange={e => handleUpdateGeneralVal('NoiseInvestigationDistanceLimit', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_flanking_distance')}</label>
-                            <input type="number" value={patrolContent.MaxFlankingDistance ?? -1} onChange={e => handleUpdateGeneralVal('MaxFlankingDistance', Number(e.target.value))} />
+                            <label>{t('ai_label_flanking_distance')}: {patrolContent.MaxFlankingDistance != null && patrolContent.MaxFlankingDistance > -1 ? patrolContent.MaxFlankingDistance + 'm' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1"
+                              max="1000"
+                              step="20"
+                              value={patrolContent.MaxFlankingDistance ?? -1} 
+                              onChange={e => handleUpdateGeneralVal('MaxFlankingDistance', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
                             <label>{t('ai_label_enable_flanking_combat')}</label>
@@ -810,16 +1001,37 @@ export default function AIBotsEditor({
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_damage_multiplier')}</label>
-                            <input type="number" step="any" value={patrolContent.DamageMultiplier ?? -1.0} onChange={e => handleUpdateGeneralVal('DamageMultiplier', Number(e.target.value))} />
+                            <label>{t('ai_label_damage_multiplier')}: {patrolContent.DamageMultiplier != null && patrolContent.DamageMultiplier > -1 ? Number(patrolContent.DamageMultiplier).toFixed(2) + 'x' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1.0"
+                              max="5.0"
+                              step="0.05"
+                              value={patrolContent.DamageMultiplier ?? -1.0} 
+                              onChange={e => handleUpdateGeneralVal('DamageMultiplier', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_damage_received')}</label>
-                            <input type="number" step="any" value={patrolContent.DamageReceivedMultiplier ?? -1.0} onChange={e => handleUpdateGeneralVal('DamageReceivedMultiplier', Number(e.target.value))} />
+                            <label>{t('ai_label_damage_received')}: {patrolContent.DamageReceivedMultiplier != null && patrolContent.DamageReceivedMultiplier > -1 ? Number(patrolContent.DamageReceivedMultiplier).toFixed(2) + 'x' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1.0"
+                              max="5.0"
+                              step="0.05"
+                              value={patrolContent.DamageReceivedMultiplier ?? -1.0} 
+                              onChange={e => handleUpdateGeneralVal('DamageReceivedMultiplier', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_shoryuken_chance')}</label>
-                            <input type="number" step="any" value={patrolContent.ShoryukenChance ?? 0.0} onChange={e => handleUpdateGeneralVal('ShoryukenChance', Number(e.target.value))} />
+                            <label>{t('ai_label_shoryuken_chance')}: {patrolContent.ShoryukenChance != null ? Math.round(Number(patrolContent.ShoryukenChance) * 100) + '%' : '0%'}</label>
+                            <input 
+                              type="range" 
+                              min="0.0"
+                              max="1.0"
+                              step="0.01"
+                              value={patrolContent.ShoryukenChance ?? 0.0} 
+                              onChange={e => handleUpdateGeneralVal('ShoryukenChance', Number(e.target.value))} 
+                            />
                           </div>
                         </div>
                       </div>
@@ -839,9 +1051,114 @@ export default function AIBotsEditor({
                           
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                             
-                            {/* Vaulting / Climb switches */}
+                            {/* Card 1: Global Combat & Accuracy Defaults */}
                             <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_movement_obstacles')}</span>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_combat_defaults')}</span>
+                              
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_accuracy_min')}: {aiSettingsFile.content.AccuracyMin != null ? Number(aiSettingsFile.content.AccuracyMin).toFixed(2) : '0.35'}</label>
+                                  <input 
+                                    type="range" 
+                                    min="0.0"
+                                    max="1.0"
+                                    step="0.01"
+                                    value={aiSettingsFile.content.AccuracyMin ?? 0.35} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['AccuracyMin'], Number(e.target.value))}
+                                  />
+                                </div>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_accuracy_max')}: {aiSettingsFile.content.AccuracyMax != null ? Number(aiSettingsFile.content.AccuracyMax).toFixed(2) : '0.95'}</label>
+                                  <input 
+                                    type="range" 
+                                    min="0.0"
+                                    max="1.0"
+                                    step="0.01"
+                                    value={aiSettingsFile.content.AccuracyMax ?? 0.95} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['AccuracyMax'], Number(e.target.value))}
+                                  />
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_threat_distance_limit')}: {aiSettingsFile.content.ThreatDistanceLimit ?? 1000}m</label>
+                                  <input 
+                                    type="range" 
+                                    min="50"
+                                    max="2000"
+                                    step="50"
+                                    value={aiSettingsFile.content.ThreatDistanceLimit ?? 1000} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['ThreatDistanceLimit'], Number(e.target.value))}
+                                  />
+                                </div>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_noise_investigation_distance_limit')}: {aiSettingsFile.content.NoiseInvestigationDistanceLimit ?? 500}m</label>
+                                  <input 
+                                    type="range" 
+                                    min="0"
+                                    max="1500"
+                                    step="50"
+                                    value={aiSettingsFile.content.NoiseInvestigationDistanceLimit ?? 500} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['NoiseInvestigationDistanceLimit'], Number(e.target.value))}
+                                  />
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_max_flanking_distance')}: {aiSettingsFile.content.MaxFlankingDistance ?? 200}m</label>
+                                  <input 
+                                    type="range" 
+                                    min="0"
+                                    max="1000"
+                                    step="20"
+                                    value={aiSettingsFile.content.MaxFlankingDistance ?? 200} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['MaxFlankingDistance'], Number(e.target.value))}
+                                  />
+                                </div>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_enable_flanking_outside_combat')}</label>
+                                  <select 
+                                    value={aiSettingsFile.content.EnableFlankingOutsideCombat ?? 0} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['EnableFlankingOutsideCombat'], Number(e.target.value))}
+                                    style={{ padding: '3px 8px', fontSize: '11px' }}
+                                  >
+                                    <option value={1}>{t('ai_opt_enabled')}</option>
+                                    <option value={0}>{t('ai_opt_disabled')}</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_damage_multiplier_global')}: {aiSettingsFile.content.DamageMultiplier != null ? Number(aiSettingsFile.content.DamageMultiplier).toFixed(2) : '1.00'}x</label>
+                                  <input 
+                                    type="range" 
+                                    min="0.1" 
+                                    max="5.0"
+                                    step="0.05"
+                                    value={aiSettingsFile.content.DamageMultiplier ?? 1.0} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['DamageMultiplier'], Number(e.target.value))}
+                                  />
+                                </div>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_damage_received_multiplier_global')}: {aiSettingsFile.content.DamageReceivedMultiplier != null ? Number(aiSettingsFile.content.DamageReceivedMultiplier).toFixed(2) : '1.00'}x</label>
+                                  <input 
+                                    type="range" 
+                                    min="0.1" 
+                                    max="5.0"
+                                    step="0.05"
+                                    value={aiSettingsFile.content.DamageReceivedMultiplier ?? 1.0} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['DamageReceivedMultiplier'], Number(e.target.value))}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Card 2: Vaulting / Climb / Melee specials */}
+                            <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_movement_obstacles')} & {t('ai_melee_specials')}</span>
                               
                               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', cursor: 'pointer', marginTop: '6px' }}>
                                 <span>{t('ai_label_vaulting')}</span>
@@ -855,8 +1172,8 @@ export default function AIBotsEditor({
                                 </select>
                               </label>
 
-                              <div className="form-group" style={{ marginTop: '8px' }}>
-                                <label style={{ fontSize: '9px' }}>{t('ai_label_formation_scale', { scale: aiSettingsFile.content.FormationScale ?? 1.0 })}</label>
+                              <div className="form-group">
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_formation_scale', { scale: aiSettingsFile.content.FormationScale != null ? Number(aiSettingsFile.content.FormationScale).toFixed(1) : '1.0' })}</label>
                                 <input 
                                   type="range" 
                                   min="0.1" 
@@ -866,12 +1183,7 @@ export default function AIBotsEditor({
                                   onChange={e => onChangeField(aiSettingsPath, ['FormationScale'], Number(e.target.value))}
                                 />
                               </div>
-                            </div>
 
-                            {/* Combat melee special options */}
-                            <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_melee_specials')}</span>
-                              
                               <div className="form-group">
                                 <label style={{ fontSize: '9px' }}>{t('ai_label_shoryuken_percent', { chance: Math.round((aiSettingsFile.content.ShoryukenChance ?? 0.01) * 100) })}</label>
                                 <input 
@@ -885,17 +1197,19 @@ export default function AIBotsEditor({
                               </div>
 
                               <div className="form-group">
-                                <label style={{ fontSize: '9px' }}>{t('ai_label_shoryuken_damage_mult')}</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_shoryuken_damage_mult')}: {aiSettingsFile.content.ShoryukenDamageMultiplier != null ? Number(aiSettingsFile.content.ShoryukenDamageMultiplier).toFixed(1) : '3.0'}x</label>
                                 <input 
-                                  type="number" 
-                                  step="any"
+                                  type="range" 
+                                  min="0.1"
+                                  max="10.0"
+                                  step="0.1"
                                   value={aiSettingsFile.content.ShoryukenDamageMultiplier ?? 3.0}
                                   onChange={e => onChangeField(aiSettingsPath, ['ShoryukenDamageMultiplier'], Number(e.target.value))}
                                 />
                               </div>
                             </div>
 
-                            {/* Recruit Friendly options */}
+                            {/* Card 3: Recruit Friendly options */}
                             <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_recruitment_mechanics')}</span>
                               
@@ -933,25 +1247,261 @@ export default function AIBotsEditor({
                               </div>
                             </div>
 
-                            {/* Threat and Manners */}
+                            {/* Card 4: Threat, Behavior & Sniping */}
                             <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_threat_timeouts')}</span>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_threat_timeouts')} & Behavior</span>
+                              
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_combat_timeout')}</label>
+                                  <input 
+                                    type="number" 
+                                    value={aiSettingsFile.content.AggressionTimeout ?? 120.0} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['AggressionTimeout'], Number(e.target.value))}
+                                  />
+                                </div>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_guards_timeout')}</label>
+                                  <input 
+                                    type="number" 
+                                    value={aiSettingsFile.content.GuardAggressionTimeout ?? 150.0} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['GuardAggressionTimeout'], Number(e.target.value))}
+                                  />
+                                </div>
+                              </div>
+
+                              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', cursor: 'pointer', marginTop: '4px' }}>
+                                <span>{t('ai_label_manners')}</span>
+                                <select 
+                                  value={aiSettingsFile.content.Manners ?? 0} 
+                                  onChange={e => onChangeField(aiSettingsPath, ['Manners'], Number(e.target.value))}
+                                  style={{ padding: '3px 8px', fontSize: '11px', width: '120px' }}
+                                >
+                                  <option value={0}>{t('ai_opt_manners_neutral')}</option>
+                                  <option value={1}>{t('ai_opt_manners_aggressive')}</option>
+                                </select>
+                              </label>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_meme_level')}: {aiSettingsFile.content.MemeLevel ?? 1}</label>
+                                  <input 
+                                    type="range" 
+                                    min="0"
+                                    max="3"
+                                    step="1"
+                                    value={aiSettingsFile.content.MemeLevel ?? 1} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['MemeLevel'], Number(e.target.value))}
+                                  />
+                                </div>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '9px' }}>{t('ai_label_sniper_prone_distance')}: {aiSettingsFile.content.SniperProneDistanceThreshold ?? 0}m</label>
+                                  <input 
+                                    type="range" 
+                                    min="0"
+                                    max="1000"
+                                    step="10"
+                                    value={aiSettingsFile.content.SniperProneDistanceThreshold ?? 0} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['SniperProneDistanceThreshold'], Number(e.target.value))}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Card 5: Networking & Compatibility */}
+                            <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_networking_compat')}</span>
+                              
+                              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', cursor: 'pointer', marginTop: '4px' }}>
+                                <span>{t('ai_label_override_client_weapon_firing')}</span>
+                                <select 
+                                  value={aiSettingsFile.content.OverrideClientWeaponFiring ?? 1} 
+                                  onChange={e => onChangeField(aiSettingsPath, ['OverrideClientWeaponFiring'], Number(e.target.value))}
+                                  style={{ padding: '3px 8px', fontSize: '11px', width: '120px' }}
+                                >
+                                  <option value={1}>{t('ai_opt_enabled')}</option>
+                                  <option value={0}>{t('ai_opt_disabled')}</option>
+                                </select>
+                              </label>
+
+                              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', cursor: 'pointer', marginTop: '4px' }}>
+                                <span>{t('ai_label_recreate_weapon_network_representation')}</span>
+                                <select 
+                                  value={aiSettingsFile.content.RecreateWeaponNetworkRepresentation ?? 1} 
+                                  onChange={e => onChangeField(aiSettingsPath, ['RecreateWeaponNetworkRepresentation'], Number(e.target.value))}
+                                  style={{ padding: '3px 8px', fontSize: '11px', width: '120px' }}
+                                >
+                                  <option value={1}>{t('ai_opt_enabled')}</option>
+                                  <option value={0}>{t('ai_opt_disabled')}</option>
+                                </select>
+                              </label>
+                            </div>
+
+                            {/* Card 6: Logging & Vehicle interactions */}
+                            <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_logging_zombies')}</span>
+                              
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '10px' }}>
+                                  <span>{t('ai_label_log_ai_hit_by')}</span>
+                                  <select 
+                                    value={aiSettingsFile.content.LogAIHitBy ?? 1} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['LogAIHitBy'], Number(e.target.value))}
+                                    style={{ padding: '3px', fontSize: '10px' }}
+                                  >
+                                    <option value={1}>{t('ai_opt_enabled')}</option>
+                                    <option value={0}>{t('ai_opt_disabled')}</option>
+                                  </select>
+                                </label>
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '10px' }}>
+                                  <span>{t('ai_label_log_ai_killed')}</span>
+                                  <select 
+                                    value={aiSettingsFile.content.LogAIKilled ?? 1} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['LogAIKilled'], Number(e.target.value))}
+                                    style={{ padding: '3px', fontSize: '10px' }}
+                                  >
+                                    <option value={1}>{t('ai_opt_enabled')}</option>
+                                    <option value={0}>{t('ai_opt_disabled')}</option>
+                                  </select>
+                                </label>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '4px' }}>
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '10px' }}>
+                                  <span>{t('ai_label_zombie_vehicle_handler')}</span>
+                                  <select 
+                                    value={aiSettingsFile.content.EnableZombieVehicleAttackHandler ?? 0} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['EnableZombieVehicleAttackHandler'], Number(e.target.value))}
+                                    style={{ padding: '3px', fontSize: '10px' }}
+                                  >
+                                    <option value={1}>{t('ai_opt_enabled')}</option>
+                                    <option value={0}>{t('ai_opt_disabled')}</option>
+                                  </select>
+                                </label>
+                                <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '10px' }}>
+                                  <span>{t('ai_label_zombie_vehicle_physics')}</span>
+                                  <select 
+                                    value={aiSettingsFile.content.EnableZombieVehicleAttackPhysics ?? 0} 
+                                    onChange={e => onChangeField(aiSettingsPath, ['EnableZombieVehicleAttackPhysics'], Number(e.target.value))}
+                                    style={{ padding: '3px', fontSize: '10px' }}
+                                  >
+                                    <option value={1}>{t('ai_opt_enabled')}</option>
+                                    <option value={0}>{t('ai_opt_disabled')}</option>
+                                  </select>
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Card 7: Night Visibility Range */}
+                            <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_night_visibility')}</span>
                               
                               <div className="form-group">
-                                <label style={{ fontSize: '9px' }}>{t('ai_label_combat_timeout')}</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_night_visibility_0')}</label>
                                 <input 
                                   type="number" 
-                                  value={aiSettingsFile.content.AggressionTimeout ?? 120.0} 
-                                  onChange={e => onChangeField(aiSettingsPath, ['AggressionTimeout'], Number(e.target.value))}
+                                  value={aiSettingsFile.content.LightingConfigMinNightVisibilityMeters?.["0"] ?? 100.0} 
+                                  onChange={e => onChangeField(aiSettingsPath, ['LightingConfigMinNightVisibilityMeters', '0'], Number(e.target.value))}
                                 />
                               </div>
+
                               <div className="form-group">
-                                <label style={{ fontSize: '9px' }}>{t('ai_label_guards_timeout')}</label>
+                                <label style={{ fontSize: '9px' }}>{t('ai_label_night_visibility_1')}</label>
                                 <input 
                                   type="number" 
-                                  value={aiSettingsFile.content.GuardAggressionTimeout ?? 150.0} 
-                                  onChange={e => onChangeField(aiSettingsPath, ['GuardAggressionTimeout'], Number(e.target.value))}
+                                  value={aiSettingsFile.content.LightingConfigMinNightVisibilityMeters?.["1"] ?? 10.0} 
+                                  onChange={e => onChangeField(aiSettingsPath, ['LightingConfigMinNightVisibilityMeters', '1'], Number(e.target.value))}
                                 />
+                              </div>
+                            </div>
+
+                            {/* Card 8: Admin Steam64 IDs */}
+                            <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_label_admins')}</span>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'var(--bg-secondary)', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '2px', maxHeight: '120px', overflowY: 'auto' }}>
+                                {(!aiSettingsFile.content.Admins || aiSettingsFile.content.Admins.length === 0) ? (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-dark)', fontStyle: 'italic', padding: '4px' }}>No Admins</span>
+                                ) : (
+                                  aiSettingsFile.content.Admins.map((adm, idx) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                      <span style={{ fontFamily: 'var(--font-mono)' }}>{adm}</span>
+                                      <button className="btn btn-danger" onClick={() => handleRemoveAdmin(idx)} style={{ padding: '0px 4px', fontSize: '10px', height: '18px', lineHeight: '18px' }}>×</button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                <input 
+                                  type="text" 
+                                  value={newAdminInput} 
+                                  onChange={e => setNewAdminInput(e.target.value)} 
+                                  placeholder={t('ai_ph_steam_id')}
+                                  style={{ padding: '4px 8px', fontSize: '11px', flex: 1 }}
+                                />
+                                <button className="btn btn-accent" onClick={() => handleAddAdmin(newAdminInput)} style={{ padding: '4px 8px', fontSize: '11px' }}>
+                                  {t('ai_btn_add')}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Card 9: Player Factions */}
+                            <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_label_player_factions')}</span>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'var(--bg-secondary)', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '2px', maxHeight: '120px', overflowY: 'auto' }}>
+                                {(!aiSettingsFile.content.PlayerFactions || aiSettingsFile.content.PlayerFactions.length === 0) ? (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-dark)', fontStyle: 'italic', padding: '4px' }}>No Player Factions</span>
+                                ) : (
+                                  aiSettingsFile.content.PlayerFactions.map((fac, idx) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                      <span style={{ fontFamily: 'var(--font-mono)' }}>{fac}</span>
+                                      <button className="btn btn-danger" onClick={() => handleRemoveFaction(idx)} style={{ padding: '0px 4px', fontSize: '10px', height: '18px', lineHeight: '18px' }}>×</button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                <input 
+                                  type="text" 
+                                  value={newFactionInput} 
+                                  onChange={e => setNewFactionInput(e.target.value)} 
+                                  placeholder={t('ai_ph_faction')}
+                                  style={{ padding: '4px 8px', fontSize: '11px', flex: 1 }}
+                                />
+                                <button className="btn btn-accent" onClick={() => handleAddFaction(newFactionInput)} style={{ padding: '4px 8px', fontSize: '11px' }}>
+                                  {t('ai_btn_add')}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Card 10: Prevent Climb Buildings */}
+                            <div style={{ background: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('ai_label_prevent_climb')}</span>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'var(--bg-secondary)', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '2px', maxHeight: '120px', overflowY: 'auto' }}>
+                                {(!aiSettingsFile.content.PreventClimb || aiSettingsFile.content.PreventClimb.length === 0) ? (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-dark)', fontStyle: 'italic', padding: '4px' }}>No Restricting Classnames</span>
+                                ) : (
+                                  aiSettingsFile.content.PreventClimb.map((clb, idx) => (
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                      <span style={{ fontFamily: 'var(--font-mono)' }}>{clb}</span>
+                                      <button className="btn btn-danger" onClick={() => handleRemovePreventClimb(idx)} style={{ padding: '0px 4px', fontSize: '10px', height: '18px', lineHeight: '18px' }}>×</button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                <input 
+                                  type="text" 
+                                  value={newClimbInput} 
+                                  onChange={e => setNewClimbInput(e.target.value)} 
+                                  placeholder={t('ai_ph_classname')}
+                                  style={{ padding: '4px 8px', fontSize: '11px', flex: 1 }}
+                                />
+                                <button className="btn btn-accent" onClick={() => handleAddPreventClimb(newClimbInput)} style={{ padding: '4px 8px', fontSize: '11px' }}>
+                                  {t('ai_btn_add')}
+                                </button>
                               </div>
                             </div>
 
@@ -959,6 +1509,223 @@ export default function AIBotsEditor({
                         </div>
                       )}
                     </>
+                  ) : selectedPatrols.length > 1 ? (
+                    /* Bulk Edit Mode */
+                    <div className="card-hud" style={{ borderLeft: '3px solid var(--text-glow)' }}>
+                      <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', marginBottom: '16px' }}>
+                        <h4 style={{ margin: 0, textTransform: 'uppercase', color: 'var(--text-glow)' }}>
+                          {t('ai_bulk_edit_title', { count: selectedPatrols.length })}
+                        </h4>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          {t('ai_bulk_edit_desc')}
+                        </p>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+                        
+                        {/* Faction */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.Faction.enabled} 
+                              onChange={() => handleToggleBulkField('Faction')} 
+                            />
+                            <span>{t('ai_label_faction')}</span>
+                          </label>
+                          <select 
+                            value={bulkFields.Faction.value} 
+                            disabled={!bulkFields.Faction.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('Faction', e.target.value)}
+                            style={{ opacity: bulkFields.Faction.enabled ? 1 : 0.5 }}
+                          >
+                            {FACTIONS.map(f => (
+                              <option key={f} value={f}>{f}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Behavior Model */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.Behaviour.enabled} 
+                              onChange={() => handleToggleBulkField('Behaviour')} 
+                            />
+                            <span>{t('ai_label_behavior_model')}</span>
+                          </label>
+                          <select 
+                            value={bulkFields.Behaviour.value} 
+                            disabled={!bulkFields.Behaviour.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('Behaviour', e.target.value)}
+                            style={{ opacity: bulkFields.Behaviour.enabled ? 1 : 0.5 }}
+                          >
+                            {BEHAVIOURS.map(b => (
+                              <option key={b} value={b}>{b}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Patrol Speed */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.Speed.enabled} 
+                              onChange={() => handleToggleBulkField('Speed')} 
+                            />
+                            <span>{t('ai_label_patrol_speed')}</span>
+                          </label>
+                          <select 
+                            value={bulkFields.Speed.value} 
+                            disabled={!bulkFields.Speed.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('Speed', e.target.value)}
+                            style={{ opacity: bulkFields.Speed.enabled ? 1 : 0.5 }}
+                          >
+                            {SPEEDS.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Under Threat Speed */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.UnderThreatSpeed.enabled} 
+                              onChange={() => handleToggleBulkField('UnderThreatSpeed')} 
+                            />
+                            <span>{t('ai_label_threat_speed')}</span>
+                          </label>
+                          <select 
+                            value={bulkFields.UnderThreatSpeed.value} 
+                            disabled={!bulkFields.UnderThreatSpeed.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('UnderThreatSpeed', e.target.value)}
+                            style={{ opacity: bulkFields.UnderThreatSpeed.enabled ? 1 : 0.5 }}
+                          >
+                            {SPEEDS.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Default Stance */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.DefaultStance.enabled} 
+                              onChange={() => handleToggleBulkField('DefaultStance')} 
+                            />
+                            <span>{t('ai_label_default_stance')}</span>
+                          </label>
+                          <select 
+                            value={bulkFields.DefaultStance.value} 
+                            disabled={!bulkFields.DefaultStance.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('DefaultStance', e.target.value)}
+                            style={{ opacity: bulkFields.DefaultStance.enabled ? 1 : 0.5 }}
+                          >
+                            {STANCES.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Loadout Profile */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.Loadout.enabled} 
+                              onChange={() => handleToggleBulkField('Loadout')} 
+                            />
+                            <span>{t('ai_label_loadout_profile')}</span>
+                          </label>
+                          <select 
+                            value={bulkFields.Loadout.value} 
+                            disabled={!bulkFields.Loadout.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('Loadout', e.target.value)}
+                            style={{ opacity: bulkFields.Loadout.enabled ? 1 : 0.5 }}
+                          >
+                            {loadoutsList.map(l => (
+                              <option key={l} value={l}>{l}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Loot Drop Profile */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.LootDropOnDeath.enabled} 
+                              onChange={() => handleToggleBulkField('LootDropOnDeath')} 
+                            />
+                            <span>{t('ai_label_loot_drop_profile')}</span>
+                          </label>
+                          <select 
+                            value={bulkFields.LootDropOnDeath.value} 
+                            disabled={!bulkFields.LootDropOnDeath.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('LootDropOnDeath', e.target.value)}
+                            style={{ opacity: bulkFields.LootDropOnDeath.enabled ? 1 : 0.5 }}
+                          >
+                            <option value="">{t('ai_opt_none_default')}</option>
+                            {lootDropsList.map(l => (
+                              <option key={l} value={l}>{l}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Unit Min */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.NumberOfAI.enabled} 
+                              onChange={() => handleToggleBulkField('NumberOfAI')} 
+                            />
+                            <span>{t('ai_label_unit_min')}</span>
+                          </label>
+                          <input 
+                            type="number"
+                            value={bulkFields.NumberOfAI.value} 
+                            disabled={!bulkFields.NumberOfAI.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('NumberOfAI', Number(e.target.value))}
+                            style={{ opacity: bulkFields.NumberOfAI.enabled ? 1 : 0.5 }}
+                          />
+                        </div>
+
+                        {/* Unit Max */}
+                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={bulkFields.NumberOfAIMax.enabled} 
+                              onChange={() => handleToggleBulkField('NumberOfAIMax')} 
+                            />
+                            <span>{t('ai_label_unit_max')}</span>
+                          </label>
+                          <input 
+                            type="number"
+                            value={bulkFields.NumberOfAIMax.value} 
+                            disabled={!bulkFields.NumberOfAIMax.enabled}
+                            onChange={e => handleUpdateBulkFieldValue('NumberOfAIMax', Number(e.target.value))}
+                            style={{ opacity: bulkFields.NumberOfAIMax.enabled ? 1 : 0.5 }}
+                          />
+                        </div>
+
+                      </div>
+
+                      <button 
+                        className="btn btn-accent" 
+                        onClick={handleApplyBulkChanges}
+                        style={{ width: '100%', justifyContent: 'center', padding: '12px', fontWeight: 'bold' }}
+                      >
+                        {t('ai_bulk_apply_btn', { count: selectedPatrols.length }).toUpperCase()}
+                      </button>
+                    </div>
                   ) : selectedPatrol ? (
                     /* Selected Patrol Edit Mode */
                     <>
@@ -999,24 +1766,59 @@ export default function AIBotsEditor({
                         <h4>{t('ai_combat_targeting')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: '12px' }}>
                           <div className="form-group">
-                            <label>{t('ai_label_accuracy_min_patrol')}</label>
-                            <input type="number" step="any" value={selectedPatrol.AccuracyMin ?? -1.0} onChange={e => handleUpdatePatrolVal('AccuracyMin', Number(e.target.value))} />
+                            <label>{t('ai_label_accuracy_min_patrol')}: {selectedPatrol.AccuracyMin != null && selectedPatrol.AccuracyMin > -1 ? Number(selectedPatrol.AccuracyMin).toFixed(2) : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1.0"
+                              max="1.0"
+                              step="0.05"
+                              value={selectedPatrol.AccuracyMin ?? -1.0} 
+                              onChange={e => handleUpdatePatrolVal('AccuracyMin', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_accuracy_max_patrol')}</label>
-                            <input type="number" step="any" value={selectedPatrol.AccuracyMax ?? -1.0} onChange={e => handleUpdatePatrolVal('AccuracyMax', Number(e.target.value))} />
+                            <label>{t('ai_label_accuracy_max_patrol')}: {selectedPatrol.AccuracyMax != null && selectedPatrol.AccuracyMax > -1 ? Number(selectedPatrol.AccuracyMax).toFixed(2) : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1.0"
+                              max="1.0"
+                              step="0.05"
+                              value={selectedPatrol.AccuracyMax ?? -1.0} 
+                              onChange={e => handleUpdatePatrolVal('AccuracyMax', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_threat_distance')}</label>
-                            <input type="number" value={selectedPatrol.ThreatDistanceLimit ?? -1} onChange={e => handleUpdatePatrolVal('ThreatDistanceLimit', Number(e.target.value))} />
+                            <label>{t('ai_label_threat_distance')}: {selectedPatrol.ThreatDistanceLimit != null && selectedPatrol.ThreatDistanceLimit > -1 ? selectedPatrol.ThreatDistanceLimit + 'm' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1"
+                              max="2000"
+                              step="50"
+                              value={selectedPatrol.ThreatDistanceLimit ?? -1} 
+                              onChange={e => handleUpdatePatrolVal('ThreatDistanceLimit', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_noise_limit')}</label>
-                            <input type="number" value={selectedPatrol.NoiseInvestigationDistanceLimit ?? -1} onChange={e => handleUpdatePatrolVal('NoiseInvestigationDistanceLimit', Number(e.target.value))} />
+                            <label>{t('ai_label_noise_limit')}: {selectedPatrol.NoiseInvestigationDistanceLimit != null && selectedPatrol.NoiseInvestigationDistanceLimit > -1 ? selectedPatrol.NoiseInvestigationDistanceLimit + 'm' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1"
+                              max="1500"
+                              step="50"
+                              value={selectedPatrol.NoiseInvestigationDistanceLimit ?? -1} 
+                              onChange={e => handleUpdatePatrolVal('NoiseInvestigationDistanceLimit', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_flanking_distance')}</label>
-                            <input type="number" value={selectedPatrol.MaxFlankingDistance ?? -1} onChange={e => handleUpdatePatrolVal('MaxFlankingDistance', Number(e.target.value))} />
+                            <label>{t('ai_label_flanking_distance')}: {selectedPatrol.MaxFlankingDistance != null && selectedPatrol.MaxFlankingDistance > -1 ? selectedPatrol.MaxFlankingDistance + 'm' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1"
+                              max="1000"
+                              step="20"
+                              value={selectedPatrol.MaxFlankingDistance ?? -1} 
+                              onChange={e => handleUpdatePatrolVal('MaxFlankingDistance', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
                             <label>{t('ai_label_enable_flanking')}</label>
@@ -1090,16 +1892,37 @@ export default function AIBotsEditor({
                         <h4>{t('ai_health_damage')}</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginTop: '12px' }}>
                           <div className="form-group">
-                            <label>{t('ai_label_damage_multiplier')}</label>
-                            <input type="number" step="any" value={selectedPatrol.DamageMultiplier ?? -1.0} onChange={e => handleUpdatePatrolVal('DamageMultiplier', Number(e.target.value))} />
+                            <label>{t('ai_label_damage_multiplier')}: {selectedPatrol.DamageMultiplier != null && selectedPatrol.DamageMultiplier > -1 ? Number(selectedPatrol.DamageMultiplier).toFixed(2) + 'x' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1.0"
+                              max="5.0"
+                              step="0.05"
+                              value={selectedPatrol.DamageMultiplier ?? -1.0} 
+                              onChange={e => handleUpdatePatrolVal('DamageMultiplier', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_damage_received')}</label>
-                            <input type="number" step="any" value={selectedPatrol.DamageReceivedMultiplier ?? -1.0} onChange={e => handleUpdatePatrolVal('DamageReceivedMultiplier', Number(e.target.value))} />
+                            <label>{t('ai_label_damage_received')}: {selectedPatrol.DamageReceivedMultiplier != null && selectedPatrol.DamageReceivedMultiplier > -1 ? Number(selectedPatrol.DamageReceivedMultiplier).toFixed(2) + 'x' : 'Default'}</label>
+                            <input 
+                              type="range" 
+                              min="-1.0"
+                              max="5.0"
+                              step="0.05"
+                              value={selectedPatrol.DamageReceivedMultiplier ?? -1.0} 
+                              onChange={e => handleUpdatePatrolVal('DamageReceivedMultiplier', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_headshot_resistance')}</label>
-                            <input type="number" step="any" value={selectedPatrol.HeadshotResistance ?? 0.0} onChange={e => handleUpdatePatrolVal('HeadshotResistance', Number(e.target.value))} />
+                            <label>{t('ai_label_headshot_resistance')}: {selectedPatrol.HeadshotResistance != null ? Number(selectedPatrol.HeadshotResistance).toFixed(2) : '0.00'}</label>
+                            <input 
+                              type="range" 
+                              min="0.0"
+                              max="1.0"
+                              step="0.05"
+                              value={selectedPatrol.HeadshotResistance ?? 0.0} 
+                              onChange={e => handleUpdatePatrolVal('HeadshotResistance', Number(e.target.value))} 
+                            />
                           </div>
                           <div className="form-group">
                             <label>{t('ai_label_unlimited_reloads')}</label>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 
 // Common enums used in DayZ Expansion configuration
 const STATIC_ENUMS = {
@@ -438,16 +438,9 @@ export default function ConfigForm({
   onResetFile, 
   onSaveFile,
   inferredEnums = {},
-  onNavigateToMap,
-  lang = 'ru'
+  onNavigateToMap
 }) {
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, v);
-    });
-    return text;
-  };
+  const { t } = useTranslation();
 
   if (!config) {
     return (

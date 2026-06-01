@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ConfigForm from './ConfigForm';
-import { translations } from '../utils/localization';
+import { useTranslation } from '../utils/localization';
 
 export default function SettingsEditor({ 
   configs, 
@@ -9,16 +9,9 @@ export default function SettingsEditor({
   onResetFile, 
   onSaveFile,
   inferredEnums,
-  onNavigateToMap,
-  lang = 'ru'
+  onNavigateToMap
 }) {
-  const t = (key, replacements = {}) => {
-    let text = translations[lang]?.[key] || translations['en']?.[key] || key;
-    Object.entries(replacements).forEach(([k, v]) => {
-      text = text.replace(`{${k}}`, v);
-    });
-    return text;
-  };
+  const { t } = useTranslation();
 
   const [selectedSettingsPath, setSelectedSettingsPath] = useState(null);
 
@@ -65,6 +58,7 @@ export default function SettingsEditor({
             {t('settings_total', { count: settingsPaths.length })}
           </div>
         </div>
+
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {settingsPaths.map(path => {
@@ -131,7 +125,6 @@ export default function SettingsEditor({
             onSaveFile={onSaveFile}
             inferredEnums={inferredEnums}
             onNavigateToMap={onNavigateToMap}
-            lang={lang}
           />
         ) : (
           <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
