@@ -309,7 +309,10 @@ function RenderFormNode({
                     type={typeof item === 'number' ? 'number' : 'text'}
                     value={item}
                     onChange={e => {
-                      const val = typeof item === 'number' ? Number(e.target.value) : e.target.value;
+                      let val = typeof item === 'number' ? Number(e.target.value) : e.target.value;
+                      if (typeof item === 'number' && Number.isNaN(val)) {
+                        val = item;
+                      }
                       onChange([...path, idx], val);
                     }}
                     className={isItemDirty ? 'field-dirty' : ''}
@@ -420,7 +423,10 @@ function RenderFormNode({
           step="any"
           value={value}
           onChange={e => {
-            const val = typeof value === 'number' ? Number(e.target.value) : e.target.value;
+            let val = typeof value === 'number' ? Number(e.target.value) : e.target.value;
+            if (typeof value === 'number' && Number.isNaN(val)) {
+              val = value; // Fallback to current value to avoid corrupting JSON with NaN
+            }
             onChange(path, val);
           }}
           className={isDirty ? 'field-dirty' : ''}

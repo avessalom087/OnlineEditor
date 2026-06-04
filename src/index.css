@@ -883,5 +883,117 @@ textarea:focus {
   pointer-events: none;
 }
 
+/* ==============================
+   Quest Graph Animated Lines
+============================== */
+
+@keyframes flowPrereq {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes flowFollowup {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -24; }
+}
+
+.quest-line-prereq-active {
+  stroke-dasharray: 8 4;
+  animation: flowPrereq 0.6s linear infinite;
+}
+
+.quest-line-followup-active {
+  stroke-dasharray: 8 4;
+  animation: flowFollowup 0.6s linear infinite;
+}
+
+/* ==============================
+   Quest Graph Search HUD
+============================== */
+
+.quest-search-hud {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 50;
+  pointer-events: all;
+}
+
+.quest-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(7, 9, 7, 0.92);
+  border: 1px solid var(--border-glow);
+  border-radius: 3px;
+  padding: 5px 10px;
+  box-shadow: 0 0 14px rgba(178, 250, 158, 0.12);
+  backdrop-filter: blur(4px);
+}
+
+.quest-search-input-wrap svg {
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.quest-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-glow);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  width: 180px;
+  letter-spacing: 0.5px;
+}
+
+.quest-search-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.65;
+}
+
+.quest-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.quest-search-result-item {
+  background: rgba(13, 18, 13, 0.92);
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quest-search-result-item:hover {
+  background: rgba(30, 48, 30, 0.95);
+  border-color: var(--border-glow);
+  color: var(--text-glow);
+}
+
+.quest-search-result-item .result-id {
+  color: var(--text-glow);
+  font-weight: bold;
+  font-size: 10px;
+  min-width: 28px;
+  opacity: 0.85;
+}
+
+
+
+
 
 

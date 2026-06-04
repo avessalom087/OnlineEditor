@@ -15,7 +15,10 @@ function EditableCell({ value, originalValue, type = 'text', onChange, style = {
 
   const handleBlur = () => {
     setEditing(false);
-    const parsed = type === 'number' ? Number(tempVal) : tempVal;
+    let parsed = type === 'number' ? Number(tempVal) : tempVal;
+    if (type === 'number' && Number.isNaN(parsed)) {
+      parsed = originalValue !== undefined ? originalValue : 0;
+    }
     if (parsed !== value) onChange(parsed);
   };
 
@@ -154,6 +157,8 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
   const [bulkPriceMultiplier, setBulkPriceMultiplier] = useState(1.0);
   const [bulkMinRatio, setBulkMinRatio] = useState(0.5); // 50%
   const [enableMinRatioLock, setEnableMinRatioLock] = useState(false);
+
+  const [hoveredChartItem, setHoveredChartItem] = useState(null);
 
   const availableXmlItems = useMemo(() => {
     if (
@@ -845,7 +850,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                 <div style={{ padding: '20px' }}>
                   {/* Economy Pricing Chart */}
                   {priceData && (
-                    <div className="economy-chart-card">
+                    <div className="economy-chart-card" style={{ position: 'relative' }}>
                       <div className="economy-chart-header">
                         <div className="economy-chart-title">
                           📊 {lang === 'ru' ? "Распределение цен категории" : "Category Price Distribution"}
@@ -857,58 +862,132 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlI
                           <div>{lang === 'ru' ? "Товаров: " : "Items: "}<strong style={{ color: 'var(--text-glow)' }}>{priceData.items.length}</strong></div>
                         </div>
                       </div>
-                      <div className="economy-chart-svg-container">
-                        <svg width="100%" height="100%" viewBox="0 0 600 120" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-                          {/* Grid lines */}
-                          <line x1="40" y1="20" x2="580" y2="20" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
-                          <line x1="40" y1="60" x2="580" y2="60" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
-                          <line x1="40" y1="100" x2="580" y2="100" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
-                          
-                          {/* Price Area curves */}
-                          {(() => {
-                            const total = priceData.items.length;
-                            const peak = priceData.peakMax || 1;
-                            
-                            const maxPoints = priceData.items.map((item, idx) => {
-                              const x = (idx / Math.max(1, total - 1)) * 540 + 40;
-                              const y = 100 - (item.max / peak) * 80 + 10;
-                              return `${x},${y}`;
-                            }).join(' ');
 
-                            const minPoints = priceData.items.map((item, idx) => {
-                              const x = (idx / Math.max(1, total - 1)) * 540 + 40;
-                              const y = 100 - (item.min / peak) * 80 + 10;
-                              return `${x},${y}`;
-                            }).join(' ');
+                      {/* Tooltip Overlay */}
+                      {hoveredChartItem && (
+                        <div style={{
+                          position: 'absolute',
+                          left: `${hoveredChartItem.x}px`,
+                          top: `${hoveredChartItem.y}px`,
+                          transform: 'translate(-50%, -100%)',
+                          background: 'rgba(7, 9, 7, 0.95)',
+                          border: '1px solid var(--border-color)',
+                          boxShadow: 'var(--shadow-glow-active)',
+                          padding: '6px 10px',
+                          borderRadius: '2px',
+                          zIndex: 100,
+                          pointerEvents: 'none',
+                          minWidth: '150px',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '11px',
+                          lineHeight: '1.4'
+                        }}>
+                          <div style={{ color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '3px', marginBottom: '4px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                            {hoveredChartItem.name}
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--accent-glow)' }}>
+                            <span>BUY:</span>
+                            <strong>{hoveredChartItem.buy}$</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--warning-color)' }}>
+                            <span>SELL:</span>
+                            <strong>{hoveredChartItem.sell}$</strong>
+                          </div>
+                        </div>
+                      )}
 
-                            const areaPoints = `40,110 ${maxPoints} 580,110`;
+                      <div style={{ overflowX: 'auto', width: '100%', background: 'rgba(0,0,0,0.15)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '12px 12px 6px 12px' }}>
+                        {(() => {
+                          const peak = priceData.peakMax || 1;
+                          const chartWidth = Math.max(540, priceData.items.length * 40 + 60);
 
-                            return (
-                              <>
-                                {/* Area fill under max prices */}
-                                <polygon points={areaPoints} fill="rgba(149, 192, 149, 0.06)" />
-                                
-                                {/* Max Buy Price Line (accent-glow) */}
-                                <polyline points={maxPoints} fill="none" stroke="var(--accent-glow)" strokeWidth="2.5" />
-                                
-                                {/* Min Sell Price Line (warning) */}
-                                <polyline points={minPoints} fill="none" stroke="var(--warning-color)" strokeWidth="1.5" strokeDasharray="4 2" />
-                              </>
-                            );
-                          })()}
+                          return (
+                            <svg width={chartWidth} height="130" style={{ overflow: 'visible' }}>
+                              {/* Grid lines */}
+                              <line x1="40" y1="15" x2={chartWidth - 20} y2="15" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
+                              <line x1="40" y1="55" x2={chartWidth - 20} y2="55" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
+                              <line x1="40" y1="95" x2={chartWidth - 20} y2="95" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
 
-                          {/* Axes */}
-                          <line x1="40" y1="10" x2="40" y2="110" stroke="var(--border-color)" strokeWidth="1" />
-                          <line x1="40" y1="110" x2="580" y2="110" stroke="var(--border-color)" strokeWidth="1" />
+                              {/* Y-axis Labels */}
+                              <text x="32" y="18" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">{priceData.peakMax}</text>
+                              <text x="32" y="58" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">{Math.round(priceData.peakMax / 2)}</text>
+                              <text x="32" y="98" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">0</text>
 
-                          {/* Labels */}
-                          <text x="32" y="23" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">{priceData.peakMax}</text>
-                          <text x="32" y="63" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">{Math.round(priceData.peakMax / 2)}</text>
-                          <text x="32" y="103" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">0</text>
-                          
-                          <text x="40" y="120" fill="var(--text-secondary)" fontSize="8" textAnchor="start" fontFamily="var(--font-mono)">{priceData.items[0]?.name || ''}</text>
-                          <text x="580" y="120" fill="var(--text-secondary)" fontSize="8" textAnchor="end" fontFamily="var(--font-mono)">{priceData.items[priceData.items.length - 1]?.name || ''}</text>
-                        </svg>
+                              {/* Bars & Interactive triggers */}
+                              {priceData.items.map((item, idx) => {
+                                const x = 50 + idx * 40;
+                                const buyHeight = (item.max / peak) * 80;
+                                const buyY = 95 - buyHeight;
+                                const sellHeight = (item.min / peak) * 80;
+                                const sellY = 95 - sellHeight;
+                                const isHovered = hoveredChartItem && hoveredChartItem.idx === idx;
+
+                                return (
+                                  <g key={idx}>
+                                    {/* Column background hover highlight */}
+                                    {isHovered && (
+                                      <rect x={x - 4} y="5" width="30" height="98" fill="rgba(149, 192, 149, 0.05)" rx="2" style={{ pointerEvents: 'none' }} />
+                                    )}
+
+                                    {/* Buy Price Bar */}
+                                    <rect
+                                      x={x}
+                                      y={buyY}
+                                      width="10"
+                                      height={Math.max(1, buyHeight)}
+                                      fill="var(--accent-glow)"
+                                      rx="1.5"
+                                      style={{ transition: 'opacity 0.15s', opacity: hoveredChartItem && !isHovered ? 0.35 : 1 }}
+                                    />
+
+                                    {/* Sell Price Bar */}
+                                    <rect
+                                      x={x + 12}
+                                      y={sellY}
+                                      width="10"
+                                      height={Math.max(1, sellHeight)}
+                                      fill="var(--warning-color)"
+                                      rx="1.5"
+                                      style={{ transition: 'opacity 0.15s', opacity: hoveredChartItem && !isHovered ? 0.35 : 1 }}
+                                    />
+
+                                    {/* X-axis Label */}
+                                    <text x={x + 11} y="112" fill={isHovered ? "var(--text-glow)" : "var(--text-secondary)"} fontSize="8" textAnchor="middle" fontFamily="var(--font-mono)">
+                                      {item.name.length > 8 ? `${item.name.substring(0, 6)}..` : item.name}
+                                    </text>
+
+                                    {/* Column Interactive Hover Trigger Area */}
+                                    <rect
+                                      x={x - 4}
+                                      y="10"
+                                      width="30"
+                                      height="115"
+                                      fill="transparent"
+                                      style={{ cursor: 'pointer' }}
+                                      onMouseEnter={(e) => {
+                                        const triggerRect = e.currentTarget.getBoundingClientRect();
+                                        const cardRect = e.currentTarget.closest('.economy-chart-card').getBoundingClientRect();
+                                        setHoveredChartItem({
+                                          idx,
+                                          name: item.name,
+                                          buy: item.max,
+                                          sell: item.min,
+                                          x: triggerRect.left - cardRect.left + triggerRect.width / 2,
+                                          y: triggerRect.top - cardRect.top - 8
+                                        });
+                                      }}
+                                      onMouseLeave={() => setHoveredChartItem(null)}
+                                    />
+                                  </g>
+                                );
+                              })}
+
+                              {/* Axes */}
+                              <line x1="40" y1="10" x2="40" y2="95" stroke="var(--border-color)" strokeWidth="1" />
+                              <line x1="40" y1="95" x2={chartWidth - 10} y2="95" stroke="var(--border-color)" strokeWidth="1" />
+                            </svg>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}

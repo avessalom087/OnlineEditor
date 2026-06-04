@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ToastProvider, useToast } from './components/ToastManager';
 import ErrorBoundary from './components/ErrorBoundary';
 import GlobalSearch from './components/GlobalSearch';
@@ -11,6 +11,7 @@ import Dashboard from './components/Dashboard';
 import EconomyEditor from './components/EconomyEditor';
 import AIBotsEditor from './components/AIBotsEditor';
 import SettingsEditor from './components/SettingsEditor';
+import MPGSpawnerEditor from './components/MPGSpawnerEditor';
 import { validateConfig } from './utils/diagnostics';
 import * as fileService from './services/fileService';
 import * as idb from './utils/indexedDB';
@@ -267,8 +268,6 @@ function AppContent() {
   const updateConfigs = (updater) => {
     setConfigs(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      // Truncate nested originalContent comparisons or do basic shallow comparison to avoid performance hit
-      // We check if keys changed or content of keys changed
       if (next === prev) return prev;
       setUndoStack(prevUndo => [...prevUndo, prev].slice(-40));
       setRedoStack([]);
@@ -276,7 +275,7 @@ function AppContent() {
     });
   };
 
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     setUndoStack(prevUndo => {
       if (prevUndo.length === 0) return prevUndo;
       const last = prevUndo[prevUndo.length - 1];
@@ -287,9 +286,9 @@ function AppContent() {
       return prevUndo.slice(0, -1);
     });
     toast.info(lang === 'ru' ? "Действие отменено (Undo)" : "Action undone");
-  };
+  }, [lang, toast]);
 
-  const handleRedo = () => {
+  const handleRedo = useCallback(() => {
     setRedoStack(prevRedo => {
       if (prevRedo.length === 0) return prevRedo;
       const next = prevRedo[prevRedo.length - 1];
@@ -300,7 +299,16 @@ function AppContent() {
       return prevRedo.slice(0, -1);
     });
     toast.info(lang === 'ru' ? "Действие возвращено (Redo)" : "Action redone");
-  };
+  }, [lang, toast]);
+
+  // Store latest undo/redo handlers in refs to prevent stale closure inside window keydown listener
+  const undoRef = useRef(handleUndo);
+  const redoRef = useRef(handleRedo);
+  
+  useEffect(() => {
+    undoRef.current = handleUndo;
+    redoRef.current = handleRedo;
+  });
 
   // Global hotkeys listener
   useEffect(() => {
@@ -313,10 +321,10 @@ function AppContent() {
         activeEl.contentEditable === 'true'
       );
 
-      // 1. Alt + 1..7 tab switching
+      // 1. Alt + 1..8 tab switching
       if (e.altKey && !e.ctrlKey && !e.shiftKey) {
         const key = e.key;
-        const tabs = ['dashboard', 'economy', 'quests', 'aibots', 'settings', 'map', 'raw_editor'];
+        const tabs = ['dashboard', 'economy', 'quests', 'aibots', 'settings', 'map', 'spawner', 'raw_editor'];
         const index = parseInt(key, 10) - 1;
         if (index >= 0 && index < tabs.length) {
           e.preventDefault();
@@ -330,13 +338,13 @@ function AppContent() {
         if (key === 'z') {
           e.preventDefault();
           if (e.shiftKey) {
-            handleRedo();
+            redoRef.current();
           } else {
-            handleUndo();
+            undoRef.current();
           }
         } else if (key === 'y') {
           e.preventDefault();
-          handleRedo();
+          redoRef.current();
         }
       }
 
@@ -351,7 +359,7 @@ function AppContent() {
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [lang]);
+  }, []);
   
   // File access state
   const [hasAccess, setHasAccess]       = useState(false);
@@ -366,6 +374,7 @@ function AppContent() {
     return localStorage.getItem('dayz_editor_selected_file') || null;
   });
   const [focusedCoordinate, setFocusedCoordinate] = useState(null);
+  const [coordinatePicker, setCoordinatePicker]   = useState(null); // { callback: (coords) => void, returnTab: string }
   const [draftToRestore, setDraftToRestore]   = useState(null);
   const [selectedQuestId, setSelectedQuestId] = useState(() => {
     const saved = localStorage.getItem('dayz_editor_selected_quest_id');
@@ -652,7 +661,10 @@ function AppContent() {
     updateConfigs(prev => {
       const file = prev[filePath];
       if (!file || !file.success) return prev;
-      return { ...prev, [filePath]: { ...file, content: setNestedValue(file.content, pathArray, newValue) } };
+      // Support functional state updates: if newValue is a function, pass it the current nested value
+      const currentValue = getNestedValue(file.content, pathArray);
+      const valToSet = typeof newValue === 'function' ? newValue(currentValue) : newValue;
+      return { ...prev, [filePath]: { ...file, content: setNestedValue(file.content, pathArray, valToSet) } };
     });
   };
 
@@ -903,6 +915,21 @@ function AppContent() {
     })
   );
 
+  // Warn on accidental tab close or page reload when unsaved changes exist
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (dirtyFiles.size > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [dirtyFiles.size]);
+
   // ── Tab badge helper ──────────────────────────────────────────────────────
   const TabBtn = ({ id, label, badge }) => (
     <button
@@ -936,6 +963,7 @@ function AppContent() {
   const dirtyQuests   = [...dirtyFiles].filter(p => p.startsWith('expansionmod/quests/')).length;
   const dirtyAiBots   = [...dirtyFiles].filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
   const dirtySettings = [...dirtyFiles].filter(p => p.includes('settings')).length;
+  const dirtySpawner  = [...dirtyFiles].filter(p => p.toLowerCase().startsWith('mpg_spawner/')).length;
 
   // ── Welcome Screen Component ──────────────────────────────────────────────
   if (!hasAccess && !loading) {
@@ -1214,11 +1242,44 @@ function AppContent() {
           <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots} />
           <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings} />
           <TabBtn id="map"        label={t('tab_map')} />
+          <TabBtn id="spawner"    label={t('tab_spawner')}    badge={dirtySpawner} />
           <TabBtn id="raw_editor" label={t('tab_raw_editor')} />
         </nav>
 
         {/* Actions row */}
         <div className="header-actions">
+
+          {/* Undo Button */}
+          <button
+            className="btn"
+            onClick={handleUndo}
+            disabled={undoStack.length === 0}
+            title={lang === 'ru' ? "Отменить (Ctrl+Z)" : "Undo (Ctrl+Z)"}
+            style={{ 
+              opacity: undoStack.length === 0 ? 0.4 : 1, 
+              cursor: undoStack.length === 0 ? 'not-allowed' : 'pointer',
+              padding: '8px 12px', 
+              fontSize: '14px'
+            }}
+          >
+            ↩️
+          </button>
+
+          {/* Redo Button */}
+          <button
+            className="btn"
+            onClick={handleRedo}
+            disabled={redoStack.length === 0}
+            title={lang === 'ru' ? "Вернуть (Ctrl+Y)" : "Redo (Ctrl+Y)"}
+            style={{ 
+              opacity: redoStack.length === 0 ? 0.4 : 1, 
+              cursor: redoStack.length === 0 ? 'not-allowed' : 'pointer',
+              padding: '8px 12px', 
+              fontSize: '14px'
+            }}
+          >
+            ↪️
+          </button>
 
           {/* Search button */}
           <button
@@ -1380,6 +1441,25 @@ function AppContent() {
                     onSelectQuest={setSelectedQuestId}
                     setActiveTab={setActiveTab}
                     onOpenFile={handleOpenFile}
+                    coordinatePicker={coordinatePicker}
+                    setCoordinatePicker={setCoordinatePicker}
+                  />
+                </ErrorBoundary>
+              )}
+
+              {activeTab === 'spawner' && (
+                <ErrorBoundary key="spawner">
+                  <MPGSpawnerEditor
+                    configs={configs}
+                    onChangeField={handleChangeField}
+                    onCreateFile={handleCreateFile}
+                    onDeleteFile={handleDeleteFile}
+                    onOpenFile={handleOpenFile}
+                    xmlItems={xmlItems}
+                    onStartCoordinatePick={(returnTab, callback, options = { mode: 'single' }) => {
+                      setCoordinatePicker({ callback, returnTab, mode: options.mode || 'single' });
+                      setActiveTab('map');
+                    }}
                   />
                 </ErrorBoundary>
               )}

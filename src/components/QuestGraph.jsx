@@ -172,6 +172,9 @@ export default function QuestGraph({
   // Autocomplete suggestions
   const [classnameSuggestions, setClassnameSuggestions] = useState([]);
 
+  // Graph Search HUD
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Sync selectedQuestId from parent
   useEffect(() => {
     if (selectedQuestId !== null && selectedQuestId !== undefined) {
@@ -283,6 +286,22 @@ export default function QuestGraph({
   const positionedNodes = layoutQuests(quests, nodeOffsets);
   const nodesMap = new Map(positionedNodes.map(n => [n.id, n]));
 
+  // Proximity highlight when dragging relationship line near an input port
+  const activeHoverPortNodeId = useMemo(() => {
+    if (!connectionDrag) return null;
+    const { currentX, currentY } = connectionDrag;
+    for (const node of positionedNodes) {
+      if (node.id === connectionDrag.fromNodeId) continue;
+      const portX = node.x;
+      const portY = node.y + node.height / 2;
+      const dist = Math.hypot(portX - currentX, portY - currentY);
+      if (dist <= 25) { // Collision range matching the handleMouseUp threshold
+        return node.id;
+      }
+    }
+    return null;
+  }, [connectionDrag, positionedNodes]);
+
   // Pan Canvas Handlers
   const getSVGCoords = (e) => {
     if (!containerRef.current) return { x: 0, y: 0 };
@@ -359,6 +378,8 @@ export default function QuestGraph({
       }
 
       if (targetNode) {
+        freezeCurrentLayout();
+
         // Node A = connectionDrag.fromNodeId, Node B = targetNode.id
         // 1. Set Node A as prerequisite of Node B
         const targetPre = targetNode.preQuestIDs || [];
@@ -419,27 +440,71 @@ export default function QuestGraph({
     setDragStart({ x: e.clientX, y: e.clientY });
   };
 
+  const freezeCurrentLayout = () => {
+    setNodeOffsets(prev => {
+      const updated = { ...prev };
+      positionedNodes.forEach(n => {
+        if (!updated[n.id]) {
+          updated[n.id] = { x: n.x, y: n.y };
+        }
+      });
+      return updated;
+    });
+  };
+
+  // Smooth pan+zoom to center a quest node on screen
+  const zoomToNode = (node) => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+    const rect = container.getBoundingClientRect();
+    const targetZoom = Math.max(zoom, 1.0);
+    const targetOffsetX = rect.width / 2 - (node.x + node.width / 2) * targetZoom;
+    const targetOffsetY = rect.height / 2 - (node.y + node.height / 2) * targetZoom;
+    const startZoom = zoom;
+    const startOffsetX = panOffset.x;
+    const startOffsetY = panOffset.y;
+    const duration = 280;
+    const start = performance.now();
+    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+    function animate(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOut(progress);
+      setZoom(startZoom + (targetZoom - startZoom) * eased);
+      setPanOffset({
+        x: startOffsetX + (targetOffsetX - startOffsetX) * eased,
+        y: startOffsetY + (targetOffsetY - startOffsetY) * eased
+      });
+      if (progress < 1) requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+  };
+
   // RELATIONSHIP MODIFICATIONS
   const handleAddPrereq = (targetQuestId) => {
     if (!selectedQuest) return;
     const currentPre = selectedQuest.preQuestIDs;
     if (currentPre.includes(targetQuestId) || targetQuestId === selectedQuest.id) return;
+    freezeCurrentLayout();
     onChangeField(selectedQuest.filePath, ['PreQuestIDs'], [...currentPre, targetQuestId]);
   };
 
   const handleRemovePrereq = (targetQuestId) => {
     if (!selectedQuest) return;
+    freezeCurrentLayout();
     const currentPre = selectedQuest.preQuestIDs.filter(id => id !== targetQuestId);
     onChangeField(selectedQuest.filePath, ['PreQuestIDs'], currentPre);
   };
 
   const handleSetFollowup = (followUpId) => {
     if (!selectedQuest) return;
+    freezeCurrentLayout();
     onChangeField(selectedQuest.filePath, ['FollowUpQuest'], followUpId);
   };
 
   // QUEST CREATION & DELETION
   const handleCreateQuest = () => {
+    freezeCurrentLayout();
     const nextId = quests.length > 0 ? Math.max(...quests.map(q => Number(q.id) || 0)) + 1 : 1;
     const newQuestTemplate = {
       ConfigVersion: 22,
@@ -506,6 +571,7 @@ export default function QuestGraph({
   const handleDeleteQuest = () => {
     if (!selectedQuest) return;
     if (window.confirm(`Are you sure you want to delete "${selectedQuest.title}" (ID ${selectedQuest.id})?\nThis will physically remove it from disk.`)) {
+      freezeCurrentLayout();
       
       // 1. Unlink references in other quests
       quests.forEach(q => {
@@ -683,6 +749,10 @@ export default function QuestGraph({
             {/* Draw Relationship Lines */}
             {positionedNodes.map(node => {
               const lines = [];
+              const sq = searchQuery.trim().toLowerCase();
+              const isNodeMatch = sq ? (
+                String(node.id).includes(sq) || node.title.toLowerCase().includes(sq)
+              ) : true;
 
               node.preQuestIDs.forEach(preId => {
                 const parent = nodesMap.get(preId);
@@ -698,6 +768,11 @@ export default function QuestGraph({
                   const cp2Y = endY;
 
                   const isHighlight = highlightSet.has(Number(preId)) && highlightSet.has(Number(node.id));
+                  const isSelectedLine = selectedQuest && (selectedQuest.id === node.id || selectedQuest.id === preId);
+                  const isParentMatch = sq ? (
+                    String(parent.id).includes(sq) || parent.title.toLowerCase().includes(sq)
+                  ) : true;
+                  const lineVisible = !sq || (isNodeMatch || isParentMatch);
 
                   if (isHighlight) {
                     lines.push(
@@ -707,7 +782,7 @@ export default function QuestGraph({
                         fill="none"
                         stroke="rgba(255, 74, 74, 0.4)"
                         strokeWidth="6"
-                        opacity="0.8"
+                        opacity={lineVisible ? '0.8' : '0.08'}
                       />
                     );
                   }
@@ -715,13 +790,14 @@ export default function QuestGraph({
                   lines.push(
                     <path
                       key={`prereq-${preId}-${node.id}`}
+                      className={isSelectedLine && !isHighlight ? 'quest-line-prereq-active' : undefined}
                       d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
                       fill="none"
                       stroke={isHighlight ? '#ff4a4a' : '#44aacc'}
-                      strokeWidth={isHighlight ? '2.5' : '1.5'}
-                      strokeDasharray={isHighlight ? undefined : '4,4'}
+                      strokeWidth={isHighlight ? '2.5' : (isSelectedLine ? '2' : '1.5')}
+                      strokeDasharray={isHighlight || isSelectedLine ? undefined : '4,4'}
                       markerEnd="url(#arrow-prereq)"
-                      opacity={isHighlight ? '1.0' : '0.65'}
+                      opacity={lineVisible ? (isHighlight ? '1.0' : '0.65') : '0.08'}
                     />
                   );
                 }
@@ -741,6 +817,11 @@ export default function QuestGraph({
                   const cp2Y = endY;
 
                   const isHighlight = highlightSet.has(Number(node.id)) && highlightSet.has(Number(node.followUpQuest));
+                  const isSelectedLine = selectedQuest && (selectedQuest.id === node.id || selectedQuest.id === node.followUpQuest);
+                  const isChildMatch = sq ? (
+                    String(child.id).includes(sq) || child.title.toLowerCase().includes(sq)
+                  ) : true;
+                  const lineVisible = !sq || (isNodeMatch || isChildMatch);
 
                   if (isHighlight) {
                     lines.push(
@@ -750,7 +831,7 @@ export default function QuestGraph({
                         fill="none"
                         stroke="rgba(255, 74, 74, 0.4)"
                         strokeWidth="6"
-                        opacity="0.8"
+                        opacity={lineVisible ? '0.8' : '0.08'}
                       />
                     );
                   }
@@ -758,12 +839,13 @@ export default function QuestGraph({
                   lines.push(
                     <path
                       key={`follow-${node.id}-${node.followUpQuest}`}
+                      className={isSelectedLine && !isHighlight ? 'quest-line-followup-active' : undefined}
                       d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
                       fill="none"
                       stroke={isHighlight ? '#ff4a4a' : '#b2fa9e'}
-                      strokeWidth={isHighlight ? '3' : '2'}
+                      strokeWidth={isHighlight ? '3' : (isSelectedLine ? '2.5' : '2')}
                       markerEnd="url(#arrow-followup)"
-                      opacity={isHighlight ? '1.0' : '0.8'}
+                      opacity={lineVisible ? (isHighlight ? '1.0' : '0.8') : '0.08'}
                     />
                   );
                 }
@@ -787,6 +869,9 @@ export default function QuestGraph({
             {/* Draw Quest Cards */}
             {positionedNodes.map(node => {
               const isSelected = selectedQuest?.id === node.id;
+              const sq2 = searchQuery.trim().toLowerCase();
+              const isMatch = !sq2 || String(node.id).includes(sq2) || node.title.toLowerCase().includes(sq2);
+              const nodeOpacity = sq2 && !isMatch ? 0.1 : 1;
               const hasUnsaved = JSON.stringify(configs[node.filePath]?.content) !== JSON.stringify(configs[node.filePath]?.originalContent);
 
               const questContent = configs[node.filePath]?.content;
@@ -805,10 +890,10 @@ export default function QuestGraph({
                 <g 
                   key={node.id} 
                   transform={`translate(${node.x}, ${node.y})`}
+                  style={{ opacity: nodeOpacity, transition: 'opacity 0.2s', cursor: 'grab' }}
                   onMouseDown={(e) => handleNodeDragStart(e, node.id)}
                   onClick={() => { setSelectedQuest(node); if (onSelectQuest) onSelectQuest(node.id); }}
                   onDoubleClick={() => { if (onOpenFile) onOpenFile(node.filePath); }}
-                  style={{ cursor: 'grab' }}
                 >
                   <rect
                     width={node.width}
@@ -850,11 +935,15 @@ export default function QuestGraph({
                   <circle
                     cx="0"
                     cy={node.height / 2}
-                    r="5"
-                    fill="var(--bg-primary)"
-                    stroke="#44aacc"
-                    strokeWidth="1.5"
-                    style={{ cursor: 'crosshair', transition: 'r 0.15s' }}
+                    r={activeHoverPortNodeId === node.id ? 8 : 5}
+                    fill={activeHoverPortNodeId === node.id ? "var(--warning-color)" : "var(--bg-primary)"}
+                    stroke={activeHoverPortNodeId === node.id ? "var(--text-glow)" : "#44aacc"}
+                    strokeWidth={activeHoverPortNodeId === node.id ? 2.5 : 1.5}
+                    style={{ 
+                      cursor: 'crosshair', 
+                      transition: 'all 0.15s ease-in-out',
+                      filter: activeHoverPortNodeId === node.id ? 'drop-shadow(0 0 6px var(--warning-color))' : 'none'
+                    }}
                     title={t('quest_port_prereq')}
                   />
 
@@ -885,6 +974,65 @@ export default function QuestGraph({
             })}
           </g>
         </svg>
+
+        {/* Floating Search HUD */}
+        {(() => {
+          const sq = searchQuery.trim().toLowerCase();
+          const searchResults = sq ? positionedNodes.filter(n =>
+            String(n.id).includes(sq) || n.title.toLowerCase().includes(sq)
+          ).slice(0, 8) : [];
+          return (
+            <div className="quest-search-hud">
+              <div className="quest-search-input-wrap">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-glow)" strokeWidth="2.5">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input
+                  className="quest-search-input"
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder={t('quest_search_graph_ph')}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') setSearchQuery('');
+                    if (e.key === 'Enter' && searchResults.length > 0) {
+                      setSelectedQuest(searchResults[0]);
+                      if (onSelectQuest) onSelectQuest(searchResults[0].id);
+                      zoomToNode(searchResults[0]);
+                    }
+                  }}
+                />
+                {searchQuery && (
+                  <span
+                    onClick={() => setSearchQuery('')}
+                    style={{ cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '12px', lineHeight: 1 }}
+                    title="Clear"
+                  >✕</span>
+                )}
+              </div>
+              {searchResults.length > 0 && (
+                <div className="quest-search-results">
+                  {searchResults.map(n => (
+                    <div
+                      key={n.id}
+                      className="quest-search-result-item"
+                      onClick={() => {
+                        setSelectedQuest(n);
+                        if (onSelectQuest) onSelectQuest(n.id);
+                        zoomToNode(n);
+                        setSearchQuery('');
+                      }}
+                    >
+                      <span className="result-id">#{n.id}</span>
+                      <span>{n.title}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Floating Zoom & Creation Actions */}
         <div style={{
