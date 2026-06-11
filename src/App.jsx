@@ -389,6 +389,22 @@ function AppContent() {
   const [xmlItems, setXmlItems] = useState([]);
   const [highlightedQuestIds, setHighlightedQuestIds] = useState([]);
 
+  // Map settings states
+  const [mapSize, setMapSize] = useState(10000);
+  const [isCustomPreset, setIsCustomPreset] = useState(false);
+  const [customSizeStr, setCustomSizeStr] = useState('10000');
+  const [layers, setLayers] = useState({
+    airdrops: true,
+    safezones: true,
+    npcs: true,
+    patrols: true,
+    traders: true,
+    questObjectives: true,
+    nogoareas: true,
+    roamingLocations: true,
+    spawner: true
+  });
+
   const handleNavigateToQuestGraph = (questId, cycleIds = []) => {
     setSelectedQuestId(questId);
     setHighlightedQuestIds(cycleIds);
@@ -504,7 +520,7 @@ function AppContent() {
     if (!fileService.hasDirectoryAccess()) return;
     setLoading(true);
     fileService.getConfigs()
-      .then(data => {
+      .then(async data => {
         const loadedConfigs = {};
         Object.entries(data.configs).forEach(([path, value]) => {
           loadedConfigs[path] = {
@@ -514,13 +530,37 @@ function AppContent() {
         });
 
         try {
+          let draftData = null;
           const rawDraft = localStorage.getItem('dayz_editor_draft');
           if (rawDraft) {
-            const parsedDraft = JSON.parse(rawDraft);
-            if (Object.keys(parsedDraft).length > 0) setDraftToRestore(parsedDraft);
+            draftData = JSON.parse(rawDraft);
+            localStorage.removeItem('dayz_editor_draft');
+            if (draftData) {
+              await idb.saveDraft(draftData);
+            }
+          } else {
+            draftData = await idb.getDraft();
+          }
+
+          if (draftData && Object.keys(draftData).length > 0) {
+            setDraftToRestore(draftData);
           }
         } catch (e) {
-          console.error('Failed to read draft from localStorage', e);
+          console.error('Failed to read draft', e);
+        }
+
+        try {
+          const settings = await fileService.getSettings();
+          if (settings) {
+            if (settings.mapSize !== undefined) setMapSize(settings.mapSize);
+            if (settings.isCustomPreset !== undefined) setIsCustomPreset(settings.isCustomPreset);
+            if (settings.customSizeStr !== undefined) setCustomSizeStr(settings.customSizeStr);
+            if (settings.layers !== undefined) setLayers(settings.layers);
+            if (settings.lang !== undefined) setLang(settings.lang);
+            if (settings.activeTab !== undefined) setActiveTab(settings.activeTab);
+          }
+        } catch (e) {
+          console.error('Failed to load settings', e);
         }
 
         setConfigs(loadedConfigs);
@@ -609,7 +649,7 @@ function AppContent() {
     toast.info(t('toast_disconnected'));
   };
 
-  // ── Auto-save draft to localStorage ──────────────────────────────────────
+  // ── Auto-save draft to IndexedDB ──────────────────────────────────────────
   useEffect(() => {
     if (loading || !hasAccess) return;
 
@@ -622,14 +662,10 @@ function AppContent() {
         }
       });
 
-      try {
-        if (Object.keys(dirtyData).length > 0) {
-          localStorage.setItem('dayz_editor_draft', JSON.stringify(dirtyData));
-        } else {
-          localStorage.removeItem('dayz_editor_draft');
-        }
-      } catch (e) {
-        console.error('Failed to save draft', e);
+      if (Object.keys(dirtyData).length > 0) {
+        idb.saveDraft(dirtyData).catch(e => console.error('Failed to save draft to IndexedDB', e));
+      } else {
+        idb.clearDraft().catch(e => console.error('Failed to clear draft from IndexedDB', e));
       }
     }, 1000);
 
@@ -679,11 +715,13 @@ function AppContent() {
       return updated;
     });
     setDraftToRestore(null);
+    idb.clearDraft().catch(e => console.error(e));
     toast.success(t('toast_draft_restored', { count: Object.keys(draftToRestore).length }));
   };
 
   const handleDiscardDraft = () => {
     try { localStorage.removeItem('dayz_editor_draft'); } catch (e) {}
+    idb.clearDraft().catch(e => console.error(e));
     setDraftToRestore(null);
     toast.info(t('toast_draft_discarded'));
   };
@@ -733,6 +771,7 @@ function AppContent() {
           return { ...prev, [filePath]: { ...f, originalContent: JSON.parse(JSON.stringify(f.content)) } };
         });
         toast.success(t('toast_file_saved', { file: filePath.split('/').pop() }));
+        fileService.saveSettings({ mapSize, isCustomPreset, customSizeStr, layers, lang, activeTab }).catch(err => console.error(err));
       })
       .catch(err => toast.error(t('toast_save_failed', { error: err.message })));
   };
@@ -750,9 +789,10 @@ function AppContent() {
           return updated;
         });
         toast.success(t('toast_package_exported', { count: dirtyFilesList.length }));
+        fileService.saveSettings({ mapSize, isCustomPreset, customSizeStr, layers, lang, activeTab }).catch(err => console.error(err));
       })
       .catch(err => toast.error(t('toast_export_failed', { error: err.message })));
-  }, [toast]);
+  }, [toast, mapSize, isCustomPreset, customSizeStr, layers, lang, activeTab]);
 
   // ── Save all with export validation ──────────────────────────────────────
   const handleSaveAll = useCallback(() => {
@@ -828,6 +868,7 @@ function AppContent() {
           },
         }));
         toast.success(t('toast_file_created', { file: filePath.split('/').pop() }));
+        fileService.saveSettings({ mapSize, isCustomPreset, customSizeStr, layers, lang, activeTab }).catch(err => console.error(err));
       })
       .catch(err => toast.error(t('toast_create_failed', { error: err.message })));
   };
@@ -837,6 +878,7 @@ function AppContent() {
       .then(() => {
         setConfigs(prev => { const copy = { ...prev }; delete copy[filePath]; return copy; });
         toast.success(t('toast_file_deleted', { file: filePath.split('/').pop() }));
+        fileService.saveSettings({ mapSize, isCustomPreset, customSizeStr, layers, lang, activeTab }).catch(err => console.error(err));
       })
       .catch(err => toast.error(t('toast_delete_failed', { error: err.message })));
   };
@@ -1504,6 +1546,14 @@ function AppContent() {
                       setSelectedSpawnerTriggerIdx(triggerIdx);
                       setActiveTab('spawner');
                     }}
+                    mapSize={mapSize}
+                    setMapSize={setMapSize}
+                    isCustomPreset={isCustomPreset}
+                    setIsCustomPreset={setIsCustomPreset}
+                    customSizeStr={customSizeStr}
+                    setCustomSizeStr={setCustomSizeStr}
+                    layers={layers}
+                    setLayers={setLayers}
                   />
                 </ErrorBoundary>
               )}

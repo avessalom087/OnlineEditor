@@ -21,6 +21,7 @@ export default function AutocompleteInput({
   const [filtered, setFiltered] = useState([]);
   const [show, setShow] = useState(false);
   const [worker, setWorker] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => {
     if (Array.isArray(suggestions) && suggestions.length > 100) {
@@ -34,6 +35,11 @@ export default function AutocompleteInput({
       setWorker(null);
     }
   }, [suggestions]);
+
+  // Reset active keyboard selection index when suggestions list changes
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [filtered]);
 
   const inputValue = isControlled ? value : internalValue;
 
@@ -99,12 +105,32 @@ export default function AutocompleteInput({
               if (inputValue.trim()) setShow(true);
             }}
             onBlur={() => {
-              setTimeout(() => setShow(false), 250);
+              setShow(false);
             }}
             onKeyDown={e => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                handleAdd();
+                if (show && activeIndex >= 0 && activeIndex < filtered.length) {
+                  handleSelectSuggestion(filtered[activeIndex]);
+                } else {
+                  handleAdd();
+                }
+              } else if (e.key === 'ArrowDown') {
+                if (show && filtered.length > 0) {
+                  e.preventDefault();
+                  setActiveIndex(prev => (prev + 1) % filtered.length);
+                }
+              } else if (e.key === 'ArrowUp') {
+                if (show && filtered.length > 0) {
+                  e.preventDefault();
+                  setActiveIndex(prev => (prev - 1 + filtered.length) % filtered.length);
+                }
+              } else if (e.key === 'Escape') {
+                if (show) {
+                  e.preventDefault();
+                  setShow(false);
+                  setActiveIndex(-1);
+                }
               }
             }}
             style={{ width: '100%' }}
@@ -126,24 +152,32 @@ export default function AutocompleteInput({
               overflowY: 'auto',
               boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
             }}>
-              {filtered.map((sug, idx) => (
-                <li
-                  key={idx}
-                  onClick={() => handleSelectSuggestion(sug)}
-                  style={{
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '12px',
-                    borderBottom: '1px solid rgba(30,48,30,0.1)',
-                    color: 'var(--text-primary)'
-                  }}
-                  onMouseOver={e => e.target.style.background = 'rgba(149,192,149,0.08)'}
-                  onMouseOut={e => e.target.style.background = 'transparent'}
-                >
-                  {sug}
-                </li>
-              ))}
+              {filtered.map((sug, idx) => {
+                const isActive = idx === activeIndex;
+                return (
+                  <li
+                    key={idx}
+                    onMouseDown={(e) => {
+                      e.preventDefault(); // Prevents input from losing focus immediately
+                      handleSelectSuggestion(sug);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '12px',
+                      borderBottom: '1px solid rgba(30,48,30,0.1)',
+                      color: isActive ? 'var(--text-glow)' : 'var(--text-primary)',
+                      background: isActive ? 'rgba(149, 192, 149, 0.15)' : 'transparent',
+                      transition: 'background 0.15s'
+                    }}
+                    onMouseOver={() => setActiveIndex(idx)}
+                    onMouseOut={() => setActiveIndex(-1)}
+                  >
+                    {sug}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

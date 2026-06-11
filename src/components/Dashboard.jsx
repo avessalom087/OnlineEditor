@@ -782,7 +782,6 @@ export default function Dashboard({
                                 mergedMode
                               } = data;
 
-                              localStorage.setItem('dayz_editor_xml_items', JSON.stringify(finalItems));
                               onUpdateXmlItems(finalItems);
 
                               if (mergedMode) {

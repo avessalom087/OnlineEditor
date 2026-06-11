@@ -12,6 +12,16 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
   
   const textareaRef = useRef(null);
   const gutterRef = useRef(null);
+  const validationTimerRef = useRef(null);
+
+  // Clean up validation timer on unmount
+  useEffect(() => {
+    return () => {
+      if (validationTimerRef.current) {
+        clearTimeout(validationTimerRef.current);
+      }
+    };
+  }, []);
 
   // Load configuration content into local text state when filePath or config.content changes
   useEffect(() => {
@@ -40,35 +50,46 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
     }
   };
 
-  // Perform JSON validation on every change
+  // Synchronous JSON validation safeguard
+  const validateSync = (currentText) => {
+    try {
+      JSON.parse(currentText);
+      setErrorMsg(null);
+      setErrorLine(null);
+      return true;
+    } catch (err) {
+      setErrorMsg(err.message);
+      const posMatch = err.message.match(/position\s+(\d+)/i);
+      if (posMatch) {
+        const charPos = parseInt(posMatch[1], 10);
+        const prefix = currentText.substring(0, charPos);
+        const lineNum = prefix.split('\n').length;
+        setErrorLine(lineNum);
+      } else {
+        setErrorLine(null);
+      }
+      return false;
+    }
+  };
+
+  // Perform JSON validation with a debounce to prevent input lag on large files
   const handleChangeText = (newVal) => {
     setText(newVal);
     setIsDirty(true);
     
+    if (validationTimerRef.current) {
+      clearTimeout(validationTimerRef.current);
+    }
+
     if (!newVal.trim()) {
       setErrorMsg(null);
       setErrorLine(null);
       return;
     }
 
-    try {
-      JSON.parse(newVal);
-      setErrorMsg(null);
-      setErrorLine(null);
-    } catch (err) {
-      setErrorMsg(err.message);
-      
-      // Extract position in V8 error: "Unexpected token } in JSON at position 235"
-      const posMatch = err.message.match(/position\s+(\d+)/i);
-      if (posMatch) {
-        const charPos = parseInt(posMatch[1], 10);
-        const prefix = newVal.substring(0, charPos);
-        const lineNum = prefix.split('\n').length;
-        setErrorLine(lineNum);
-      } else {
-        setErrorLine(null);
-      }
-    }
+    validationTimerRef.current = setTimeout(() => {
+      validateSync(newVal);
+    }, 300);
   };
 
   const handleFormat = () => {
@@ -85,7 +106,11 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
   };
 
   const handleApply = () => {
-    if (errorMsg) {
+    if (validationTimerRef.current) {
+      clearTimeout(validationTimerRef.current);
+    }
+    const isValid = validateSync(text);
+    if (!isValid) {
       toast.error(lang === 'ru' ? 'Исправьте ошибки синтаксиса перед сохранением!' : 'Fix syntax errors before saving!');
       return;
     }
@@ -100,7 +125,11 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
   };
 
   const handleSave = () => {
-    if (errorMsg) {
+    if (validationTimerRef.current) {
+      clearTimeout(validationTimerRef.current);
+    }
+    const isValid = validateSync(text);
+    if (!isValid) {
       toast.error(lang === 'ru' ? 'Исправьте ошибки синтаксиса перед сохранением!' : 'Fix syntax errors before saving!');
       return;
     }

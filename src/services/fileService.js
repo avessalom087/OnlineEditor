@@ -437,3 +437,41 @@ export async function restoreBackup(folderName) {
   
   return true;
 }
+
+/**
+ * Reads settings from .pz_tool/settings.json if it exists.
+ * @returns {Promise<object|null>}
+ */
+export async function getSettings() {
+  if (!activeDirHandle) return null;
+  try {
+    const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool');
+    const settingsHandle = await pzToolDirHandle.getFileHandle('settings.json');
+    const file = await settingsHandle.getFile();
+    const text = await file.text();
+    return JSON.parse(text);
+  } catch (e) {
+    return null; // Ignore if directory or file doesn't exist
+  }
+}
+
+/**
+ * Saves settings to .pz_tool/settings.json.
+ * @param {object} settings 
+ * @returns {Promise<boolean>}
+ */
+export async function saveSettings(settings) {
+  if (!activeDirHandle) return false;
+  try {
+    const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool', { create: true });
+    const settingsHandle = await pzToolDirHandle.getFileHandle('settings.json', { create: true });
+    const writable = await settingsHandle.createWritable();
+    await writable.write(JSON.stringify(settings, null, 4));
+    await writable.close();
+    return true;
+  } catch (e) {
+    console.error('Failed to save settings:', e);
+    return false;
+  }
+}
+

@@ -57,7 +57,15 @@ export default function TacticalMap({
   onOpenFile,
   coordinatePicker,
   setCoordinatePicker,
-  onNavigateToSpawner
+  onNavigateToSpawner,
+  mapSize: propsMapSize,
+  setMapSize: propsSetMapSize,
+  isCustomPreset: propsIsCustomPreset,
+  setIsCustomPreset: propsSetIsCustomPreset,
+  customSizeStr: propsCustomSizeStr,
+  setCustomSizeStr: propsSetCustomSizeStr,
+  layers: propsLayers,
+  setLayers: propsSetLayers
 }) {
   const { t, lang } = useTranslation();
 
@@ -67,12 +75,20 @@ export default function TacticalMap({
   const dragStartCoordsRef = useRef(null);
   
   // Map dimensions configuration
-  const [mapSize, setMapSize] = useState(10000);
-  const [isCustomPreset, setIsCustomPreset] = useState(false);
-  const [customSizeStr, setCustomSizeStr] = useState('10000');
+  const [localMapSize, setLocalMapSize] = useState(10000);
+  const mapSize = propsMapSize !== undefined ? propsMapSize : localMapSize;
+  const setMapSize = propsSetMapSize || setLocalMapSize;
+
+  const [localIsCustomPreset, setLocalIsCustomPreset] = useState(false);
+  const isCustomPreset = propsIsCustomPreset !== undefined ? propsIsCustomPreset : localIsCustomPreset;
+  const setIsCustomPreset = propsSetIsCustomPreset || setLocalIsCustomPreset;
+
+  const [localCustomSizeStr, setLocalCustomSizeStr] = useState('10000');
+  const customSizeStr = propsCustomSizeStr !== undefined ? propsCustomSizeStr : localCustomSizeStr;
+  const setCustomSizeStr = propsSetCustomSizeStr || setLocalCustomSizeStr;
 
   // Layer Visibility
-  const [layers, setLayers] = useState({
+  const [localLayers, setLocalLayers] = useState({
     airdrops: true,
     safezones: true,
     npcs: true,
@@ -83,6 +99,8 @@ export default function TacticalMap({
     roamingLocations: true,
     spawner: true
   });
+  const layers = propsLayers !== undefined ? propsLayers : localLayers;
+  const setLayers = propsSetLayers || setLocalLayers;
 
   const [sidebarTab, setSidebarTab] = useState('entities'); // 'entities', 'bookmarks'
   const [bookmarks, setBookmarks] = useState(() => {
