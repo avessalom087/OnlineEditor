@@ -197,9 +197,10 @@ function FileTreeNode({ node, level, selectedPath, onSelectFile, dirtyFiles }) {
   );
 }
 
-export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirtyFiles }) {
+export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirtyFiles, backups = [], onRestoreBackup }) {
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
+  const [backupsCollapsed, setBackupsCollapsed] = useState(true);
 
   const paths = Object.keys(configs);
   const tree = buildTree(paths, configs, searchQuery);
@@ -303,6 +304,79 @@ export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirty
           ))
         )}
       </div>
+
+      {/* Backups Collapsible Panel */}
+      {backups.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
+          <div 
+            onClick={() => setBackupsCollapsed(!backupsCollapsed)}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '10px 16px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              color: 'var(--text-glow)',
+              fontWeight: 'bold',
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+              userSelect: 'none'
+            }}
+          >
+            <span>💾 {t('sidebar_backups_title')} ({backups.length})</span>
+            <span>{backupsCollapsed ? '▲' : '▼'}</span>
+          </div>
+          {!backupsCollapsed && (
+            <div style={{ 
+              maxHeight: '180px', 
+              overflowY: 'auto', 
+              padding: '4px 8px 12px 8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              background: 'var(--bg-primary)'
+            }}>
+              {backups.map(b => {
+                const dateStr = new Date(b.mtime).toLocaleString();
+                return (
+                  <div 
+                    key={b.name}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '6px 8px',
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '2px',
+                      fontSize: '11px'
+                    }}
+                    title={b.files.map(f => `• ${f}`).join('\n')}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                        {dateStr}
+                      </span>
+                      <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>
+                        {b.files.length} {b.files.length === 1 ? 'file' : 'files'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onRestoreBackup(b.name)}
+                      className="btn btn-warning"
+                      style={{ padding: '2px 8px', fontSize: '9px' }}
+                    >
+                      {t('sidebar_restore_btn')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </aside>
   );
 }

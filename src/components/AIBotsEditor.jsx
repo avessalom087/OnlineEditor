@@ -22,7 +22,11 @@ export default function AIBotsEditor({
 }) {
   const { t, lang } = useTranslation();
 
-  const [activeTab, setActiveTab] = useState('patrols'); // 'patrols', 'loadouts', 'roaming', 'loot_drops'
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('dayz_editor_aibots_active_tab') || 'patrols'); // 'patrols', 'loadouts', 'roaming', 'loot_drops'
+
+  useEffect(() => {
+    localStorage.setItem('dayz_editor_aibots_active_tab', activeTab);
+  }, [activeTab]);
   const xmlItemsSet = React.useMemo(() => {
     const arr = Array.isArray(xmlItems) ? xmlItems : [];
     return new Set(arr.filter(i => typeof i === 'string').map(i => i.toLowerCase()));
@@ -49,7 +53,15 @@ export default function AIBotsEditor({
   const [activeSubTab, setActiveSubTab] = useState('patrols'); // 'patrols', 'general'
   
   // Loadout editor states
-  const [selectedLoadoutPath, setSelectedLoadoutPath] = useState(null);
+  const [selectedLoadoutPath, setSelectedLoadoutPath] = useState(() => localStorage.getItem('dayz_editor_aibots_selected_loadout_path') || null);
+
+  useEffect(() => {
+    if (selectedLoadoutPath) {
+      localStorage.setItem('dayz_editor_aibots_selected_loadout_path', selectedLoadoutPath);
+    } else {
+      localStorage.removeItem('dayz_editor_aibots_selected_loadout_path');
+    }
+  }, [selectedLoadoutPath]);
   const [selectedSlot, setSelectedSlot] = useState('Body');
   const [newClothingInput, setNewClothingInput] = useState('');
   const [newCargoInput, setNewCargoInput] = useState('');
@@ -124,7 +136,12 @@ export default function AIBotsEditor({
   loadoutPaths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
 
   useEffect(() => {
-    if (loadoutPaths.length > 0 && !selectedLoadoutPath) {
+    const saved = localStorage.getItem('dayz_editor_aibots_selected_loadout_path');
+    if (saved && loadoutPaths.includes(saved)) {
+      if (selectedLoadoutPath !== saved) {
+        setSelectedLoadoutPath(saved);
+      }
+    } else if (loadoutPaths.length > 0 && (!selectedLoadoutPath || !loadoutPaths.includes(selectedLoadoutPath))) {
       setSelectedLoadoutPath(loadoutPaths[0]);
     }
   }, [loadoutPaths, selectedLoadoutPath]);
@@ -1738,6 +1755,41 @@ export default function AIBotsEditor({
                           </button>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                          <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                            <label style={{ color: '#ebd667', fontWeight: 'bold' }}>{lang === 'ru' ? "⭐ ЗАГРУЗЧИК ПРЕСЕТОВ СЛОЖНОСТИ (АВТОЗАПОЛНЕНИЕ)" : "⭐ DIFFICULTY PRESET LOADER (AUTO-FILL MULTIPLIERS)"}</label>
+                            <select 
+                              defaultValue=""
+                              onChange={e => {
+                                const preset = e.target.value;
+                                if (!preset) return;
+                                const presets = {
+                                  easy: { AccuracyMin: 0.15, AccuracyMax: 0.35, ThreatDistanceLimit: 100, NoiseInvestigationDistanceLimit: 100, DamageMultiplier: 0.5, DamageReceivedMultiplier: 1.5, HeadshotResistance: 0.0, Speed: 'WALK', UnderThreatSpeed: 'JOG', Faction: 'Civilian' },
+                                  medium: { AccuracyMin: 0.35, AccuracyMax: 0.65, ThreatDistanceLimit: 180, NoiseInvestigationDistanceLimit: 150, DamageMultiplier: 0.9, DamageReceivedMultiplier: 1.0, HeadshotResistance: 0.1, Speed: 'JOG', UnderThreatSpeed: 'SPRINT', Faction: 'Aggressive' },
+                                  hard: { AccuracyMin: 0.65, AccuracyMax: 0.85, ThreatDistanceLimit: 300, NoiseInvestigationDistanceLimit: 250, DamageMultiplier: 1.3, DamageReceivedMultiplier: 0.7, HeadshotResistance: 0.3, Speed: 'JOG', UnderThreatSpeed: 'SPRINT', Faction: 'West' },
+                                  sniper: { AccuracyMin: 0.85, AccuracyMax: 0.98, ThreatDistanceLimit: 500, NoiseInvestigationDistanceLimit: 300, DamageMultiplier: 1.8, DamageReceivedMultiplier: 1.0, HeadshotResistance: 0.2, Speed: 'WALK', UnderThreatSpeed: 'SPRINT', Faction: 'East', DefaultStance: 'PRONE' },
+                                  boss: { AccuracyMin: 0.80, AccuracyMax: 0.95, ThreatDistanceLimit: 400, NoiseInvestigationDistanceLimit: 300, DamageMultiplier: 2.2, DamageReceivedMultiplier: 0.3, HeadshotResistance: 0.7, Speed: 'JOG', UnderThreatSpeed: 'SPRINT', Faction: 'Guards' }
+                                };
+                                const values = presets[preset];
+                                if (values) {
+                                  Object.entries(values).forEach(([k, v]) => {
+                                    handleUpdatePatrolVal(k, v);
+                                  });
+                                  alert(lang === 'ru' 
+                                    ? `Успешно загружен пресет сложности: ${preset.toUpperCase()}! Изменено 10 параметров боя, фракции, скорости и защиты.`
+                                    : `Successfully loaded Difficulty Preset: ${preset.toUpperCase()}! Modified 10 combat, faction, speed, and defense parameters.`
+                                  );
+                                }
+                              }}
+                              style={{ border: '1px solid #ebd667', color: '#ebd667', background: 'rgba(235,214,103,0.05)', fontWeight: 'bold' }}
+                            >
+                              <option value="" style={{ color: 'var(--text-primary)' }}>{lang === 'ru' ? "-- Выберите пресет для загрузки параметров --" : "-- Select preset to load parameters --"}</option>
+                              <option value="easy" style={{ color: 'var(--text-primary)' }}>{lang === 'ru' ? "Гражданский / Легко (Низкая точность, высокий получаемый урон)" : "Civilian / Easy (Low accuracy, high damage received)"}</option>
+                              <option value="medium" style={{ color: 'var(--text-primary)' }}>{lang === 'ru' ? "Бандит / Средне (Стандартные статы, агрессивная фракция)" : "Bandit / Medium (Standard stats, aggressive faction)"}</option>
+                              <option value="hard" style={{ color: 'var(--text-primary)' }}>{lang === 'ru' ? "Военный / Сложно (Высокая точность, низкий получаемый урон)" : "Military / Hard (High accuracy, low damage received)"}</option>
+                              <option value="sniper" style={{ color: 'var(--text-primary)' }}>{lang === 'ru' ? "Снайпер (Очень высокая дальность/точность, положение лежа)" : "Sniper (Extremely high range/accuracy, prone stance)"}</option>
+                              <option value="boss" style={{ color: 'var(--text-primary)' }}>{lang === 'ru' ? "Босс / Тяжелый (Огромное сопротивление в голову, высокий урон)" : "Boss / Heavy (Extreme headshot resistance, high damage)"}</option>
+                            </select>
+                          </div>
                           <div className="form-group">
                             <label>{t('ai_label_patrol_name')}</label>
                             <input type="text" value={selectedPatrol.Name || ''} onChange={e => handleUpdatePatrolVal('Name', e.target.value)} />
@@ -2132,16 +2184,13 @@ export default function AIBotsEditor({
                   {/* Split Slots and Cargo */}
                   <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
                     
-                    {/* Clothing Slots select list */}
+                    {/* Clothing Slots list */}
                     <div style={{ 
                       width: '180px', 
                       background: 'var(--bg-secondary)', 
                       borderRight: '1px solid var(--border-color)',
-                      overflowY: 'auto'
+                      overflowY: 'auto' 
                     }}>
-                      <div style={{ padding: '10px 14px', fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)' }}>
-                        {t('ai_clothing_slots')}
-                      </div>
                       {CLOTHING_SLOTS.map(s => {
                         const itemsCount = getSlotItems(activeLoadoutConfig.content, s).length;
                         const isSelected = selectedSlot === s;

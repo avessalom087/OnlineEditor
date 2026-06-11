@@ -104,13 +104,14 @@ function getObjectiveFilePath(typeId, id) {
 }
 
 // Simple Autocomplete block for reuse inside Quest Editor (optimized via off-thread Web Worker in AutocompleteInput)
-function ItemAutocomplete({ suggestions, onAdd, label = "Add item", placeholder = "Type ClassName..." }) {
+function ItemAutocomplete({ suggestions, onAdd, label = "Add item", placeholder = "Type ClassName...", layout = "vertical" }) {
   return (
     <AutocompleteInput 
       suggestions={suggestions} 
       placeholder={placeholder} 
       onSelect={onAdd} 
       buttonLabel={label} 
+      layout={layout}
     />
   );
 }
@@ -125,10 +126,12 @@ export default function QuestGraph({
   selectedQuestId,
   onSelectQuest,
   xmlItems = [],
-  highlightedQuestIds = []
+  highlightedQuestIds = [],
+  setCoordinatePicker,
+  setActiveTab
 }) {
   const containerRef = useRef(null);
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
 
 
@@ -161,29 +164,81 @@ export default function QuestGraph({
   // Drag connection line state
   const [connectionDrag, setConnectionDrag] = useState(null);
 
-  // Selected entities
-  const [quests, setQuests] = useState([]);
+  // State and memoized derivation for topological list and autocomplete suggestions
+  const { quests, classnameSuggestions } = useMemo(() => {
+    const questList = [];
+    const classnames = new Set();
+
+    for (const [filePath, file] of Object.entries(configs)) {
+      if (!file.success || !file.content) continue;
+      const content = file.content;
+      
+      // Load Quests
+      if (filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_') && content.ID !== undefined) {
+        questList.push({
+          id: content.ID,
+          title: content.Title || `Quest #${content.ID}`,
+          followUpQuest: content.FollowUpQuest || 0,
+          preQuestIDs: Array.isArray(content.PreQuestIDs) ? content.PreQuestIDs : [],
+          giverIDs: Array.isArray(content.QuestGiverIDs) ? content.QuestGiverIDs : [],
+          turnInIDs: Array.isArray(content.QuestTurnInIDs) ? content.QuestTurnInIDs : [],
+          description: content.Descriptions ? content.Descriptions[0] : '',
+          objectives: Array.isArray(content.Objectives) ? content.Objectives : [],
+          filePath
+        });
+      }
+
+      // Collect Classnames for autocompletes
+      if (Array.isArray(content.Items)) {
+        content.Items.forEach(i => i.ClassName && classnames.add(i.ClassName));
+      }
+      if (content.StartingClothing) {
+        ['Tops', 'Pants', 'Shoes', 'Backpacks'].forEach(k => {
+          if (Array.isArray(content.StartingClothing[k])) {
+            content.StartingClothing[k].forEach(item => classnames.add(item));
+          }
+        });
+      }
+    }
+    
+    (Array.isArray(xmlItems) ? xmlItems : []).forEach(item => {
+      if (typeof item === 'string') classnames.add(item);
+    });
+    
+    questList.sort((a, b) => a.id - b.id);
+    return {
+      quests: questList,
+      classnameSuggestions: Array.from(classnames).sort()
+    };
+  }, [configs, xmlItems]);
+
+  // Selected entities and sync logic during rendering pass (React 18 style)
+  const [prevQuests, setPrevQuests] = useState([]);
+  const [prevSelectedQuestId, setPrevSelectedQuestId] = useState(null);
   const [selectedQuest, setSelectedQuest] = useState(null);
+
+  if (selectedQuestId !== prevSelectedQuestId || quests !== prevQuests) {
+    setPrevSelectedQuestId(selectedQuestId);
+    setPrevQuests(quests);
+    const found = quests.find(q => q.id === selectedQuestId) || null;
+    setSelectedQuest(found);
+  }
+
   const [activeAccordion, setActiveAccordion] = useState('general'); // general, npc, flow, items, objectives
 
   // Modal editor for Objective details
   const [editingObjective, setEditingObjective] = useState(null); // { objective, filePath }
 
-  // Autocomplete suggestions
-  const [classnameSuggestions, setClassnameSuggestions] = useState([]);
-
   // Graph Search HUD
   const [searchQuery, setSearchQuery] = useState('');
+  const [hoveredConnectionKey, setHoveredConnectionKey] = useState(null);
+  const [activeSubTab, setActiveSubTab] = useState(() => localStorage.getItem('dayz_editor_quest_active_subtab') || 'graph'); // graph, npcs
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
+  const [auditResults, setAuditResults] = useState([]);
 
-  // Sync selectedQuestId from parent
-  useEffect(() => {
-    if (selectedQuestId !== null && selectedQuestId !== undefined) {
-      const found = quests.find(q => q.id === selectedQuestId);
-      if (found) {
-        setSelectedQuest(found);
-      }
-    }
-  }, [selectedQuestId, quests]);
+  // Right-click context menu state
+  // type: 'canvas' | 'node' | 'connection'
+  const [questCtxMenu, setQuestCtxMenu] = useState(null);
 
   // Load NPCs list for checkboxes
   const npcsList = [];
@@ -230,58 +285,7 @@ export default function QuestGraph({
     };
   }, []);
 
-  // Scan configs on mount and when changes occur to assemble quests list
-  useEffect(() => {
-    const questList = [];
-    const classnames = new Set();
-
-    for (const [filePath, file] of Object.entries(configs)) {
-      if (!file.success || !file.content) continue;
-      const content = file.content;
-      
-      // Load Quests
-      if (filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_') && content.ID !== undefined) {
-        questList.push({
-          id: content.ID,
-          title: content.Title || `Quest #${content.ID}`,
-          followUpQuest: content.FollowUpQuest || 0,
-          preQuestIDs: Array.isArray(content.PreQuestIDs) ? content.PreQuestIDs : [],
-          giverIDs: Array.isArray(content.QuestGiverIDs) ? content.QuestGiverIDs : [],
-          turnInIDs: Array.isArray(content.QuestTurnInIDs) ? content.QuestTurnInIDs : [],
-          description: content.Descriptions ? content.Descriptions[0] : '',
-          objectives: Array.isArray(content.Objectives) ? content.Objectives : [],
-          filePath
-        });
-      }
-
-      // Collect Classnames for autocompletes
-      if (Array.isArray(content.Items)) {
-        content.Items.forEach(i => i.ClassName && classnames.add(i.ClassName));
-      }
-      if (content.StartingClothing) {
-        ['Tops', 'Pants', 'Shoes', 'Backpacks'].forEach(k => {
-          if (Array.isArray(content.StartingClothing[k])) {
-            content.StartingClothing[k].forEach(item => classnames.add(item));
-          }
-        });
-      }
-    }
-    
-    (Array.isArray(xmlItems) ? xmlItems : []).forEach(item => {
-      if (typeof item === 'string') classnames.add(item);
-    });
-    
-    questList.sort((a, b) => a.id - b.id);
-    setQuests(questList);
-    setClassnameSuggestions(Array.from(classnames).sort());
-
-    if (selectedQuest) {
-      const updatedSelected = questList.find(q => q.id === selectedQuest.id);
-      if (updatedSelected) {
-        setSelectedQuest(updatedSelected);
-      }
-    }
-  }, [configs, xmlItems]);
+  // Redundant scanner hook removed in favor of useMemo derivation
 
   const positionedNodes = layoutQuests(quests, nodeOffsets);
   const nodesMap = new Map(positionedNodes.map(n => [n.id, n]));
@@ -398,6 +402,15 @@ export default function QuestGraph({
     }
   };
 
+  // Dismiss context menu on Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setQuestCtxMenu(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Global wheel Zoom listener with mouse centering and passive: false override
   useEffect(() => {
     const container = containerRef.current;
@@ -486,24 +499,252 @@ export default function QuestGraph({
     const currentPre = selectedQuest.preQuestIDs;
     if (currentPre.includes(targetQuestId) || targetQuestId === selectedQuest.id) return;
     freezeCurrentLayout();
+    
+    // Add prerequisite to selected quest (Node B)
     onChangeField(selectedQuest.filePath, ['PreQuestIDs'], [...currentPre, targetQuestId]);
+
+    // Set follow-up on the parent quest (Node A)
+    const parentQuest = quests.find(q => q.id === targetQuestId);
+    if (parentQuest) {
+      onChangeField(parentQuest.filePath, ['FollowUpQuest'], selectedQuest.id);
+    }
   };
 
   const handleRemovePrereq = (targetQuestId) => {
     if (!selectedQuest) return;
     freezeCurrentLayout();
+
+    // Remove prerequisite from selected quest (Node B)
     const currentPre = selectedQuest.preQuestIDs.filter(id => id !== targetQuestId);
     onChangeField(selectedQuest.filePath, ['PreQuestIDs'], currentPre);
+
+    // Clear follow-up on the parent quest (Node A) if it pointed to selected quest
+    const parentQuest = quests.find(q => q.id === targetQuestId);
+    if (parentQuest && parentQuest.followUpQuest === selectedQuest.id) {
+      onChangeField(parentQuest.filePath, ['FollowUpQuest'], -1);
+    }
   };
 
   const handleSetFollowup = (followUpId) => {
     if (!selectedQuest) return;
     freezeCurrentLayout();
+
+    const oldFollowUpId = activeQuestConfig?.FollowUpQuest ?? -1;
+
+    // 1. Update FollowUpQuest on selected quest
     onChangeField(selectedQuest.filePath, ['FollowUpQuest'], followUpId);
+
+    // 2. Remove selected quest from the old follow-up quest's prerequisites
+    if (oldFollowUpId > 0) {
+      const oldFollowUpQuest = quests.find(q => q.id === oldFollowUpId);
+      if (oldFollowUpQuest) {
+        const list = (oldFollowUpQuest.preQuestIDs || []).filter(id => id !== selectedQuest.id);
+        onChangeField(oldFollowUpQuest.filePath, ['PreQuestIDs'], list);
+      }
+    }
+
+    // 3. Add selected quest to the new follow-up quest's prerequisites
+    if (followUpId > 0) {
+      const newFollowUpQuest = quests.find(q => q.id === followUpId);
+      if (newFollowUpQuest) {
+        const list = newFollowUpQuest.preQuestIDs || [];
+        if (!list.includes(selectedQuest.id)) {
+          onChangeField(newFollowUpQuest.filePath, ['PreQuestIDs'], [...list, selectedQuest.id]);
+        }
+      }
+    }
+  };
+
+  const handleSeverConnection = (type, nodeAId, nodeBId) => {
+    const nodeA = quests.find(q => q.id === nodeAId);
+    const nodeB = quests.find(q => q.id === nodeBId);
+    if (!nodeA || !nodeB) return;
+
+    const msg = t('quest_confirm_sever_link', { src: nodeA.title, dst: nodeB.title }) || `Sever connection between Quest "${nodeA.title}" and "${nodeB.title}"?`;
+    if (window.confirm(msg)) {
+      freezeCurrentLayout();
+
+      // Bi-directional link severing: update both PreQuestIDs (Node B) and FollowUpQuest (Node A)
+      const list = (nodeB.preQuestIDs || []).filter(id => id !== nodeAId);
+      onChangeField(nodeB.filePath, ['PreQuestIDs'], list);
+
+      if (nodeA.followUpQuest === nodeBId) {
+        onChangeField(nodeA.filePath, ['FollowUpQuest'], -1);
+      }
+
+      setHoveredConnectionKey(null);
+    }
+  };
+
+  // Sever ALL connections for a quest node (both prereqs and follow-up)
+  const handleSeverAllConnections = (nodeId) => {
+    const node = quests.find(q => q.id === nodeId);
+    if (!node) return;
+    const ru = lang === 'ru';
+    const confirmMsg = ru
+      ? `Разорвать ВСЕ связи квеста "${node.title}" (ID ${nodeId})?`
+      : `Sever ALL connections for quest "${node.title}" (ID ${nodeId})?`;
+    if (!window.confirm(confirmMsg)) return;
+    freezeCurrentLayout();
+    // Remove from all PreQuestIDs references in other quests
+    quests.forEach(q => {
+      if (q.id === nodeId) return;
+      if (q.preQuestIDs.includes(nodeId)) {
+        onChangeField(q.filePath, ['PreQuestIDs'], q.preQuestIDs.filter(id => id !== nodeId));
+      }
+      if (q.followUpQuest === nodeId) {
+        onChangeField(q.filePath, ['FollowUpQuest'], -1);
+      }
+    });
+    // Clear own prereqs and follow-up
+    onChangeField(node.filePath, ['PreQuestIDs'], []);
+    onChangeField(node.filePath, ['FollowUpQuest'], -1);
+    setQuestCtxMenu(null);
+  };
+
+  const runQuestAudit = () => {
+    const results = [];
+
+    // 1. Detect circular dependencies & broken links
+    const visited = {}; // 0 = unvisited, 1 = visiting, 2 = visited
+    const checkCycle = (qId, path = []) => {
+      visited[qId] = 1;
+      const qObj = quests.find(q => q.id === qId);
+      if (qObj) {
+        // Check prerequisite references
+        (qObj.preQuestIDs || []).forEach(preId => {
+          if (!quests.some(q => q.id === preId)) {
+            results.push({
+              type: 'error',
+              category: t('quest_audit_broken') || "Broken Prerequisite Reference",
+              msg: `Quest ID ${qId} ("${qObj.title}") references non-existent prerequisite Quest ID ${preId}.`,
+              questId: qId
+            });
+          }
+        });
+
+        // Check FollowUpQuest reference
+        const followId = qObj.followUpQuest;
+        if (followId > 0) {
+          if (!quests.some(q => q.id === followId)) {
+            results.push({
+              type: 'error',
+              category: t('quest_audit_broken') || "Broken Follow-up Reference",
+              msg: `Quest ID ${qId} ("${qObj.title}") references non-existent follow-up Quest ID ${followId}.`,
+              questId: qId
+            });
+          } else {
+            if (visited[followId] === 1) {
+              results.push({
+                type: 'error',
+                category: t('quest_audit_circular') || "Circular Dependency Cycle",
+                msg: `Quest ID ${qId} ("${qObj.title}") creates a circular cycle with Quest ID ${followId}. Path: ${path.concat(qId, followId).join(' -> ')}`,
+                questId: qId
+              });
+            } else if (!visited[followId]) {
+              checkCycle(followId, path.concat(qId));
+            }
+          }
+        }
+      }
+      visited[qId] = 2;
+    };
+
+    quests.forEach(q => {
+      if (!visited[q.id]) {
+        checkCycle(q.id, []);
+      }
+    });
+
+    // 2. Empty dialogues / titles check
+    quests.forEach(q => {
+      const file = configs[q.filePath]?.content;
+      if (file) {
+        if (!file.Title || file.Title.trim() === "") {
+          results.push({
+            type: 'warning',
+            category: t('quest_audit_empty_fields') || "Empty Title",
+            msg: `Quest ID ${q.id} has an empty Title.`,
+            questId: q.id
+          });
+        }
+        if (!file.Descriptions || !file.Descriptions.some(d => d && d.trim() !== "")) {
+          results.push({
+            type: 'warning',
+            category: t('quest_audit_empty_fields') || "Empty Dialogue Text",
+            msg: `Quest ID ${q.id} has no valid start dialogue or description texts.`,
+            questId: q.id
+          });
+        }
+      }
+    });
+
+    // 3. Missing NPC configurations check
+    quests.forEach(q => {
+      const file = configs[q.filePath]?.content;
+      if (file) {
+        const checkNpcExists = (npcId, label) => {
+          if (npcId !== undefined && npcId !== null && npcId !== 0) {
+            const npcExists = Object.values(configs).some(f => 
+              f.success && f.content && f.content.ID === npcId
+            );
+            if (!npcExists) {
+              results.push({
+                type: 'error',
+                category: t('quest_audit_missing_npc') || "Missing NPC Config",
+                msg: `Quest ID ${q.id} references non-existent NPC ID ${npcId} as ${label}.`,
+                questId: q.id
+              });
+            }
+          }
+        };
+
+        if (Array.isArray(file.QuestGiverIDs)) {
+          file.QuestGiverIDs.forEach(id => checkNpcExists(id, 'Quest Giver'));
+        }
+        if (Array.isArray(file.QuestTurnInIDs)) {
+          file.QuestTurnInIDs.forEach(id => checkNpcExists(id, 'Quest Turn-In'));
+        }
+      }
+    });
+
+    // 4. Orphaned Objectives on disk check
+    const referencedObjectivePaths = new Set();
+    quests.forEach(q => {
+      if (Array.isArray(q.objectives)) {
+        q.objectives.forEach(objRef => {
+          const path = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID);
+          if (path) referencedObjectivePaths.add(path.toLowerCase());
+        });
+      }
+    });
+
+    Object.keys(configs).forEach(filePath => {
+      const lower = filePath.toLowerCase();
+      if (lower.startsWith('expansionmod/quests/objectives/') && lower.endsWith('.json')) {
+        if (!referencedObjectivePaths.has(lower)) {
+          results.push({
+            type: 'warning',
+            category: t('quest_audit_orphaned') || "Orphaned Objective File",
+            msg: `Objective file "${filePath}" exists on disk but is not linked to any Quest.`,
+            action: () => {
+              if (window.confirm(`Delete orphaned objective file: ${filePath}?`)) {
+                onDeleteFile(filePath);
+                setIsAuditOpen(false);
+              }
+            }
+          });
+        }
+      }
+    });
+
+    setAuditResults(results);
+    setIsAuditOpen(true);
   };
 
   // QUEST CREATION & DELETION
-  const handleCreateQuest = () => {
+  // spawnPos: optional { x, y } in SVG canvas space — used by RMB context menu to place the node under the cursor
+  const handleCreateQuest = (spawnPos = null) => {
     freezeCurrentLayout();
     const nextId = quests.length > 0 ? Math.max(...quests.map(q => Number(q.id) || 0)) + 1 : 1;
     const newQuestTemplate = {
@@ -553,6 +794,12 @@ export default function QuestGraph({
 
     const filePath = `ExpansionMod/Quests/Quests/Quest_${nextId}.json`;
     onCreateFile(filePath, newQuestTemplate);
+
+    // Pin the new node at the cursor position if spawned via RMB
+    if (spawnPos && typeof spawnPos.x === 'number' && typeof spawnPos.y === 'number') {
+      setNodeOffsets(prev => ({ ...prev, [nextId]: { x: spawnPos.x, y: spawnPos.y } }));
+    }
+
     setTimeout(() => {
       setSelectedQuest({
         id: nextId,
@@ -722,24 +969,79 @@ export default function QuestGraph({
   const activeQuestConfig = selectedQuest ? configs[selectedQuest.filePath]?.content : null;
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       
-      {/* Visual Canvas Workspace */}
-      <div 
-        ref={containerRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        style={{ 
-          flex: 1, 
-          height: '100%', 
-          position: 'relative', 
-          overflow: 'hidden', 
-          background: '#040604',
-          cursor: isPanning ? 'grabbing' : 'default',
-          userSelect: 'none'
-        }}
-      >
+      {/* Sub-tab selection bar */}
+      <div style={{
+        display: 'flex',
+        background: 'var(--bg-tertiary)',
+        borderBottom: '1px solid var(--border-color)',
+        padding: '0 10px',
+        height: '42px',
+        alignItems: 'center',
+        gap: '4px',
+        flexShrink: 0
+      }}>
+        {[
+          { id: 'graph', label: t('quest_tab_flow') || "Quest Graph", icon: "🗺️" },
+          { id: 'npcs', label: t('quest_tab_npcs') || "Quest NPCs", icon: "👤" }
+        ].map(tab => {
+          const isActive = activeSubTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveSubTab(tab.id);
+                localStorage.setItem('dayz_editor_quest_active_subtab', tab.id);
+              }}
+              style={{
+                background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                border: 'none',
+                borderBottom: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                color: isActive ? 'var(--text-glow)' : 'var(--text-secondary)',
+                padding: '8px 16px',
+                fontSize: '12px',
+                fontFamily: 'var(--font-heading)',
+                fontWeight: isActive ? 700 : 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                height: '100%',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activeSubTab === 'graph' ? (
+        <div style={{ display: 'flex', flex: 1, height: 'calc(100% - 42px)', overflow: 'hidden', position: 'relative' }}>
+          {/* Visual Canvas Workspace */}
+          <div 
+            ref={containerRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              const coords = getSVGCoords(e);
+              setQuestCtxMenu({ type: 'canvas', px: e.clientX, py: e.clientY, svgX: coords.x, svgY: coords.y });
+            }}
+            onClick={() => questCtxMenu && setQuestCtxMenu(null)}
+            style={{ 
+              flex: 1, 
+              height: '100%', 
+              position: 'relative', 
+              overflow: 'hidden', 
+              background: '#040604',
+              cursor: isPanning ? 'grabbing' : 'default',
+              userSelect: 'none'
+            }}
+          >
         <svg style={{ width: '100%', height: '100%' }}>
           <rect id="grid-bg" width="100%" height="100%" fill="url(#grid)" />
 
@@ -774,31 +1076,61 @@ export default function QuestGraph({
                   ) : true;
                   const lineVisible = !sq || (isNodeMatch || isParentMatch);
 
-                  if (isHighlight) {
-                    lines.push(
-                      <path
-                        key={`prereq-glow-${preId}-${node.id}`}
-                        d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
-                        fill="none"
-                        stroke="rgba(255, 74, 74, 0.4)"
-                        strokeWidth="6"
-                        opacity={lineVisible ? '0.8' : '0.08'}
-                      />
-                    );
-                  }
+                  const midX = 0.125 * startX + 0.375 * cp1X + 0.375 * cp2X + 0.125 * endX;
+                  const midY = 0.125 * startY + 0.375 * cp1Y + 0.375 * cp2Y + 0.125 * endY;
+                  const connKey = `prereq-${preId}-${node.id}`;
+                  const isHovered = hoveredConnectionKey === connKey;
 
                   lines.push(
-                    <path
-                      key={`prereq-${preId}-${node.id}`}
-                      className={isSelectedLine && !isHighlight ? 'quest-line-prereq-active' : undefined}
-                      d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
-                      fill="none"
-                      stroke={isHighlight ? '#ff4a4a' : '#44aacc'}
-                      strokeWidth={isHighlight ? '2.5' : (isSelectedLine ? '2' : '1.5')}
-                      strokeDasharray={isHighlight || isSelectedLine ? undefined : '4,4'}
-                      markerEnd="url(#arrow-prereq)"
-                      opacity={lineVisible ? (isHighlight ? '1.0' : '0.65') : '0.08'}
-                    />
+                    <g 
+                      key={connKey}
+                      onMouseEnter={() => setHoveredConnectionKey(connKey)}
+                      onMouseLeave={() => setHoveredConnectionKey(null)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setQuestCtxMenu({ type: 'connection', px: e.clientX, py: e.clientY, connType: 'prereq', nodeAId: preId, nodeBId: node.id });
+                      }}
+                    >
+                      <path
+                        d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
+                        fill="none"
+                        stroke="transparent"
+                        strokeWidth="12"
+                        style={{ cursor: 'pointer' }}
+                      />
+                      {isHighlight && (
+                        <path
+                          d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
+                          fill="none"
+                          stroke="rgba(255, 74, 74, 0.4)"
+                          strokeWidth="6"
+                          opacity={lineVisible ? '0.8' : '0.08'}
+                        />
+                      )}
+                      <path
+                        className={isSelectedLine && !isHighlight ? 'quest-line-prereq-active' : undefined}
+                        d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
+                        fill="none"
+                        stroke={isHovered ? '#ff6b6b' : (isHighlight ? '#ff4a4a' : '#44aacc')}
+                        strokeWidth={isHovered ? '3' : (isHighlight ? '2.5' : (isSelectedLine ? '2' : '1.5'))}
+                        strokeDasharray={isHighlight || isSelectedLine ? undefined : '4,4'}
+                        markerEnd="url(#arrow-prereq)"
+                        opacity={lineVisible ? (isHighlight ? '1.0' : '0.65') : '0.08'}
+                      />
+                      {isHovered && lineVisible && (
+                        <g 
+                          transform={`translate(${midX}, ${midY})`}
+                          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleSeverConnection('prereq', preId, node.id); }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <circle r="25" fill="transparent" />
+                          <circle r="8" fill="#ff4a4a" stroke="#ffffff" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 4px rgba(255,74,74,0.6))' }} />
+                          <line x1="-3" y1="-3" x2="3" y2="3" stroke="#ffffff" strokeWidth="1.5" />
+                          <line x1="3" y1="-3" x2="-3" y2="3" stroke="#ffffff" strokeWidth="1.5" />
+                        </g>
+                      )}
+                    </g>
                   );
                 }
               });
@@ -823,30 +1155,60 @@ export default function QuestGraph({
                   ) : true;
                   const lineVisible = !sq || (isNodeMatch || isChildMatch);
 
-                  if (isHighlight) {
-                    lines.push(
-                      <path
-                        key={`follow-glow-${node.id}-${node.followUpQuest}`}
-                        d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
-                        fill="none"
-                        stroke="rgba(255, 74, 74, 0.4)"
-                        strokeWidth="6"
-                        opacity={lineVisible ? '0.8' : '0.08'}
-                      />
-                    );
-                  }
+                  const midX = 0.125 * startX + 0.375 * cp1X + 0.375 * cp2X + 0.125 * endX;
+                  const midY = 0.125 * startY + 0.375 * cp1Y + 0.375 * cp2Y + 0.125 * endY;
+                  const connKey = `follow-${node.id}-${node.followUpQuest}`;
+                  const isHovered = hoveredConnectionKey === connKey;
 
                   lines.push(
-                    <path
-                      key={`follow-${node.id}-${node.followUpQuest}`}
-                      className={isSelectedLine && !isHighlight ? 'quest-line-followup-active' : undefined}
-                      d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
-                      fill="none"
-                      stroke={isHighlight ? '#ff4a4a' : '#b2fa9e'}
-                      strokeWidth={isHighlight ? '3' : (isSelectedLine ? '2.5' : '2')}
-                      markerEnd="url(#arrow-followup)"
-                      opacity={lineVisible ? (isHighlight ? '1.0' : '0.8') : '0.08'}
-                    />
+                    <g
+                      key={connKey}
+                      onMouseEnter={() => setHoveredConnectionKey(connKey)}
+                      onMouseLeave={() => setHoveredConnectionKey(null)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setQuestCtxMenu({ type: 'connection', px: e.clientX, py: e.clientY, connType: 'follow', nodeAId: node.id, nodeBId: node.followUpQuest });
+                      }}
+                    >
+                      <path
+                        d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
+                        fill="none"
+                        stroke="transparent"
+                        strokeWidth="12"
+                        style={{ cursor: 'pointer' }}
+                      />
+                      {isHighlight && (
+                        <path
+                          d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
+                          fill="none"
+                          stroke="rgba(255, 74, 74, 0.4)"
+                          strokeWidth="6"
+                          opacity={lineVisible ? '0.8' : '0.08'}
+                        />
+                      )}
+                      <path
+                        className={isSelectedLine && !isHighlight ? 'quest-line-followup-active' : undefined}
+                        d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
+                        fill="none"
+                        stroke={isHovered ? '#ff6b6b' : (isHighlight ? '#ff4a4a' : '#b2fa9e')}
+                        strokeWidth={isHovered ? '3' : (isHighlight ? '3' : (isSelectedLine ? '2.5' : '2'))}
+                        markerEnd="url(#arrow-followup)"
+                        opacity={lineVisible ? (isHighlight ? '1.0' : '0.8') : '0.08'}
+                      />
+                      {isHovered && lineVisible && (
+                        <g 
+                          transform={`translate(${midX}, ${midY})`}
+                          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleSeverConnection('follow', node.id, node.followUpQuest); }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <circle r="25" fill="transparent" />
+                          <circle r="8" fill="#ff4a4a" stroke="#ffffff" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 4px rgba(255,74,74,0.6))' }} />
+                          <line x1="-3" y1="-3" x2="3" y2="3" stroke="#ffffff" strokeWidth="1.5" />
+                          <line x1="3" y1="-3" x2="-3" y2="3" stroke="#ffffff" strokeWidth="1.5" />
+                        </g>
+                      )}
+                    </g>
                   );
                 }
               }
@@ -894,6 +1256,11 @@ export default function QuestGraph({
                   onMouseDown={(e) => handleNodeDragStart(e, node.id)}
                   onClick={() => { setSelectedQuest(node); if (onSelectQuest) onSelectQuest(node.id); }}
                   onDoubleClick={() => { if (onOpenFile) onOpenFile(node.filePath); }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setQuestCtxMenu({ type: 'node', px: e.clientX, py: e.clientY, node });
+                  }}
                 >
                   <rect
                     width={node.width}
@@ -1055,7 +1422,179 @@ export default function QuestGraph({
           <button className="btn" onClick={() => setZoom(prev => Math.max(prev / 1.2, 0.3))} style={{ padding: '4px 8px', fontSize: '12px' }}>-</button>
           <button className="btn" onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }} style={{ padding: '4px 8px', fontSize: '11px' }} title="Reset Pan & Zoom">{t('config_reset')}</button>
           <button className="btn" onClick={() => setNodeOffsets({})} style={{ padding: '4px 8px', fontSize: '11px' }} title="Auto-align all nodes to default columns">{t('quest_btn_reset_layout') || 'Auto-Layout'}</button>
+          <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
+          <button className="btn btn-danger" onClick={runQuestAudit} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }} title="Run circular references, orphan objectives, and link validations">
+            {t('quest_audit_btn') || "🛠️ DIAGNOSTICS"}
+          </button>
         </div>
+
+        {/* ─── RIGHT-CLICK CONTEXT MENU ─── */}
+        {questCtxMenu && (
+          <div
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
+            onContextMenu={e => e.preventDefault()}
+            style={{
+              position: 'fixed',
+              top: questCtxMenu.py,
+              left: questCtxMenu.px,
+              zIndex: 99999,
+              background: 'rgba(7,9,7,0.97)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '3px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.7)',
+              overflow: 'hidden',
+              minWidth: '220px',
+              fontFamily: 'var(--font-mono)',
+              pointerEvents: 'auto',
+            }}
+          >
+            {/* Header label */}
+            <div style={{ padding: '4px 10px', fontSize: '9px', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', letterSpacing: '0.08em' }}>
+              {questCtxMenu.type === 'node' && `// QUEST_NODE: ID ${questCtxMenu.node.id}`}
+              {questCtxMenu.type === 'connection' && `// CONNECTION: ${questCtxMenu.connType.toUpperCase()}`}
+              {questCtxMenu.type === 'canvas' && '// QUEST_GRAPH'}
+            </div>
+
+            {/* ── NODE CONTEXT ── */}
+            {questCtxMenu.type === 'node' && (() => {
+              const ru = lang === 'ru';
+              const n = questCtxMenu.node;
+              const BTN = (onClick, color, label) => (
+                <button
+                  onClick={onClick}
+                  style={{ display:'block', width:'100%', textAlign:'left', padding:'7px 12px', background:'transparent', border:'none', color: color || 'var(--text-glow)', cursor:'pointer', fontSize:'11px', fontFamily:'var(--font-mono)', transition:'background 0.1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = color === '#ff6b6b' ? 'rgba(255,80,80,0.12)' : 'rgba(255,255,255,0.07)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >{label}</button>
+              );
+              return (
+                <>
+                  <div style={{ padding:'5px 12px', fontSize:'10px', color:'var(--text-secondary)', borderBottom:'1px solid rgba(255,255,255,0.05)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    {n.title}
+                  </div>
+
+                  {BTN(() => {
+                    setSelectedQuest(n);
+                    if (onSelectQuest) onSelectQuest(n.id);
+                    const full = positionedNodes.find(pn => pn.id === n.id);
+                    if (full) zoomToNode(full);
+                    setQuestCtxMenu(null);
+                  }, null, `🔍 ${ru ? 'Выбрать и приблизить' : 'Select & Zoom To'}`)}
+
+                  {BTN(() => {
+                    if (onOpenFile) onOpenFile(n.filePath);
+                    setQuestCtxMenu(null);
+                  }, null, `📂 ${ru ? 'Открыть в редакторе' : 'Open in Editor'}`)}
+
+                  <div style={{ height:'1px', background:'var(--border-color)', opacity:0.4, margin:'4px 0' }} />
+
+                  {BTN(() => {
+                    const text = String(n.id);
+                    navigator.clipboard.writeText(text).catch(() => {});
+                    setQuestCtxMenu(null);
+                  }, null, `📋 ${ru ? 'Копировать ID' : 'Copy Quest ID'}`)}
+
+                  {BTN(() => {
+                    navigator.clipboard.writeText(n.title).catch(() => {});
+                    setQuestCtxMenu(null);
+                  }, null, `📋 ${ru ? 'Копировать название' : 'Copy Quest Title'}`)}
+
+                  <div style={{ height:'1px', background:'var(--border-color)', opacity:0.4, margin:'4px 0' }} />
+
+                  {BTN(() => {
+                    handleSeverAllConnections(n.id);
+                  }, '#ff6b6b', `✂️ ${ru ? 'Разорвать все связи' : 'Sever All Connections'}`)}
+
+                  {BTN(() => {
+                    setSelectedQuest(n);
+                    if (onSelectQuest) onSelectQuest(n.id);
+                    setQuestCtxMenu(null);
+                    setTimeout(() => handleDeleteQuest(), 50);
+                  }, '#ff6b6b', `🗑 ${ru ? 'Удалить квест' : 'Delete Quest'}`)}
+                </>
+              );
+            })()}
+
+            {/* ── CONNECTION CONTEXT ── */}
+            {questCtxMenu.type === 'connection' && (() => {
+              const ru = lang === 'ru';
+              const nA = quests.find(q => q.id === questCtxMenu.nodeAId);
+              const nB = quests.find(q => q.id === questCtxMenu.nodeBId);
+              return (
+                <>
+                  <div style={{ padding:'5px 12px', fontSize:'10px', color:'var(--text-secondary)', borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
+                    {nA?.title} → {nB?.title}
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleSeverConnection(questCtxMenu.connType, questCtxMenu.nodeAId, questCtxMenu.nodeBId);
+                      setQuestCtxMenu(null);
+                    }}
+                    style={{ display:'block', width:'100%', textAlign:'left', padding:'7px 12px', background:'transparent', border:'none', color:'#ff6b6b', cursor:'pointer', fontSize:'11px', fontFamily:'var(--font-mono)', transition:'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.12)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    ✂️ {ru ? 'Разорвать связь' : 'Sever Connection'}
+                  </button>
+                </>
+              );
+            })()}
+
+            {/* ── CANVAS CONTEXT ── */}
+            {questCtxMenu.type === 'canvas' && (() => {
+              const ru = lang === 'ru';
+              const BTN = (onClick, color, label) => (
+                <button
+                  onClick={onClick}
+                  style={{ display:'block', width:'100%', textAlign:'left', padding:'7px 12px', background:'transparent', border:'none', color: color || 'var(--text-glow)', cursor:'pointer', fontSize:'11px', fontFamily:'var(--font-mono)', transition:'background 0.1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = color === '#ff6b6b' ? 'rgba(255,80,80,0.12)' : 'rgba(255,255,255,0.07)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >{label}</button>
+              );
+              return (
+                <>
+                  {BTN(() => {
+                    handleCreateQuest({ x: questCtxMenu.svgX, y: questCtxMenu.svgY });
+                    setQuestCtxMenu(null);
+                  }, null, `✨ ${ru ? 'Создать новый квест' : 'Create New Quest'}`)}
+
+                  <div style={{ height:'1px', background:'var(--border-color)', opacity:0.4, margin:'4px 0' }} />
+
+                  {BTN(() => {
+                    setZoom(1);
+                    setPanOffset({ x: 0, y: 0 });
+                    setQuestCtxMenu(null);
+                  }, null, `🔄 ${ru ? 'Сброс просмотра' : 'Reset Pan & Zoom'}`)}
+
+                  {BTN(() => {
+                    setNodeOffsets({});
+                    setQuestCtxMenu(null);
+                  }, null, `📐 ${ru ? 'Авто-раскладка нодов' : 'Auto-Layout Nodes'}`)}
+
+                  <div style={{ height:'1px', background:'var(--border-color)', opacity:0.4, margin:'4px 0' }} />
+
+                  {BTN(() => {
+                    runQuestAudit();
+                    setQuestCtxMenu(null);
+                  }, null, `🛠️ ${ru ? 'Диагностика' : 'Run Diagnostics'}`)}
+                </>
+              );
+            })()}
+
+            {/* Close button row */}
+            <div style={{ borderTop:'1px solid var(--border-color)', padding:'4px 10px', display:'flex', justifyContent:'flex-end' }}>
+              <button
+                onClick={() => setQuestCtxMenu(null)}
+                style={{ background:'transparent', border:'none', color:'var(--text-secondary)', fontSize:'10px', cursor:'pointer', fontFamily:'var(--font-mono)', padding:'2px 6px' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+              >
+                {lang === 'ru' ? 'Закрыть' : 'Close'} ✕
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Quest Editor Side Panel */}
@@ -1444,6 +1983,19 @@ export default function QuestGraph({
               </div>
               {activeAccordion === 'items' && (
                 <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {(!xmlItems || xmlItems.length === 0) && (
+                    <div style={{ 
+                      padding: '8px 10px', 
+                      background: 'rgba(230,162,60,0.08)', 
+                      border: '1px solid rgba(230,162,60,0.25)', 
+                      borderRadius: '2px', 
+                      color: '#e6a23c', 
+                      fontSize: '11px', 
+                      lineHeight: '1.4' 
+                    }}>
+                      {t('quest_warning_xml_missing') || "⚠️ Items database (types.xml) is not loaded. Autocomplete is limited to local files."}
+                    </div>
+                  )}
                   
                   {/* Quest Items table */}
                   <div>
@@ -1471,7 +2023,11 @@ export default function QuestGraph({
                       )}
                     </div>
                     {/* Add quest item */}
-                    <div style={{ display: 'flex', gap: '6px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px', marginTop: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('quest_label_amount') || "Amount"}:</span>
+                        <input id="new-qitem-amt" type="number" defaultValue="1" style={{ width: '70px', fontSize: '12px', padding: '4px', textAlign: 'center' }} />
+                      </div>
                       <ItemAutocomplete
                         suggestions={classnameSuggestions}
                         onAdd={(name) => {
@@ -1481,7 +2037,6 @@ export default function QuestGraph({
                         label={t('quest_btn_add_item')}
                         placeholder={t('quest_ph_classname')}
                       />
-                      <input id="new-qitem-amt" type="number" defaultValue="1" style={{ width: '55px', fontSize: '12px', padding: '6px', textAlign: 'center' }} />
                     </div>
                   </div>
 
@@ -1517,7 +2072,17 @@ export default function QuestGraph({
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '6px', flexDirection: 'column', background: 'var(--bg-secondary)', padding: '8px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexDirection: 'column', background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>{t('quest_label_amount')}</label>
+                          <input id="new-reward-amt" type="number" defaultValue="1" style={{ fontSize: '12px', padding: '6px', textAlign: 'center', width: '100%' }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>{t('quest_label_chance')}</label>
+                          <input id="new-reward-chance" type="number" defaultValue="1.0" step="0.1" min="0" max="1" style={{ fontSize: '12px', padding: '6px', textAlign: 'center', width: '100%' }} />
+                        </div>
+                      </div>
                       <ItemAutocomplete
                         suggestions={classnameSuggestions}
                         onAdd={(name) => {
@@ -1537,16 +2102,6 @@ export default function QuestGraph({
                         label={t('quest_btn_add_reward')}
                         placeholder={t('quest_ph_classname')}
                       />
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{t('quest_label_amount')}</label>
-                          <input id="new-reward-amt" type="number" defaultValue="1" style={{ fontSize: '11px', padding: '4px', textAlign: 'center' }} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{t('quest_label_chance')}</label>
-                          <input id="new-reward-chance" type="number" defaultValue="1.0" step="0.1" min="0" max="1" style={{ fontSize: '11px', padding: '4px', textAlign: 'center' }} />
-                        </div>
-                      </div>
                     </div>
 
                     {/* Reward options */}
@@ -1683,6 +2238,20 @@ export default function QuestGraph({
           </div>
         </div>
       )}
+    </div>
+  ) : (
+    <QuestNPCsManager 
+      configs={configs}
+      onChangeField={onChangeField}
+      onCreateFile={onCreateFile}
+      onDeleteFile={onDeleteFile}
+      setCoordinatePicker={setCoordinatePicker}
+      setActiveTab={setActiveTab}
+      xmlItems={xmlItems}
+      t={t}
+      lang={lang}
+    />
+  )}
 
       {/* OBJECTIVE DETAILS MODAL */}
       {editingObjective && (
@@ -1717,6 +2286,19 @@ export default function QuestGraph({
 
             {/* Modal Body (Scrollable form) */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {(!xmlItems || xmlItems.length === 0) && (
+                <div style={{ 
+                  padding: '8px 10px', 
+                  background: 'rgba(230,162,60,0.08)', 
+                  border: '1px solid rgba(230,162,60,0.25)', 
+                  borderRadius: '2px', 
+                  color: '#e6a23c', 
+                  fontSize: '11px', 
+                  lineHeight: '1.4' 
+                }}>
+                  {t('quest_warning_xml_missing') || "⚠️ Items database (types.xml) is not loaded. Autocomplete is limited to local files."}
+                </div>
+              )}
               
               <div>
                 <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_objective_text')}</label>
@@ -1767,18 +2349,43 @@ export default function QuestGraph({
                 <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '2px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('quest_label_coords')}</span>
-                    <button 
-                      className="btn btn-accent" 
-                      onClick={() => {
-                        const pos = editingObjective.objective.Position;
-                        onNavigateToMap(pos);
-                        setEditingObjective(null);
-                      }}
-                      style={{ padding: '2px 8px', fontSize: '9px' }}
-                      title={t('quest_locate_on_map')}
-                    >
-                      {t('quest_btn_plot_map')}
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        className="btn btn-accent" 
+                        onClick={() => {
+                          const pos = editingObjective.objective.Position;
+                          onNavigateToMap(pos);
+                          setEditingObjective(null);
+                        }}
+                        style={{ padding: '2px 8px', fontSize: '9px' }}
+                        title={t('quest_locate_on_map')}
+                      >
+                        {t('quest_btn_plot_map')}
+                      </button>
+                      <button 
+                        className="btn btn-accent"
+                        onClick={() => {
+                          const originalTab = 'quests';
+                          const obj = editingObjective.objective;
+                          const path = editingObjective.filePath;
+                          setCoordinatePicker({
+                            returnTab: originalTab,
+                            callback: ({ x, z }) => {
+                              const newPos = [x, 0.0, z];
+                              const updated = { ...obj, Position: newPos };
+                              setEditingObjective({ objective: updated, filePath: path });
+                              onChangeField(path, ['Position'], newPos);
+                            }
+                          });
+                          setActiveTab('map');
+                          setEditingObjective(null);
+                        }}
+                        style={{ padding: '2px 8px', fontSize: '9px' }}
+                        title="Pick coordinates visually on Map"
+                      >
+                        {t('quest_label_pick_coords') || "🎯 Pick from Map"}
+                      </button>
+                    </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                     {['X', 'Y', 'Z'].map((coord, idx) => (
@@ -1914,7 +2521,11 @@ export default function QuestGraph({
                     </div>
                     
                     {/* Add collection item */}
-                    <div style={{ display: 'flex', gap: '6px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px', marginTop: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('quest_label_amount') || "Amount"}:</span>
+                        <input id="new-col-amt" type="number" defaultValue="1" style={{ width: '70px', fontSize: '12px', padding: '4px', textAlign: 'center' }} />
+                      </div>
                       <ItemAutocomplete
                         suggestions={classnameSuggestions}
                         onAdd={(name) => {
@@ -1927,7 +2538,6 @@ export default function QuestGraph({
                         label={t('quest_btn_add_item')}
                         placeholder={t('quest_ph_classname')}
                       />
-                      <input id="new-col-amt" type="number" defaultValue="1" style={{ width: '55px', fontSize: '12px', padding: '6px', textAlign: 'center' }} />
                     </div>
                   </div>
                 </div>
@@ -1963,38 +2573,129 @@ export default function QuestGraph({
                     </div>
                   </div>
 
-                  {/* ClassNames and AllowedWeapons lists */}
-                  <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('quest_label_allowed_weapons')}</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)' }}>
-                      {(editingObjective.objective.AllowedWeapons || []).map((w, wIdx) => (
-                        <div key={w} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
-                          <span>{w}</span>
-                          <button 
-                            onClick={() => {
-                              const list = (editingObjective.objective.AllowedWeapons || []).filter(item => item !== w);
-                              const updated = { ...editingObjective.objective, AllowedWeapons: list };
-                              setEditingObjective({ ...editingObjective, objective: updated });
-                              onChangeField(editingObjective.filePath, ['AllowedWeapons'], list);
-                            }}
-                            style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0 }}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
+                  {/* ClassNames, ExcludedClassNames, and AllowedWeapons lists */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    
+                    {/* Target ClassNames */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_target_classnames') || 'TARGET ENTITY CLASSNAMES (EMPTY FOR ANY)'}</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                        {(editingObjective.objective.ClassNames || []).length === 0 ? (
+                          <span style={{ fontSize: '10px', color: 'var(--text-dark)' }}>Any target / Любые цели</span>
+                        ) : (
+                          (editingObjective.objective.ClassNames || []).map((cn, cnIdx) => (
+                            <div key={cn} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
+                              <span>{cn}</span>
+                              <button 
+                                onClick={() => {
+                                  const list = (editingObjective.objective.ClassNames || []).filter(item => item !== cn);
+                                  const updated = { ...editingObjective.objective, ClassNames: list };
+                                  setEditingObjective({ ...editingObjective, objective: updated });
+                                  onChangeField(editingObjective.filePath, ['ClassNames'], list);
+                                }}
+                                style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div style={{ marginTop: '6px' }}>
+                        <ItemAutocomplete
+                          suggestions={classnameSuggestions}
+                          onAdd={(name) => {
+                            const list = [...(editingObjective.objective.ClassNames || []), name];
+                            const updated = { ...editingObjective.objective, ClassNames: list };
+                            setEditingObjective({ ...editingObjective, objective: updated });
+                            onChangeField(editingObjective.filePath, ['ClassNames'], list);
+                          }}
+                          label={t('quest_btn_add_target')}
+                          placeholder={t('quest_ph_classname')}
+                        />
+                      </div>
                     </div>
-                    <ItemAutocomplete
-                      suggestions={classnameSuggestions}
-                      onAdd={(name) => {
-                        const list = [...(editingObjective.objective.AllowedWeapons || []), name];
-                        const updated = { ...editingObjective.objective, AllowedWeapons: list };
-                        setEditingObjective({ ...editingObjective, objective: updated });
-                        onChangeField(editingObjective.filePath, ['AllowedWeapons'], list);
-                      }}
-                      label={t('quest_btn_add_weapon')}
-                      placeholder={t('quest_ph_classname')}
-                    />
+
+                    {/* Excluded ClassNames */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_excluded_classnames') || 'EXCLUDED CLASSNAMES'}</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                        {(editingObjective.objective.ExcludedClassNames || []).length === 0 ? (
+                          <span style={{ fontSize: '10px', color: 'var(--text-dark)' }}>None / Нет</span>
+                        ) : (
+                          (editingObjective.objective.ExcludedClassNames || []).map((ecn, ecnIdx) => (
+                            <div key={ecn} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
+                              <span>{ecn}</span>
+                              <button 
+                                onClick={() => {
+                                  const list = (editingObjective.objective.ExcludedClassNames || []).filter(item => item !== ecn);
+                                  const updated = { ...editingObjective.objective, ExcludedClassNames: list };
+                                  setEditingObjective({ ...editingObjective, objective: updated });
+                                  onChangeField(editingObjective.filePath, ['ExcludedClassNames'], list);
+                                }}
+                                style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div style={{ marginTop: '6px' }}>
+                        <ItemAutocomplete
+                          suggestions={classnameSuggestions}
+                          onAdd={(name) => {
+                            const list = [...(editingObjective.objective.ExcludedClassNames || []), name];
+                            const updated = { ...editingObjective.objective, ExcludedClassNames: list };
+                            setEditingObjective({ ...editingObjective, objective: updated });
+                            onChangeField(editingObjective.filePath, ['ExcludedClassNames'], list);
+                          }}
+                          label={t('quest_btn_add_excluded')}
+                          placeholder={t('quest_ph_classname')}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Allowed Weapons */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_allowed_weapons')}</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                        {(editingObjective.objective.AllowedWeapons || []).length === 0 ? (
+                          <span style={{ fontSize: '10px', color: 'var(--text-dark)' }}>Any weapon / Любое оружие</span>
+                        ) : (
+                          (editingObjective.objective.AllowedWeapons || []).map((w, wIdx) => (
+                            <div key={w} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
+                              <span>{w}</span>
+                              <button 
+                                onClick={() => {
+                                  const list = (editingObjective.objective.AllowedWeapons || []).filter(item => item !== w);
+                                  const updated = { ...editingObjective.objective, AllowedWeapons: list };
+                                  setEditingObjective({ ...editingObjective, objective: updated });
+                                  onChangeField(editingObjective.filePath, ['AllowedWeapons'], list);
+                                }}
+                                style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div style={{ marginTop: '6px' }}>
+                        <ItemAutocomplete
+                          suggestions={classnameSuggestions}
+                          onAdd={(name) => {
+                            const list = [...(editingObjective.objective.AllowedWeapons || []), name];
+                            const updated = { ...editingObjective.objective, AllowedWeapons: list };
+                            setEditingObjective({ ...editingObjective, objective: updated });
+                            onChangeField(editingObjective.filePath, ['AllowedWeapons'], list);
+                          }}
+                          label={t('quest_btn_add_weapon')}
+                          placeholder={t('quest_ph_classname')}
+                        />
+                      </div>
+                    </div>
+
                   </div>
                 </div>
               )}
@@ -2023,6 +2724,840 @@ export default function QuestGraph({
           </div>
         </div>
       )}
+
+      {/* Quest Audit Modal */}
+      {isAuditOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000
+        }}>
+          <div style={{
+            background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+            width: '650px', maxHeight: '80%', borderRadius: '2px', display: 'flex',
+            flexDirection: 'column', boxShadow: 'var(--shadow-glow)'
+          }}>
+            {/* Header */}
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>// {t('quest_audit_title') || "QUEST DIAGNOSTICS"}</span>
+                <h3 style={{ margin: '2px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '16px' }}>
+                  {t('quest_audit_title') || "Quest Diagnostics Audit"}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsAuditOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '20px', cursor: 'pointer' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {auditResults.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#6ecb8a', fontSize: '13px', fontFamily: 'var(--font-mono)' }}>
+                  {t('quest_audit_no_issues') || "✓ No circular dependencies, orphaned objectives, or broken connections detected!"}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {auditResults.map((res, idx) => (
+                    <div 
+                      key={idx} 
+                      style={{ 
+                        padding: '10px 12px', 
+                        background: 'var(--bg-primary)', 
+                        border: `1px solid ${res.type === 'error' ? 'rgba(235,76,60,0.3)' : 'rgba(230,162,60,0.3)'}`,
+                        borderLeft: `4px solid ${res.type === 'error' ? 'var(--danger-color)' : 'var(--warning-color)'}`,
+                        borderRadius: '2px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: '9px', fontWeight: 'bold', letterSpacing: '0.5px', color: res.type === 'error' ? '#ff6b6b' : '#f0ad4e', display: 'block', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+                          {res.category}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-primary)', display: 'block', marginTop: '2px', lineHeight: '1.4' }}>
+                          {res.msg}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {res.questId !== undefined && (
+                          <button 
+                            className="btn"
+                            style={{ padding: '4px 8px', fontSize: '10px' }}
+                            onClick={() => {
+                              const found = positionedNodes.find(n => n.id === res.questId);
+                              if (found) {
+                                setSelectedQuest(found);
+                                if (onSelectQuest) onSelectQuest(found.id);
+                                zoomToNode(found);
+                              }
+                              setIsAuditOpen(false);
+                            }}
+                          >
+                            🔍 {lang === 'ru' ? 'ПЕРЕЙТИ' : 'GOTO'}
+                          </button>
+                        )}
+                        {res.action && (
+                          <button
+                            className="btn btn-danger"
+                            style={{ padding: '4px 8px', fontSize: '10px' }}
+                            onClick={res.action}
+                          >
+                            🛠️ {lang === 'ru' ? 'ИСПРАВИТЬ' : 'FIX'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn" onClick={() => setIsAuditOpen(false)}>
+                {t('quest_btn_close') || "Close"}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// Preset emotes list
+const EMOTE_PRESETS = [
+  { id: 46, label: "Sitting / Idle (46)" },
+  { id: 1, label: "Wave / Greet (1)" },
+  { id: 11, label: "Salute (11)" },
+  { id: 39, label: "Thumb Up (39)" },
+  { id: 58, label: "Quest Start (58)" },
+  { id: 60, label: "Quest Cancel (60)" },
+  { id: 2, label: "Heart (2)" },
+  { id: 3, label: "Thumbs Down (3)" }
+];
+
+// Preset factions list
+const FACTIONS = [
+  'InvincibleObservers',
+  'West',
+  'East',
+  'Guards',
+  'Civilian',
+  'Passive',
+  'Aggressive',
+  'Shamans',
+  'Survivors'
+];
+
+function QuestNPCsManager({
+  configs,
+  onChangeField,
+  onCreateFile,
+  onDeleteFile,
+  setCoordinatePicker,
+  setActiveTab,
+  xmlItems,
+  t,
+  lang
+}) {
+  const [selectedNpcId, setSelectedNpcId] = useState(() => {
+    const saved = localStorage.getItem('dayz_editor_quest_selected_npc_id');
+    return saved ? Number(saved) : null;
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [forceManualLoadout, setForceManualLoadout] = useState(false);
+
+  useEffect(() => {
+    setForceManualLoadout(false);
+  }, [selectedNpcId]);
+
+  // Get NPCs list
+  const npcs = useMemo(() => {
+    const list = [];
+    Object.entries(configs).forEach(([path, file]) => {
+      if (file.success && file.content && path.toLowerCase().startsWith('expansionmod/quests/npcs/questnpc_') && file.content.ID !== undefined) {
+        list.push({
+          filePath: path,
+          content: file.content
+        });
+      }
+    });
+    return list.sort((a, b) => a.content.ID - b.content.ID);
+  }, [configs]);
+
+  const selectNpc = (id) => {
+    setSelectedNpcId(id);
+    if (id !== null) {
+      localStorage.setItem('dayz_editor_quest_selected_npc_id', id);
+    } else {
+      localStorage.removeItem('dayz_editor_quest_selected_npc_id');
+    }
+  };
+
+  const selectedNpc = npcs.find(n => n.content.ID === selectedNpcId);
+
+  // Get Loadouts list from configs
+  const loadoutsList = useMemo(() => {
+    const list = [];
+    Object.keys(configs).forEach(filePath => {
+      const lower = filePath.toLowerCase();
+      if (lower.startsWith('expansionmod/loadouts/') && filePath.endsWith('.json')) {
+        const name = filePath.split('/').pop().replace('.json', '');
+        list.push(name);
+      }
+    });
+    return list.sort();
+  }, [configs]);
+
+  const currentLoadout = selectedNpc?.content?.NPCLoadoutFile || '';
+  const isCustomLoadout = currentLoadout !== '' && !loadoutsList.includes(currentLoadout);
+  const useManual = isCustomLoadout || forceManualLoadout;
+
+  const handleGoToLoadout = () => {
+    if (!currentLoadout) return;
+    const path = `ExpansionMod/Loadouts/${currentLoadout}.json`;
+    localStorage.setItem('dayz_editor_aibots_active_tab', 'loadouts');
+    localStorage.setItem('dayz_editor_aibots_selected_loadout_path', path);
+    setActiveTab('aibots');
+  };
+
+  const filteredNpcs = npcs.filter(npc => {
+    const name = (npc.content.NPCName || '').toLowerCase();
+    const className = (npc.content.ClassName || '').toLowerCase();
+    const id = String(npc.content.ID);
+    const query = searchQuery.toLowerCase();
+    return name.includes(query) || className.includes(query) || id.includes(query);
+  });
+
+  const handleCreateNpc = () => {
+    const maxId = npcs.reduce((max, npc) => Math.max(max, npc.content.ID || 0), 0);
+    const newId = maxId + 1;
+    const filePath = `ExpansionMod/Quests/NPCs/QuestNPC_${newId}.json`;
+    const newNpc = {
+      ConfigVersion: 6,
+      ID: newId,
+      ClassName: "ExpansionQuestNPCDenis",
+      Position: [0.0, 0.0, 0.0],
+      Orientation: [0.0, 0.0, 0.0],
+      NPCName: `New NPC #${newId}`,
+      DefaultNPCText: "Hello! How can I help you?",
+      Waypoints: [],
+      NPCEmoteID: 46,
+      NPCEmoteIsStatic: 0,
+      NPCLoadoutFile: "NBCLoadout",
+      NPCInteractionEmoteID: 1,
+      NPCQuestCancelEmoteID: 60,
+      NPCQuestStartEmoteID: 58,
+      NPCQuestCompleteEmoteID: 39,
+      NPCFaction: "InvincibleObservers",
+      NPCType: 0,
+      Active: 1
+    };
+    onCreateFile(filePath, newNpc);
+    selectNpc(newId);
+  };
+
+  const handleDeleteNpc = (npc) => {
+    const confirmMsg = t('quest_npc_confirm_delete', { name: npc.content.NPCName, id: npc.content.ID }) || `Are you sure you want to delete NPC "${npc.content.NPCName}" (ID ${npc.content.ID})?`;
+    if (window.confirm(confirmMsg)) {
+      onDeleteFile(npc.filePath);
+      if (selectedNpcId === npc.content.ID) {
+        selectNpc(null);
+      }
+    }
+  };
+
+  const classnameSuggestions = useMemo(() => {
+    const classnames = new Set();
+    Object.values(configs).forEach(file => {
+      if (file.success && file.content) {
+        const content = file.content;
+        if (content.ClassName) classnames.add(content.ClassName);
+      }
+    });
+    (Array.isArray(xmlItems) ? xmlItems : []).forEach(item => {
+      if (typeof item === 'string') classnames.add(item);
+    });
+    return Array.from(classnames).sort();
+  }, [configs, xmlItems]);
+
+  return (
+    <div style={{ display: 'flex', flex: 1, height: 'calc(100% - 42px)', overflow: 'hidden' }}>
+      
+      {/* LEFT COLUMN: NPC List */}
+      <div style={{
+        width: '320px',
+        borderRight: '1px solid var(--border-color)',
+        background: 'var(--bg-tertiary)',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        flexShrink: 0
+      }}>
+        {/* Header/Search Area */}
+        <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)' }}>
+          <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-glow)', letterSpacing: '1px', marginBottom: '8px', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
+            {t('quest_npc_manager_title') || "QUEST NPCS CONFIGURATION"}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '12px' }}>
+            {t('quest_npc_total', { count: npcs.length }) || `TOTAL: ${npcs.length} NPCS ON DISK`}
+          </div>
+          <input 
+            type="text"
+            placeholder={lang === 'ru' ? 'Поиск NPC...' : 'Search NPCs...'}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              background: 'rgba(0,0,0,0.2)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '2px',
+              color: 'var(--text-primary)',
+              fontSize: '12px',
+              fontFamily: 'var(--font-mono)',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+
+        {/* NPCs List */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+          {filteredNpcs.length === 0 ? (
+            <div style={{ color: 'var(--text-secondary)', fontSize: '11px', textAlign: 'center', marginTop: '20px', fontFamily: 'var(--font-mono)' }}>
+              {lang === 'ru' ? 'NPC не найдены' : 'No NPCs found'}
+            </div>
+          ) : (
+            filteredNpcs.map(npc => {
+              const isSelected = npc.content.ID === selectedNpcId;
+              return (
+                <div 
+                  key={npc.content.ID}
+                  onClick={() => selectNpc(npc.content.ID)}
+                  style={{
+                    padding: '10px 12px',
+                    background: isSelected ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    border: '1px solid',
+                    borderColor: isSelected ? 'var(--accent-primary)' : 'transparent',
+                    borderRadius: '2px',
+                    cursor: 'pointer',
+                    marginBottom: '6px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => {
+                    if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                  }}
+                  onMouseLeave={e => {
+                    if (!isSelected) e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <div style={{ overflow: 'hidden', marginRight: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                        [ID {npc.content.ID}]
+                      </span>
+                      <span style={{ fontSize: '12px', fontWeight: 'bold', color: isSelected ? 'var(--text-glow)' : 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {npc.content.NPCName || `NPC #${npc.content.ID}`}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {npc.content.ClassName}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteNpc(npc);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      padding: '4px 8px',
+                      borderRadius: '2px',
+                      transition: 'color 0.1s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#ff6b6b'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+                    title={lang === 'ru' ? 'Удалить NPC' : 'Delete NPC'}
+                  >
+                    🗑
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Create NPC Button */}
+        <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+          <button 
+            className="btn btn-accent"
+            onClick={handleCreateNpc}
+            style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
+          >
+            <span>{t('quest_npc_btn_create') || "[+] CREATE NEW NPC"}</span>
+          </button>
+        </div>
+
+      </div>
+
+      {/* RIGHT COLUMN: Form Editor */}
+      <div style={{ flex: 1, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+        {!selectedNpc ? (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 1,
+            color: 'var(--text-secondary)',
+            fontFamily: 'var(--font-mono)',
+            padding: '40px',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px', filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.1))' }}>👤</div>
+            <div style={{ fontSize: '14px', color: 'var(--text-glow)', fontWeight: 'bold', marginBottom: '4px' }}>
+              {lang === 'ru' ? 'Персонаж не выбран' : 'No NPC Selected'}
+            </div>
+            <div style={{ fontSize: '11px' }}>
+              {lang === 'ru' ? 'Выберите NPC из списка слева или создайте нового.' : 'Select an NPC from the list or create a new one.'}
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '24px', maxWidth: '800px' }}>
+            
+            {/* Form Title */}
+            <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '16px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  // {t('quest_npc_editing') || "EDITING NPC: "} ID {selectedNpc.content.ID}
+                </span>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-glow)', marginTop: '2px' }}>
+                  {selectedNpc.content.NPCName || `NPC #${selectedNpc.content.ID}`}
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  {selectedNpc.filePath}
+                </span>
+              </div>
+            </div>
+
+            {/* Form Fields Grid */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* General Properties Card */}
+              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '14px', fontFamily: 'var(--font-mono)' }}>
+                  // GENERAL SETTINGS
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  {/* Name Input */}
+                  <div>
+                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
+                      NPC NAME
+                    </label>
+                    <input 
+                      type="text"
+                      value={selectedNpc.content.NPCName || ''}
+                      onChange={e => onChangeField(selectedNpc.filePath, ['NPCName'], e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '2px',
+                        color: 'var(--text-primary)',
+                        fontSize: '13px',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Faction Dropdown */}
+                  <div>
+                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
+                      {t('quest_npc_label_faction') || "NPC FACTION"}
+                    </label>
+                    <select
+                      value={selectedNpc.content.NPCFaction || 'InvincibleObservers'}
+                      onChange={e => onChangeField(selectedNpc.filePath, ['NPCFaction'], e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '2px',
+                        color: 'var(--text-primary)',
+                        fontSize: '13px',
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      {FACTIONS.map(fac => (
+                        <option key={fac} value={fac}>{fac}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Classname Autocomplete */}
+                <div style={{ marginTop: '16px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
+                    CLASSNAME
+                  </label>
+                  {classnameSuggestions.length === 0 && (
+                    <div style={{ fontSize: '10px', color: '#f0ad4e', marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
+                      {t('quest_warning_xml_missing') || "⚠️ Items database (types.xml) is not loaded. Autocomplete is limited to local files."}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                      <AutocompleteInput 
+                        suggestions={classnameSuggestions}
+                        placeholder="e.g. ExpansionQuestNPCDenis"
+                        value={selectedNpc.content.ClassName || ''}
+                        onChange={val => onChangeField(selectedNpc.filePath, ['ClassName'], val)}
+                        onSelect={val => onChangeField(selectedNpc.filePath, ['ClassName'], val)}
+                        buttonLabel={lang === 'ru' ? 'Выбрать' : 'Select'}
+                        layout="horizontal"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Position and Orientation Card */}
+              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px' }}>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+                    // SPAWN POSITION & ORIENTATION
+                  </div>
+                  <button 
+                    className="btn btn-accent"
+                    onClick={() => {
+                      setCoordinatePicker({
+                        returnTab: 'quests',
+                        callback: ({ x, z }) => {
+                          const newPos = [x, 0.0, z];
+                          onChangeField(selectedNpc.filePath, ['Position'], newPos);
+                        }
+                      });
+                      setActiveTab('map');
+                    }}
+                    style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    {t('quest_label_pick_coords') || "🎯 Pick from Map"}
+                  </button>
+                </div>
+
+                {/* Coords X Y Z */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  {['X', 'Y', 'Z'].map((coord, idx) => {
+                    const val = Array.isArray(selectedNpc.content.Position) ? (selectedNpc.content.Position[idx] ?? 0.0) : 0.0;
+                    return (
+                      <div key={coord}>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
+                          POSITION {coord}
+                        </label>
+                        <input 
+                          type="number"
+                          step="0.0001"
+                          value={val}
+                          onChange={e => {
+                            const newPos = Array.isArray(selectedNpc.content.Position) ? [...selectedNpc.content.Position] : [0.0, 0.0, 0.0];
+                            newPos[idx] = Number(e.target.value);
+                            onChangeField(selectedNpc.filePath, ['Position'], newPos);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '6px 10px',
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '2px',
+                            color: 'var(--text-primary)',
+                            fontSize: '12px',
+                            fontFamily: 'var(--font-mono)',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Orientation Yaw Pitch Roll */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                  {['YAW (Y)', 'PITCH (X)', 'ROLL (Z)'].map((axis, idx) => {
+                    const val = Array.isArray(selectedNpc.content.Orientation) ? (selectedNpc.content.Orientation[idx] ?? 0.0) : 0.0;
+                    return (
+                      <div key={axis}>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
+                          {axis}
+                        </label>
+                        <input 
+                          type="number"
+                          step="0.01"
+                          value={val}
+                          onChange={e => {
+                            const newOri = Array.isArray(selectedNpc.content.Orientation) ? [...selectedNpc.content.Orientation] : [0.0, 0.0, 0.0];
+                            newOri[idx] = Number(e.target.value);
+                            onChangeField(selectedNpc.filePath, ['Orientation'], newOri);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '6px 10px',
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '2px',
+                            color: 'var(--text-primary)',
+                            fontSize: '12px',
+                            fontFamily: 'var(--font-mono)',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+
+              </div>
+
+              {/* Dialogue & Loadout Card */}
+              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '14px', fontFamily: 'var(--font-mono)' }}>
+                  // DIALOGUE & VISUAL APPEARANCE
+                </div>
+
+                {/* Dialogue Text */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
+                    {t('quest_npc_label_dialogue') || "DEFAULT DIALOGUE TEXT"}
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={selectedNpc.content.DefaultNPCText || ''}
+                    onChange={e => onChangeField(selectedNpc.filePath, ['DefaultNPCText'], e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '2px',
+                      color: 'var(--text-primary)',
+                      fontSize: '12px',
+                      fontFamily: 'inherit',
+                      resize: 'vertical',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '16px' }}>
+                  {/* Loadout Profile */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', margin: 0 }}>
+                        {t('quest_npc_label_loadout') || "LOADOUT PROFILE"}
+                      </label>
+                      <button
+                        onClick={() => setForceManualLoadout(!useManual)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--accent-primary)',
+                          fontSize: '10px',
+                          cursor: 'pointer',
+                          padding: '0',
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        {useManual 
+                          ? (lang === 'ru' ? 'Выбрать из списка' : 'Select from list')
+                          : (lang === 'ru' ? 'Ввести вручную' : 'Enter manually')
+                        }
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {useManual ? (
+                        <input 
+                          type="text"
+                          value={currentLoadout}
+                          onChange={e => onChangeField(selectedNpc.filePath, ['NPCLoadoutFile'], e.target.value)}
+                          placeholder="e.g. NBCLoadout"
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '2px',
+                            color: 'var(--text-primary)',
+                            fontSize: '13px',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      ) : (
+                        <select
+                          value={currentLoadout}
+                          onChange={e => onChangeField(selectedNpc.filePath, ['NPCLoadoutFile'], e.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '2px',
+                            color: 'var(--text-primary)',
+                            fontSize: '13px',
+                            boxSizing: 'border-box'
+                          }}
+                        >
+                          <option value="">-- {lang === 'ru' ? 'Без экипировки (Пусто)' : 'No Loadout (Empty)'} --</option>
+                          {loadoutsList.map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      )}
+
+                      {currentLoadout && (
+                        <button
+                          onClick={handleGoToLoadout}
+                          className="btn"
+                          title={lang === 'ru' ? "Открыть этот пресет во вкладке ИИ Боты" : "Open this loadout preset in AI Bots tab"}
+                          style={{
+                            padding: '0 12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '14px',
+                            flexShrink: 0
+                          }}
+                        >
+                          📂
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Active Toggle & Static Emote */}
+                  <div>
+                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '10px', fontFamily: 'var(--font-mono)' }}>
+                      ADDITIONAL FLAGS
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px' }}>
+                        <input 
+                          type="checkbox"
+                          checked={selectedNpc.content.Active === 1}
+                          onChange={e => onChangeField(selectedNpc.filePath, ['Active'], e.target.checked ? 1 : 0)}
+                        />
+                        <span>ACTIVE ON DISK</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px' }}>
+                        <input 
+                          type="checkbox"
+                          checked={selectedNpc.content.NPCEmoteIsStatic === 1}
+                          onChange={e => onChangeField(selectedNpc.filePath, ['NPCEmoteIsStatic'], e.target.checked ? 1 : 0)}
+                        />
+                        <span>STATIC STARTING EMOTE</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Emotes Configuration Card */}
+              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', marginBottom: '20px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '14px', fontFamily: 'var(--font-mono)' }}>
+                  // EMOTE TRIGGERS
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  
+                  {[
+                    { label: t('quest_npc_label_emote') || "STARTING EMOTE", key: 'NPCEmoteID' },
+                    { label: t('quest_npc_label_interact_emote') || "INTERACTION EMOTE", key: 'NPCInteractionEmoteID' },
+                    { label: t('quest_npc_label_start_emote') || "QUEST START EMOTE", key: 'NPCQuestStartEmoteID' },
+                    { label: t('quest_npc_label_cancel_emote') || "QUEST CANCEL EMOTE", key: 'NPCQuestCancelEmoteID' },
+                    { label: t('quest_npc_label_complete_emote') || "QUEST COMPLETE EMOTE", key: 'NPCQuestCompleteEmoteID' }
+                  ].map(emoteField => {
+                    const currentVal = selectedNpc.content[emoteField.key] ?? 0;
+                    return (
+                      <div key={emoteField.key}>
+                        <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
+                          {emoteField.label}
+                        </label>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <input 
+                            type="number"
+                            value={currentVal}
+                            onChange={e => onChangeField(selectedNpc.filePath, [emoteField.key], Number(e.target.value))}
+                            style={{
+                              width: '80px',
+                              padding: '6px 8px',
+                              background: 'var(--bg-secondary)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '2px',
+                              color: 'var(--text-primary)',
+                              fontSize: '12px',
+                              fontFamily: 'var(--font-mono)',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          <select
+                            value={EMOTE_PRESETS.some(p => p.id === currentVal) ? currentVal : ''}
+                            onChange={e => {
+                              if (e.target.value !== '') {
+                                onChangeField(selectedNpc.filePath, [emoteField.key], Number(e.target.value));
+                              }
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: '6px 8px',
+                              background: 'var(--bg-secondary)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '2px',
+                              color: 'var(--text-primary)',
+                              fontSize: '12px',
+                              boxSizing: 'border-box'
+                            }}
+                          >
+                            <option value="">-- {lang === 'ru' ? 'Выберите пресет' : 'Select preset'} --</option>
+                            {EMOTE_PRESETS.map(preset => (
+                              <option key={preset.id} value={preset.id}>{preset.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        )}
+      </div>
 
     </div>
   );

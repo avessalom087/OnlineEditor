@@ -5,6 +5,7 @@ import GlobalSearch from './components/GlobalSearch';
 import { validateBeforeExport } from './utils/exportValidator';
 import Sidebar from './components/Sidebar';
 import ConfigForm from './components/ConfigForm';
+import RawJsonEditor from './components/RawJsonEditor';
 import TacticalMap from './components/TacticalMap';
 import QuestGraph from './components/QuestGraph';
 import Dashboard from './components/Dashboard';
@@ -259,6 +260,7 @@ function AppContent() {
 
   const [configs, setConfigs]           = useState({});
   const [schemaReport, setSchemaReport] = useState(null);
+  const [backups, setBackups]           = useState([]);
   
 
   // Undo/Redo history stacks
@@ -381,6 +383,9 @@ function AppContent() {
     return saved ? Number(saved) : null;
   });
 
+  const [selectedSpawnerFilePath, setSelectedSpawnerFilePath] = useState(null);
+  const [selectedSpawnerTriggerIdx, setSelectedSpawnerTriggerIdx] = useState(null);
+
   const [xmlItems, setXmlItems] = useState([]);
   const [highlightedQuestIds, setHighlightedQuestIds] = useState([]);
 
@@ -393,6 +398,7 @@ function AppContent() {
   // UI overlay states
   const [isSearchOpen, setIsSearchOpen]   = useState(false);
   const [isHotkeyOpen, setIsHotkeyOpen]   = useState(false);
+  const [isSaveBarMinimized, setIsSaveBarMinimized] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [dashboardSubTab, setDashboardSubTab] = useState('status');
 
@@ -482,6 +488,17 @@ function AppContent() {
     }
   }, [selectedQuestId]);
 
+  const loadBackups = useCallback(() => {
+    if (!fileService.hasDirectoryAccess()) return;
+    fileService.listBackups()
+      .then(backupsList => {
+        setBackups(backupsList || []);
+      })
+      .catch(err => {
+        console.error('Failed to load backups', err);
+      });
+  }, []);
+
   // ── Fetch configs from File System ─────────────────────────────────────────
   const fetchConfigs = useCallback(() => {
     if (!fileService.hasDirectoryAccess()) return;
@@ -508,6 +525,7 @@ function AppContent() {
 
         setConfigs(loadedConfigs);
         setSchemaReport(data.schemaReport);
+        loadBackups();
         setLoading(false);
         toast.success(t('toast_configs_loaded'));
       })
@@ -516,7 +534,21 @@ function AppContent() {
         toast.error(t('toast_load_failed', { error: err.message }));
         setLoading(false);
       });
-  }, [toast]);
+  }, [toast, loadBackups, t]);
+
+  const handleRestoreBackup = useCallback(async (backupName) => {
+    if (window.confirm(t('modal_confirm_restore_body', { backup: backupName }) || `Are you sure you want to restore backup "${backupName}"? All unsaved changes will be overwritten!`)) {
+      try {
+        setLoading(true);
+        await fileService.restoreBackup(backupName);
+        toast.success(t('toast_restore_success', { backup: backupName }) || `Backup "${backupName}" restored successfully!`);
+        fetchConfigs();
+      } catch (err) {
+        toast.error(`Restoration failed: ${err.message}`);
+        setLoading(false);
+      }
+    }
+  }, [fetchConfigs, t]);
 
   // ── Folder Selection and Connection Handlers ──────────────────────────────
   const handleSelectFolder = async () => {
@@ -661,6 +693,10 @@ function AppContent() {
     updateConfigs(prev => {
       const file = prev[filePath];
       if (!file || !file.success) return prev;
+      if (pathArray.length === 0) {
+        const valToSet = typeof newValue === 'function' ? newValue(file.content) : newValue;
+        return { ...prev, [filePath]: { ...file, content: valToSet } };
+      }
       // Support functional state updates: if newValue is a function, pass it the current nested value
       const currentValue = getNestedValue(file.content, pathArray);
       const valToSet = typeof newValue === 'function' ? newValue(currentValue) : newValue;
@@ -757,11 +793,11 @@ function AppContent() {
   // ── Discard all changes ───────────────────────────────────────────────────
   const handleDiscardAll = () => {
     setConfirmDialog({
-      title: 'DISCARD ALL CHANGES',
-      body: 'This will revert ALL unsaved modifications in memory back to the last saved state on disk.\n\nThis action cannot be undone.',
+      title: t('modal_confirm_discard_title') || 'DISCARD ALL CHANGES',
+      body: t('modal_confirm_discard_body') || 'This will revert ALL unsaved modifications in memory back to the last saved state on disk.\n\nThis action cannot be undone.',
       severity: 'danger',
-      confirmLabel: 'DISCARD ALL',
-      cancelLabel: 'CANCEL',
+      confirmLabel: t('modal_confirm_discard_btn') || 'DISCARD ALL',
+      cancelLabel: t('modal_confirm_cancel') || 'CANCEL',
       onConfirm: () => {
         updateConfigs(prev => {
           const reverted = { ...prev };
@@ -901,8 +937,23 @@ function AppContent() {
 
   const handleNavigateToMap = (coordinates) => {
     let x = 0, z = 0;
-    if (Array.isArray(coordinates)) { x = coordinates[0]; z = coordinates[2]; }
-    else if (coordinates && typeof coordinates === 'object') { x = coordinates.x; z = coordinates.z; }
+    let coords = coordinates;
+    if (coords && typeof coords === 'object' && !Array.isArray(coords)) {
+      if (Array.isArray(coords.Position)) coords = coords.Position;
+      else if (Array.isArray(coords.Center)) coords = coords.Center;
+      else if (Array.isArray(coords.Location)) coords = coords.Location;
+      else if (Array.isArray(coords.Waypoint)) coords = coords.Waypoint;
+      else if (typeof coords.x === 'number' && typeof coords.z === 'number') {
+        x = coords.x; z = coords.z;
+        setFocusedCoordinate({ x, z });
+        setActiveTab('map');
+        return;
+      }
+    }
+    if (Array.isArray(coords)) { 
+      x = coords[0]; 
+      z = coords.length === 3 ? coords[2] : coords[1]; 
+    }
     setFocusedCoordinate({ x, z });
     setActiveTab('map');
   };
@@ -1340,6 +1391,8 @@ function AppContent() {
                 selectedFilePath={selectedFilePath}
                 onSelectFile={setSelectedFilePath}
                 dirtyFiles={dirtyFiles}
+                backups={backups}
+                onRestoreBackup={handleRestoreBackup}
               />
             )}
 
@@ -1377,6 +1430,7 @@ function AppContent() {
                     configs={configs}
                     onChangeField={handleChangeField}
                     onSaveFile={handleSaveFile}
+                    onCreateFile={handleCreateFile}
                     xmlItems={xmlItems}
                     onShowConfirm={setConfirmDialog}
                   />
@@ -1396,6 +1450,8 @@ function AppContent() {
                     onNavigateToMap={handleNavigateToMap}
                     xmlItems={xmlItems}
                     highlightedQuestIds={highlightedQuestIds}
+                    setCoordinatePicker={setCoordinatePicker}
+                    setActiveTab={setActiveTab}
                   />
                 </ErrorBoundary>
               )}
@@ -1443,6 +1499,11 @@ function AppContent() {
                     onOpenFile={handleOpenFile}
                     coordinatePicker={coordinatePicker}
                     setCoordinatePicker={setCoordinatePicker}
+                    onNavigateToSpawner={(filePath, triggerIdx) => {
+                      setSelectedSpawnerFilePath(filePath);
+                      setSelectedSpawnerTriggerIdx(triggerIdx);
+                      setActiveTab('spawner');
+                    }}
                   />
                 </ErrorBoundary>
               )}
@@ -1460,21 +1521,24 @@ function AppContent() {
                       setCoordinatePicker({ callback, returnTab, mode: options.mode || 'single' });
                       setActiveTab('map');
                     }}
+                    selectedSpawnerFilePath={selectedSpawnerFilePath}
+                    selectedSpawnerTriggerIdx={selectedSpawnerTriggerIdx}
+                    onClearSpawnerNavigation={() => {
+                      setSelectedSpawnerFilePath(null);
+                      setSelectedSpawnerTriggerIdx(null);
+                    }}
                   />
                 </ErrorBoundary>
               )}
 
               {activeTab === 'raw_editor' && (
                 <ErrorBoundary key="raw_editor">
-                  <ConfigForm
+                  <RawJsonEditor
                     filePath={selectedFilePath}
                     config={configs[selectedFilePath]}
                     onChangeField={handleChangeField}
-                    onResetField={handleResetField}
                     onResetFile={handleResetFile}
                     onSaveFile={handleSaveFile}
-                    inferredEnums={schemaReport ? schemaReport.inferredEnums : {}}
-                    onNavigateToMap={handleNavigateToMap}
                   />
                 </ErrorBoundary>
               )}
@@ -1485,37 +1549,69 @@ function AppContent() {
 
       {/* Floating Save Bar */}
       {dirtyFiles.size > 0 && (
-        <div className="floating-save-bar">
-          <div className="floating-save-bar-content">
-            <div className="floating-save-bar-info">
+        <div className={`floating-save-bar ${isSaveBarMinimized ? 'minimized' : ''}`}>
+          {isSaveBarMinimized ? (
+            <div 
+              className="floating-save-bar-minimized-pill" 
+              onClick={() => setIsSaveBarMinimized(false)}
+              title={lang === 'ru' ? "Развернуть панель сохранения" : "Expand save panel"}
+            >
               <span className="pulse-dot-warning" />
-              <span className="floating-save-bar-text">
-                {lang === 'ru' 
-                  ? `Обнаружены несохраненные изменения (${dirtyFiles.size})` 
-                  : `Unsaved changes detected (${dirtyFiles.size})`}
+              <span className="minimized-text">
+                {lang === 'ru' ? `Правки: ${dirtyFiles.size}` : `Drafts: ${dirtyFiles.size}`}
               </span>
               <button 
-                className="btn-list-changes" 
-                title={lang === 'ru' ? "Показать измененные файлы" : "Show modified files"}
-                onClick={() => {
-                  toast.info(
-                    (lang === 'ru' ? "Измененные файлы: " : "Modified files: ") +
-                    Array.from(dirtyFiles).map(f => f.split('/').pop()).join(', ')
-                  );
-                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSaveAll();
+                }} 
+                className="btn btn-warning btn-glass compact-btn"
+                style={{ padding: '0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title={t('header_export_package')}
               >
-                ℹ️
+                💾
               </button>
             </div>
-            <div className="floating-save-bar-actions">
-              <button onClick={handleDiscardAll} className="btn btn-danger btn-glass">
-                ✖ {t('header_discard')}
-              </button>
-              <button onClick={handleSaveAll} className="btn btn-warning btn-glass btn-glow-pulse">
-                {renderResponsiveButtonText(t('header_export_package'))}
-              </button>
+          ) : (
+            <div className="floating-save-bar-content">
+              <div className="floating-save-bar-info">
+                <span className="pulse-dot-warning" />
+                <span className="floating-save-bar-text">
+                  {lang === 'ru' 
+                    ? `Несохраненные правки: ${dirtyFiles.size}` 
+                    : `Unsaved changes: ${dirtyFiles.size}`}
+                </span>
+                <button 
+                  className="btn-list-changes" 
+                  title={lang === 'ru' ? "Показать измененные файлы" : "Show modified files"}
+                  onClick={() => {
+                    toast.info(
+                      (lang === 'ru' ? "Измененные файлы: " : "Modified files: ") +
+                      Array.from(dirtyFiles).map(f => f.split('/').pop()).join(', ')
+                    );
+                  }}
+                >
+                  ℹ️
+                </button>
+              </div>
+              <div className="floating-save-bar-actions">
+                <button onClick={handleDiscardAll} className="btn btn-danger btn-glass">
+                  ✖ {t('header_discard')}
+                </button>
+                <button onClick={handleSaveAll} className="btn btn-warning btn-glass btn-glow-pulse">
+                  {renderResponsiveButtonText(t('header_export_package'))}
+                </button>
+                <button 
+                  onClick={() => setIsSaveBarMinimized(true)} 
+                  className="btn btn-glass"
+                  style={{ padding: '6px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title={lang === 'ru' ? "Свернуть" : "Minimize"}
+                >
+                  ➖
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

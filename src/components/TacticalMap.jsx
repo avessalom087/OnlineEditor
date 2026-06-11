@@ -56,13 +56,15 @@ export default function TacticalMap({
   setActiveTab,
   onOpenFile,
   coordinatePicker,
-  setCoordinatePicker
+  setCoordinatePicker,
+  onNavigateToSpawner
 }) {
   const { t, lang } = useTranslation();
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const toast = useToast();
+  const dragStartCoordsRef = useRef(null);
   
   // Map dimensions configuration
   const [mapSize, setMapSize] = useState(10000);
@@ -81,6 +83,29 @@ export default function TacticalMap({
     roamingLocations: true,
     spawner: true
   });
+
+  const [sidebarTab, setSidebarTab] = useState('entities'); // 'entities', 'bookmarks'
+  const [bookmarks, setBookmarks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dayz_editor_map_bookmarks');
+      return saved ? JSON.parse(saved) : [
+        { id: 1, name: 'North West Airfield (NWAF)', x: 4500, z: 10000, color: '#ff7675' },
+        { id: 2, name: 'Chernogorsk', x: 6500, z: 2500, color: '#74b9ff' },
+        { id: 3, name: 'Berezino', x: 12000, z: 9000, color: '#2ecc71' }
+      ];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dayz_editor_map_bookmarks', JSON.stringify(bookmarks));
+  }, [bookmarks]);
+
+  const [bkmName, setBkmName] = useState('');
+  const [bkmX, setBkmX] = useState('');
+  const [bkmZ, setBkmZ] = useState('');
+  const [bkmColor, setBkmColor] = useState('#74b9ff');
 
   // Pan and Zoom state
   const [scale, setScale] = useState(0.8);
@@ -132,6 +157,10 @@ export default function TacticalMap({
   const [npcClassName, setNpcClassName] = useState('ExpansionQuestNPCDenis');
   const [targetPointsFilePath, setTargetPointsFilePath] = useState('');
   const [batchPoints, setBatchPoints] = useState([]);
+  const [isResizingRadius, setIsResizingRadius] = useState(false);
+
+  // Context menu (right-click on map)
+  const [contextMenu, setContextMenu] = useState(null); // { x, z, px, py }
 
 
   // Gather entities from the configs list
@@ -204,7 +233,151 @@ export default function TacticalMap({
 
 
   const handleUpdateSelectedField = (fieldName, val) => {
-    const { filePath, arrayIndex } = selectedEntity;
+    const { filePath, arrayIndex, type } = selectedEntity;
+    
+    if (type === 'airdrop') {
+      onChangeField(filePath, ['DropLocation', fieldName], val);
+      
+      setSelectedEntity(prev => {
+        if (!prev) return null;
+        const updated = { ...prev };
+        if (fieldName === 'Name') updated.name = val;
+        if (fieldName === 'Radius') updated.radius = val;
+        return updated;
+      });
+      
+      setEntities(prev => {
+        return {
+          ...prev,
+          airdrops: prev.airdrops.map(item => {
+            if (item.id === selectedEntity.id) {
+              const updated = { ...item };
+              if (fieldName === 'Name') updated.name = val;
+              if (fieldName === 'Radius') updated.radius = val;
+              return updated;
+            }
+            return item;
+          })
+        };
+      });
+      return;
+    }
+
+    if (type === 'safezone' || type === 'safezone_cylinder') {
+      const arrayName = type === 'safezone' ? 'CircleZones' : 'CylinderZones';
+      onChangeField(filePath, [arrayName, arrayIndex, fieldName], val);
+      
+      setSelectedEntity(prev => {
+        if (!prev) return null;
+        const updated = { ...prev };
+        if (fieldName === 'Name') updated.name = val;
+        if (fieldName === 'Radius') updated.radius = val;
+        return updated;
+      });
+      
+      setEntities(prev => {
+        return {
+          ...prev,
+          safezones: prev.safezones.map(item => {
+            if (item.id === selectedEntity.id) {
+              const updated = { ...item };
+              if (fieldName === 'Name') updated.name = val;
+              if (fieldName === 'Radius') updated.radius = val;
+              return updated;
+            }
+            return item;
+          })
+        };
+      });
+      return;
+    }
+
+    if (type === 'nogo_area') {
+      onChangeField(filePath, ['NoGoAreas', arrayIndex, fieldName], val);
+      
+      setSelectedEntity(prev => {
+        if (!prev) return null;
+        const updated = { ...prev };
+        if (fieldName === 'Name') updated.name = val;
+        if (fieldName === 'Radius') updated.radius = val;
+        return updated;
+      });
+      
+      setEntities(prev => {
+        return {
+          ...prev,
+          nogoareas: prev.nogoareas.map(item => {
+            if (item.id === selectedEntity.id) {
+              const updated = { ...item };
+              if (fieldName === 'Name') updated.name = val;
+              if (fieldName === 'Radius') updated.radius = val;
+              return updated;
+            }
+            return item;
+          })
+        };
+      });
+      return;
+    }
+
+    if (type === 'roaming_location') {
+      onChangeField(filePath, ['RoamingLocations', arrayIndex, fieldName], val);
+      
+      setSelectedEntity(prev => {
+        if (!prev) return null;
+        const updated = { ...prev };
+        if (fieldName === 'Name') updated.name = val;
+        if (fieldName === 'Type') updated.locationType = val;
+        if (fieldName === 'Radius') updated.radius = val;
+        if (fieldName === 'Enabled') updated.enabled = val;
+        return updated;
+      });
+      
+      setEntities(prev => {
+        return {
+          ...prev,
+          roamingLocations: prev.roamingLocations.map(item => {
+            if (item.id === selectedEntity.id) {
+              const updated = { ...item };
+              if (fieldName === 'Name') updated.name = val;
+              if (fieldName === 'Type') updated.locationType = val;
+              if (fieldName === 'Radius') updated.radius = val;
+              if (fieldName === 'Enabled') updated.enabled = val;
+              return updated;
+            }
+            return item;
+          })
+        };
+      });
+      return;
+    }
+
+    if (type === 'traderzone') {
+      onChangeField(filePath, [fieldName], val);
+      
+      setSelectedEntity(prev => {
+        if (!prev) return null;
+        const updated = { ...prev };
+        if (fieldName === 'Radius') updated.radius = val;
+        return updated;
+      });
+      
+      setEntities(prev => {
+        return {
+          ...prev,
+          traderzones: prev.traderzones.map(item => {
+            if (item.id === selectedEntity.id) {
+              const updated = { ...item };
+              if (fieldName === 'Radius') updated.radius = val;
+              return updated;
+            }
+            return item;
+          })
+        };
+      });
+      return;
+    }
+
     if (filePath && arrayIndex !== undefined) {
       onChangeField(filePath, ['RoamingLocations', arrayIndex, fieldName], val);
     }
@@ -363,11 +536,21 @@ export default function TacticalMap({
           }
           handleDeleteEntity(selectedEntity);
         }
+      } else if (e.key === 'c' || e.key === 'C') {
+        // Quick copy coordinates — only when no input is focused
+        const activeTag = document.activeElement?.tagName?.toLowerCase();
+        if (activeTag === 'input' || activeTag === 'select' || activeTag === 'textarea') return;
+        const text = `${mouseCoords.x}, 0.0, ${mouseCoords.z}`;
+        navigator.clipboard.writeText(text).then(() => {
+          toast.success(t('toast_coords_copied'));
+        }).catch(() => {
+          toast.error(lang === 'ru' ? 'Не удалось скопировать координаты.' : 'Failed to copy coordinates.');
+        });
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedEntity, configs, isDrawModeActive, coordinatePicker, setCoordinatePicker]);
+  }, [selectedEntity, configs, isDrawModeActive, coordinatePicker, setCoordinatePicker, mouseCoords]);
 
 
   // Reset batch points when picker toggles
@@ -721,7 +904,14 @@ export default function TacticalMap({
                 height: parseFloat(trigger.triggerHeight) || 0,
                 debugColor: trigger.triggerDebugColor || 'blue',
                 type: 'spawner_trigger',
-                showVisualisation: trigger.showVisualisation
+                showVisualisation: trigger.showVisualisation,
+                pointId: trigger.pointId,
+                triggerDependencies: trigger.triggerDependencies || [],
+                triggerDependenciesAnyOf: trigger.triggerDependenciesAnyOf || [],
+                triggersToEnableOnEnter: trigger.triggersToEnableOnEnter || [],
+                triggersToEnableOnFirstSpawn: trigger.triggersToEnableOnFirstSpawn || [],
+                triggersToEnableOnWin: trigger.triggersToEnableOnWin || [],
+                triggersToEnableOnLeave: trigger.triggersToEnableOnLeave || []
               });
             }
           }
@@ -797,6 +987,15 @@ export default function TacticalMap({
     const z = (1 - normY) * mapSize;
     
     return { x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100 };
+  };
+
+  const getMapViewCenter = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: Math.round(mapSize / 2), z: Math.round(mapSize / 2) };
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const gameCoords = pixelsToGame(cx, cy);
+    return { x: Math.round(gameCoords.x), z: Math.round(gameCoords.z) };
   };
 
   // Draw loop
@@ -1201,6 +1400,122 @@ export default function TacticalMap({
     // Draw Spawner Triggers and Spawn Points
     if (layers.spawner) {
       if (entities.spawnerTriggers) {
+        // Build a fast trigger lookup dictionary by file path and pointId
+        const spawnerTriggerLookup = {};
+        entities.spawnerTriggers.forEach(t => {
+          spawnerTriggerLookup[`${t.filePath}_${t.pointId}`] = t;
+        });
+
+        // Phase 1: Draw Trigger Dependency Links
+        const drawCapsule = (ctx, x, y, width, height, radius, fill, stroke) => {
+          ctx.beginPath();
+          ctx.moveTo(x + radius, y);
+          ctx.lineTo(x + width - radius, y);
+          ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+          ctx.lineTo(x + width, y + height - radius);
+          ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+          ctx.lineTo(x + radius, y + height);
+          ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+          ctx.lineTo(x, y + radius);
+          ctx.quadraticCurveTo(x, y, x + radius, y);
+          ctx.closePath();
+          if (fill) ctx.fill();
+          if (stroke) ctx.stroke();
+        };
+
+        const drawLink = (srcTrig, targetPointId, color, labelName) => {
+          let tgtTrig = spawnerTriggerLookup[`${srcTrig.filePath}_${targetPointId}`];
+          if (!tgtTrig) {
+            // Fallback: search globally if not in same file
+            tgtTrig = entities.spawnerTriggers.find(t => String(t.pointId) === String(targetPointId));
+          }
+          if (!tgtTrig || typeof tgtTrig !== 'object') return;
+
+          const fromPos = gameToPixels(srcTrig.x, srcTrig.z);
+          const toPos = gameToPixels(tgtTrig.x, tgtTrig.z);
+
+          const isSrcSelected = selectedEntity && selectedEntity.type === 'spawner_trigger' && selectedEntity.id === srcTrig.id;
+          const isTgtSelected = selectedEntity && selectedEntity.type === 'spawner_trigger' && selectedEntity.id === tgtTrig.id;
+          const isSrcHovered = hoveredEntity && hoveredEntity.type === 'spawner_trigger' && hoveredEntity.id === srcTrig.id;
+          const isTgtHovered = hoveredEntity && hoveredEntity.type === 'spawner_trigger' && hoveredEntity.id === tgtTrig.id;
+
+          const isFocused = isSrcSelected || isTgtSelected || isSrcHovered || isTgtHovered;
+          const isCrossFile = tgtTrig.filePath !== srcTrig.filePath;
+
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = isFocused ? 2.5 : 1.2;
+          ctx.globalAlpha = isFocused ? 0.95 : 0.25;
+
+          if (isCrossFile) {
+            ctx.setLineDash(isFocused ? [6, 3, 2, 3] : [4, 4]); // Dash-dot for cross-file
+          } else if (!isFocused) {
+            ctx.setLineDash([4, 4]);
+          } else {
+            ctx.setLineDash([]);
+          }
+
+          ctx.beginPath();
+          ctx.moveTo(fromPos.x, fromPos.y);
+          ctx.lineTo(toPos.x, toPos.y);
+          ctx.stroke();
+
+          const midX = (fromPos.x + toPos.x) / 2;
+          const midY = (fromPos.y + toPos.y) / 2;
+
+          const angle = Math.atan2(toPos.y - fromPos.y, toPos.x - fromPos.x);
+          ctx.setLineDash([]);
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(midX, midY);
+          ctx.lineTo(midX - 8 * Math.cos(angle - Math.PI / 6), midY - 8 * Math.sin(angle - Math.PI / 6));
+          ctx.lineTo(midX - 8 * Math.cos(angle + Math.PI / 6), midY - 8 * Math.sin(angle + Math.PI / 6));
+          ctx.closePath();
+          ctx.fill();
+
+          if (isFocused && labelName) {
+            ctx.font = 'bold 9px monospace';
+            const textWidth = ctx.measureText(labelName).width;
+            const padX = 5;
+            const padY = 2.5;
+            const capWidth = textWidth + padX * 2;
+            const capHeight = 11 + padY * 2;
+            const lblY = midY + 12;
+
+            ctx.fillStyle = '#1e272e';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            drawCapsule(ctx, midX - capWidth / 2, lblY - capHeight / 2, capWidth, capHeight, 3, true, true);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(labelName, midX, lblY);
+          }
+          ctx.restore();
+        };
+
+        entities.spawnerTriggers.forEach(srcTrig => {
+          const deps = Array.isArray(srcTrig.triggerDependencies) ? srcTrig.triggerDependencies : [];
+          deps.forEach(depId => drawLink(srcTrig, depId, 'rgba(255, 159, 67)', 'DEP'));
+
+          const anyDeps = Array.isArray(srcTrig.triggerDependenciesAnyOf) ? srcTrig.triggerDependenciesAnyOf : [];
+          anyDeps.forEach(depId => drawLink(srcTrig, depId, 'rgba(255, 121, 63)', 'DEP_ANY'));
+
+          const enterIds = Array.isArray(srcTrig.triggersToEnableOnEnter) ? srcTrig.triggersToEnableOnEnter : [];
+          enterIds.forEach(tgtId => drawLink(srcTrig, tgtId, 'rgba(84, 160, 255)', 'ENTER'));
+
+          const firstIds = Array.isArray(srcTrig.triggersToEnableOnFirstSpawn) ? srcTrig.triggersToEnableOnFirstSpawn : [];
+          firstIds.forEach(tgtId => drawLink(srcTrig, tgtId, 'rgba(162, 155, 254)', 'FIRST_SPAWN'));
+
+          const winIds = Array.isArray(srcTrig.triggersToEnableOnWin) ? srcTrig.triggersToEnableOnWin : [];
+          winIds.forEach(tgtId => drawLink(srcTrig, tgtId, 'rgba(46, 204, 113)', 'WIN'));
+
+          const leaveIds = Array.isArray(srcTrig.triggersToEnableOnLeave) ? srcTrig.triggersToEnableOnLeave : [];
+          leaveIds.forEach(tgtId => drawLink(srcTrig, tgtId, 'rgba(165, 177, 194)', 'LEAVE'));
+        });
+
+        // Phase 2: Draw trigger shapes
         entities.spawnerTriggers.forEach(trig => {
           const pos = gameToPixels(trig.x, trig.z);
           const color = trig.debugColor || 'blue';
@@ -1278,6 +1593,13 @@ export default function TacticalMap({
       }
 
       if (entities.spawnerSpawnPoints) {
+        const triggerByIdxLookup = {};
+        if (entities.spawnerTriggers) {
+          entities.spawnerTriggers.forEach(t => {
+            triggerByIdxLookup[`${t.filePath}_${t.triggerIdx}`] = t;
+          });
+        }
+
         entities.spawnerSpawnPoints.forEach(sp => {
           const pos = gameToPixels(sp.x, sp.z);
           ctx.save();
@@ -1302,7 +1624,7 @@ export default function TacticalMap({
           ctx.stroke();
 
           // Connecting line to parent trigger
-          const parentTrig = entities.spawnerTriggers?.find(t => t.filePath === sp.filePath && t.triggerIdx === sp.triggerIdx);
+          const parentTrig = triggerByIdxLookup[`${sp.filePath}_${sp.triggerIdx}`];
           if (parentTrig) {
             const parentPos = gameToPixels(parentTrig.x, parentTrig.z);
             ctx.beginPath();
@@ -1336,6 +1658,27 @@ export default function TacticalMap({
       ctx.lineWidth = 1;
       ctx.stroke();
 
+      // Render drag-to-resize handle for circular areas
+      if (selectedEntity.radius !== undefined) {
+        const rad = (selectedEntity.radius / mapSize) * 1024 * scale;
+        const handleX = pos.x + rad;
+        const handleY = pos.y;
+        
+        ctx.beginPath();
+        ctx.arc(handleX, handleY, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = '#00ffff';
+        ctx.strokeStyle = '#070907';
+        ctx.lineWidth = 1.5;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '10px Arial';
+        ctx.fillStyle = '#070907';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('↔', handleX, handleY);
+      }
+
       // Draw rotation handle if spawner entity with rotation Y
       if ((selectedEntity.type === 'spawner_trigger' || selectedEntity.type === 'spawner_spawn_point') && selectedEntity.rotY !== undefined) {
         const handleDist = 30; // distance in pixels
@@ -1364,6 +1707,35 @@ export default function TacticalMap({
         ctx.restore();
       }
     }
+
+    // Draw Bookmarks on Canvas
+    if (bookmarks && bookmarks.length > 0) {
+      bookmarks.forEach(b => {
+        const pos = gameToPixels(b.x, b.z);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = b.color || '#74b9ff';
+        ctx.shadowColor = b.color || '#74b9ff';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Label if zoomed in enough
+        if (scale > 1.2) {
+          ctx.font = 'bold 10px monospace';
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowBlur = 0;
+          ctx.textAlign = 'center';
+          ctx.fillText(b.name, pos.x, pos.y - 12);
+        }
+        ctx.restore();
+      });
+    }
+
+
 
     // Draw targeted focus pointer if active
     if (hoveredEntity) {
@@ -1510,7 +1882,9 @@ export default function TacticalMap({
       ctx.textAlign = 'left'; // Restore
       ctx.textBaseline = 'alphabetic'; // Restore
     }
-  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker]);
+  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius]);
+
+
 
   // Handle Zooming
   const handleWheel = (e) => {
@@ -1685,8 +2059,23 @@ export default function TacticalMap({
     }
 
     if (e.button === 0) { // Left-click
+      // Check if user clicked on the selected circle's resize handle
+      if (selectedEntity && selectedEntity.radius !== undefined) {
+        const pos = gameToPixels(selectedEntity.x, selectedEntity.z);
+        const rad = (selectedEntity.radius / mapSize) * 1024 * scale;
+        const handleX = pos.x + rad;
+        const handleY = pos.y;
+        if (Math.hypot(mouseX - handleX, mouseY - handleY) <= 12) {
+          e.preventDefault();
+          setIsResizingRadius(true);
+          return;
+        }
+      }
+
       const hit = getEntityAt(mouseX, mouseY);
       if (hit) {
+        e.preventDefault();
+        dragStartCoordsRef.current = { x: hit.x, z: hit.z };
         setDraggedEntity(hit);
         setSelectedEntity(hit);
         return;
@@ -1706,6 +2095,43 @@ export default function TacticalMap({
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
+
+    if (isResizingRadius && selectedEntity) {
+      const pos = gameToPixels(selectedEntity.x, selectedEntity.z);
+      const distPixels = Math.hypot(mouseX - pos.x, mouseY - pos.y);
+      const newRadius = Math.max(5, Math.round((distPixels / (1024 * scale)) * mapSize));
+      
+      setEntities(prev => {
+        const updateRadius = (list) => 
+          list.map(item => item.id === selectedEntity.id ? { ...item, radius: newRadius } : item);
+        
+        const updateSpawnerRadius = (list) => 
+          list.map(item => {
+            if (item.id === selectedEntity.id) {
+              const radStr = selectedEntity.triggerRadius && String(selectedEntity.triggerRadius).includes('-')
+                ? `${newRadius}-${String(selectedEntity.triggerRadius).split('-')[1]}`
+                : `${newRadius}`;
+              return { ...item, radius: newRadius, triggerRadius: radStr };
+            }
+            return item;
+          });
+
+        return {
+          ...prev,
+          airdrops: updateRadius(prev.airdrops),
+          safezones: updateRadius(prev.safezones),
+          traderzones: updateRadius(prev.traderzones),
+          questObjectives: updateRadius(prev.questObjectives || []),
+          nogoareas: updateRadius(prev.nogoareas),
+          roamingLocations: updateRadius(prev.roamingLocations),
+          spawnerTriggers: updateSpawnerRadius(prev.spawnerTriggers || [])
+        };
+      });
+
+      setSelectedEntity(prev => prev ? { ...prev, radius: newRadius } : null);
+      canvas.style.cursor = 'ew-resize';
+      return;
+    }
 
     const game = pixelsToGame(mouseX, mouseY);
     setMouseCoords(game);
@@ -1850,27 +2276,47 @@ export default function TacticalMap({
       return;
     }
 
+    if (isResizingRadius) {
+      setIsResizingRadius(false);
+      if (selectedEntity) {
+        if (selectedEntity.type === 'spawner_trigger') {
+          const radStr = selectedEntity.triggerRadius && String(selectedEntity.triggerRadius).includes('-')
+            ? `${selectedEntity.radius}-${String(selectedEntity.triggerRadius).split('-')[1]}`
+            : `${selectedEntity.radius}`;
+          handleUpdateSpawnerField('triggerRadius', radStr);
+        } else {
+          handleUpdateSelectedField('Radius', selectedEntity.radius);
+        }
+      }
+      return;
+    }
     if (draggedEntity) {
       const { filePath, xPath, zPath, x, z } = draggedEntity;
-      if (draggedEntity.type === 'spawner_trigger') {
-        const trigger = configs[filePath]?.content?.[draggedEntity.triggerIdx];
-        if (trigger) {
-          const oldPos = trigger.triggerPosition || "0.0 0.0 0.0";
-          const newPos = updateCoordsInString(oldPos, x, z);
-          onChangeField(filePath, [draggedEntity.triggerIdx, 'triggerPosition'], newPos);
+      const start = dragStartCoordsRef.current;
+      const hasMoved = start && (Math.abs(start.x - x) > 0.01 || Math.abs(start.z - z) > 0.01);
+
+      if (hasMoved) {
+        if (draggedEntity.type === 'spawner_trigger') {
+          const trigger = configs[filePath]?.content?.[draggedEntity.triggerIdx];
+          if (trigger) {
+            const oldPos = trigger.triggerPosition || "0.0 0.0 0.0";
+            const newPos = updateCoordsInString(oldPos, x, z);
+            onChangeField(filePath, [draggedEntity.triggerIdx, 'triggerPosition'], newPos);
+          }
+        } else if (draggedEntity.type === 'spawner_spawn_point') {
+          const trigger = configs[filePath]?.content?.[draggedEntity.triggerIdx];
+          if (trigger && Array.isArray(trigger.spawnPositions)) {
+            const oldPos = trigger.spawnPositions[draggedEntity.spawnIdx] || "0.0 0.0 0.0";
+            const newPos = updateCoordsInString(oldPos, x, z);
+            onChangeField(filePath, [draggedEntity.triggerIdx, 'spawnPositions', draggedEntity.spawnIdx], newPos);
+          }
+        } else if (filePath && xPath && zPath) {
+          onChangeField(filePath, xPath, x);
+          onChangeField(filePath, zPath, z);
         }
-      } else if (draggedEntity.type === 'spawner_spawn_point') {
-        const trigger = configs[filePath]?.content?.[draggedEntity.triggerIdx];
-        if (trigger && Array.isArray(trigger.spawnPositions)) {
-          const oldPos = trigger.spawnPositions[draggedEntity.spawnIdx] || "0.0 0.0 0.0";
-          const newPos = updateCoordsInString(oldPos, x, z);
-          onChangeField(filePath, [draggedEntity.triggerIdx, 'spawnPositions', draggedEntity.spawnIdx], newPos);
-        }
-      } else if (filePath && xPath && zPath) {
-        onChangeField(filePath, xPath, x);
-        onChangeField(filePath, zPath, z);
       }
       setDraggedEntity(null);
+      dragStartCoordsRef.current = null;
     }
     setIsPanning(false);
   };
@@ -2350,7 +2796,7 @@ export default function TacticalMap({
           </label>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button 
                 onClick={() => {
                   setIsRulerActive(!isRulerActive);
@@ -2360,7 +2806,7 @@ export default function TacticalMap({
                 }}
                 className="btn"
                 style={{ 
-                  flex: 1,
+                  flex: '1 1 110px',
                   padding: '6px 12px', 
                   fontSize: '10px', 
                   fontWeight: 'bold',
@@ -2376,14 +2822,14 @@ export default function TacticalMap({
                 <button 
                   onClick={() => setRulerPoints(null)}
                   className="btn btn-danger"
-                  style={{ padding: '6px 8px', fontSize: '10px' }}
+                  style={{ padding: '6px 8px', fontSize: '10px', flex: '1 1 50px' }}
                 >
                   {t('modal_confirm_cancel')}
                 </button>
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
                 onClick={() => {
                   setIsSafezoneDrawing(!isSafezoneDrawing);
@@ -2393,7 +2839,7 @@ export default function TacticalMap({
                 }}
                 className="btn"
                 style={{
-                  flex: 1,
+                  flex: '1 1 110px',
                   padding: '6px 12px',
                   fontSize: '10px',
                   fontWeight: 'bold',
@@ -2411,55 +2857,12 @@ export default function TacticalMap({
                     setSafezoneDrawCenter(null);
                   }}
                   className="btn btn-danger"
-                  style={{ padding: '6px 8px', fontSize: '10px' }}
+                  style={{ padding: '6px 8px', fontSize: '10px', flex: '1 1 50px' }}
                 >
                   {t('modal_confirm_cancel')}
                 </button>
               )}
             </div>
-          </div>
-
-          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold', marginBottom: '8px' }}>
-            // {t('map_layer_overlays')}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-            {[
-              { label: 'AIR', key: 'airdrops', color: '#ebd667' },
-              { label: 'SAFE', key: 'safezones', color: '#559655' },
-              { label: 'P2P', key: 'traders', color: '#44aacc' },
-              { label: 'NPC', key: 'npcs', color: '#a6f5a6' },
-              { label: 'AI', key: 'patrols', color: 'var(--text-primary)' },
-              { label: 'QUEST', key: 'questObjectives', color: '#c084fc' },
-              { label: 'NOGO', key: 'nogoareas', color: '#cc4a4a' },
-              { label: 'ROAMING', key: 'roamingLocations', color: '#ff9f43' },
-              { label: 'SPAWNER', key: 'spawner', color: '#ff7675' }
-            ].map(l => {
-              let count = 0;
-              if (l.key === 'patrols') {
-                count = new Set(entities.patrols.map(wp => wp.patrolIdx)).size;
-              } else if (l.key === 'spawner') {
-                count = (entities.spawnerTriggers?.length || 0) + (entities.spawnerSpawnPoints?.length || 0);
-              } else {
-                count = entities[l.key]?.length || 0;
-              }
-              
-              return (
-                <button 
-                  key={l.key}
-                  onClick={() => setLayers(prev => ({ ...prev, [l.key]: !prev[l.key] }))}
-                  className="btn"
-                  style={{ 
-                    padding: '4px 8px', 
-                    fontSize: '9px',
-                    background: layers[l.key] ? 'rgba(30,50,30,0.4)' : 'transparent',
-                    borderColor: layers[l.key] ? l.color : 'var(--border-color)',
-                    color: layers[l.key] ? l.color : 'var(--text-secondary)'
-                  }}
-                >
-                  {l.label} ({count})
-                </button>
-              );
-            })}
           </div>
 
           {layers.patrols && (
@@ -2542,156 +2945,462 @@ export default function TacticalMap({
               )}
             </div>
           )}
-
-          <div style={{ position: 'relative' }}>
-
-            <input
-              type="text"
-              placeholder={t('map_search_placeholder')}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ fontSize: '11px', padding: '6px 20px 6px 20px' }}
-            />
-            <span style={{ position: 'absolute', left: '6px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '10px' }}>▶</span>
-          </div>
         </div>
 
-        {/* Collapsible Excluded Buildings list */}
-        {layers.roamingLocations && (
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-            <div 
-              onClick={() => setExcludeCollapse(!excludeCollapse)}
-              style={{ 
-                fontSize: '10px', 
-                color: 'var(--text-glow)', 
-                fontWeight: 'bold', 
-                cursor: 'pointer',
-                display: 'flex', 
-                justifyContent: 'space-between',
-                letterSpacing: '1px'
-              }}
-            >
-              <span>📁 {t('map_excluded_buildings')} ({configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings?.length || 0})</span>
-              <span>{excludeCollapse ? '▼' : '►'}</span>
+        {/* Tab Selector Bar */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
+          <button
+            type="button"
+            onClick={() => setSidebarTab('entities')}
+            style={{
+              flex: 1,
+              padding: '10px 8px',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 'bold',
+              color: sidebarTab === 'entities' ? 'var(--text-glow)' : 'var(--text-secondary)',
+              background: sidebarTab === 'entities' ? 'var(--bg-secondary)' : 'transparent',
+              border: 'none',
+              borderBottom: sidebarTab === 'entities' ? '2px solid var(--accent-primary)' : '2px solid transparent',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease-in-out'
+            }}
+          >
+            📁 {lang === 'ru' ? 'Объекты' : 'Entities'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSidebarTab('bookmarks')}
+            style={{
+              flex: 1,
+              padding: '10px 8px',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 'bold',
+              color: sidebarTab === 'bookmarks' ? 'var(--text-glow)' : 'var(--text-secondary)',
+              background: sidebarTab === 'bookmarks' ? 'var(--bg-secondary)' : 'transparent',
+              border: 'none',
+              borderBottom: sidebarTab === 'bookmarks' ? '2px solid var(--accent-primary)' : '2px solid transparent',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease-in-out'
+            }}
+          >
+            ⭐ {lang === 'ru' ? 'Избранное' : 'Bookmarks'}
+          </button>
+        </div>
+
+        {/* Tab 1: Entities */}
+        {sidebarTab === 'entities' && (
+          <>
+            <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder={t('map_search_placeholder')}
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{ fontSize: '11px', padding: '6px 20px 6px 20px' }}
+                />
+                <span style={{ position: 'absolute', left: '6px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '10px' }}>▶</span>
+              </div>
             </div>
-            
-            {!excludeCollapse && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '4px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
-                  {(configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings || []).length === 0 ? (
-                    <div style={{ fontSize: '10px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('map_no_exclusions')}</div>
-                  ) : (
-                    (configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings || []).map((b, bIdx) => (
-                      <div key={bIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', flex: 1, marginRight: '4px' }}>{b}</span>
-                        <button 
-                          className="btn btn-danger" 
-                          onClick={() => {
-                            const filePath = 'expansion/settings/AILocationSettings.json';
-                            const file = configs[filePath];
-                            const current = [...(file.content.ExcludedRoamingBuildings || [])];
-                            current.splice(bIdx, 1);
-                            onChangeField(filePath, ['ExcludedRoamingBuildings'], current);
-                          }} 
-                          style={{ padding: '0 4px', fontSize: '8px', lineHeight: '1.2' }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))
-                  )}
+
+            {/* Collapsible Excluded Buildings list */}
+            {layers.roamingLocations && (
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                <div 
+                  onClick={() => setExcludeCollapse(!excludeCollapse)}
+                  style={{ 
+                    fontSize: '10px', 
+                    color: 'var(--text-glow)', 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer',
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    letterSpacing: '1px'
+                  }}
+                >
+                  <span>📁 {t('map_excluded_buildings')} ({configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings?.length || 0})</span>
+                  <span>{excludeCollapse ? '▼' : '►'}</span>
                 </div>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <input 
-                    type="text" 
-                    placeholder={t('map_exclude_placeholder')} 
-                    value={newExcludeInput}
-                    onChange={e => setNewExcludeInput(e.target.value)}
-                    style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }}
-                  />
-                  <button 
-                    className="btn btn-accent" 
-                    onClick={() => {
-                      if (!newExcludeInput.trim()) return;
-                      const filePath = 'expansion/settings/AILocationSettings.json';
-                      const file = configs[filePath];
-                      const current = [...(file?.content?.ExcludedRoamingBuildings || [])];
-                      if (!current.includes(newExcludeInput.trim())) {
-                        onChangeField(filePath, ['ExcludedRoamingBuildings'], [...current, newExcludeInput.trim()]);
-                      }
-                      setNewExcludeInput('');
-                    }}
-                    style={{ padding: '4px 8px', fontSize: '10px' }}
-                  >
-                    +
-                  </button>
-                </div>
+                
+                {!excludeCollapse && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '4px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      {(configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings || []).length === 0 ? (
+                        <div style={{ fontSize: '10px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('map_no_exclusions')}</div>
+                      ) : (
+                        (configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings || []).map((b, bIdx) => (
+                          <div key={bIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', flex: 1, marginRight: '4px' }}>{b}</span>
+                            <button 
+                              className="btn btn-danger" 
+                              onClick={() => {
+                                const filePath = 'expansion/settings/AILocationSettings.json';
+                                const file = configs[filePath];
+                                const current = [...(file.content.ExcludedRoamingBuildings || [])];
+                                current.splice(bIdx, 1);
+                                onChangeField(filePath, ['ExcludedRoamingBuildings'], current);
+                              }} 
+                              style={{ padding: '0 4px', fontSize: '8px', lineHeight: '1.2' }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input 
+                        type="text" 
+                        placeholder={t('map_exclude_placeholder')} 
+                        value={newExcludeInput}
+                        onChange={e => setNewExcludeInput(e.target.value)}
+                        style={{ fontSize: '10px', padding: '4px 6px', flex: 1 }}
+                      />
+                      <button 
+                        className="btn btn-accent" 
+                        onClick={() => {
+                          if (!newExcludeInput.trim()) return;
+                          const filePath = 'expansion/settings/AILocationSettings.json';
+                          const file = configs[filePath];
+                          const current = [...(file?.content?.ExcludedRoamingBuildings || [])];
+                          if (!current.includes(newExcludeInput.trim())) {
+                            onChangeField(filePath, ['ExcludedRoamingBuildings'], [...current, newExcludeInput.trim()]);
+                          }
+                          setNewExcludeInput('');
+                        }}
+                        style={{ padding: '4px 8px', fontSize: '10px' }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </div>
+
+            {/* Scrollable list of indices */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {allListItems.length === 0 ? (
+                <div style={{ padding: '20px', color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center' }}>
+                  {t('map_no_entities_plotted')}
+                </div>
+              ) : (
+                allListItems.map((item, idx) => {
+                  let labelColor = 'var(--text-primary)';
+                  if (item.type === 'airdrop') labelColor = '#ebd667';
+                  else if (item.type === 'safezone' || item.type === 'safezone_cylinder') labelColor = '#559655';
+                  else if (item.type === 'traderzone') labelColor = '#44aacc';
+                  else if (item.type === 'npc') labelColor = '#a6f5a6';
+                  else if (item.type === 'quest_objective') labelColor = '#c084fc';
+                  else if (item.type === 'roaming_location') labelColor = '#ff9f43';
+                  else if (item.type === 'nogo_area') labelColor = '#cc4a4a';
+
+                  const isBookmarked = bookmarks.some(b => b.x === item.x && b.z === item.z);
+
+                  return (
+                    <div
+                      key={`${item.type}-${idx}`}
+                      style={{
+                        padding: '8px 12px',
+                        borderBottom: '1px solid rgba(30, 48, 30, 0.1)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                      onMouseOver={e => e.currentTarget.style.background = 'rgba(149, 192, 149, 0.03)'}
+                      onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div 
+                        onClick={() => handleLocateEntity(item)}
+                        style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}
+                      >
+                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', color: labelColor }}>
+                          {item.name}
+                        </span>
+                        <span style={{ fontSize: '9px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          {item.type.toUpperCase()} · ({Math.round(item.x)}, {Math.round(item.z)})
+                        </span>
+                      </div>
+                      
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {/* Bookmark/Favorite Toggle Star */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isBookmarked) {
+                              setBookmarks(prev => prev.filter(b => !(b.x === item.x && b.z === item.z)));
+                              toast.success(lang === 'ru' ? `Удалено из избранного: ${item.name}` : `Removed from bookmarks: ${item.name}`);
+                            } else {
+                              const newB = {
+                                id: Date.now(),
+                                name: item.name || item.type,
+                                x: item.x,
+                                z: item.z,
+                                color: item.type === 'safezone' ? '#2ecc71' : 
+                                       item.type === 'airdrop' ? '#ebd667' : 
+                                       item.type === 'traderzone' ? '#74b9ff' : 
+                                       item.type === 'nogo_area' ? '#ff7675' : '#c084fc'
+                              };
+                              setBookmarks(prev => [newB, ...prev]);
+                              toast.success(lang === 'ru' ? `Добавлено в избранное: ${item.name}` : `Added to bookmarks: ${item.name}`);
+                            }
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: isBookmarked ? '#ebd667' : 'var(--text-secondary)',
+                            opacity: isBookmarked ? 1 : 0.35,
+                            cursor: 'pointer',
+                            padding: '4px 6px',
+                            fontSize: '13px',
+                            marginRight: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.15s ease',
+                          }}
+                          title={isBookmarked 
+                            ? (lang === 'ru' ? 'Убрать из избранного' : 'Remove from bookmarks')
+                            : (lang === 'ru' ? 'Добавить в избранное' : 'Add to Bookmarks')
+                          }
+                          onMouseEnter={e => {
+                            e.currentTarget.style.transform = 'scale(1.25)';
+                            e.currentTarget.style.opacity = '1';
+                            e.currentTarget.style.color = '#ebd667';
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.transform = 'none';
+                            e.currentTarget.style.opacity = isBookmarked ? 1 : 0.35;
+                            e.currentTarget.style.color = isBookmarked ? '#ebd667' : 'var(--text-secondary)';
+                          }}
+                        >
+                          ⭐
+                        </button>
+
+                        {/* Delete button directly in panel */}
+                        <button
+                          className="btn btn-danger"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteEntity(item); }}
+                          style={{ padding: '2px 6px', fontSize: '9px', fontFamily: 'monospace' }}
+                        >
+                          {t('map_del_btn')}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </>
         )}
 
-        {/* Scrollable list of indices */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {allListItems.length === 0 ? (
-            <div style={{ padding: '20px', color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center' }}>
-              {t('map_no_entities_plotted')}
-            </div>
-          ) : (
-            allListItems.map((item, idx) => {
-              let labelColor = 'var(--text-primary)';
-              if (item.type === 'airdrop') labelColor = '#ebd667';
-              else if (item.type === 'safezone' || item.type === 'safezone_cylinder') labelColor = '#559655';
-              else if (item.type === 'traderzone') labelColor = '#44aacc';
-              else if (item.type === 'npc') labelColor = '#a6f5a6';
-              else if (item.type === 'quest_objective') labelColor = '#c084fc';
-              else if (item.type === 'roaming_location') labelColor = '#ff9f43';
-              else if (item.type === 'nogo_area') labelColor = '#cc4a4a';
+        {/* Tab 2: Bookmarks */}
+        {sidebarTab === 'bookmarks' && (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            
+            {/* Bookmark Creation Form */}
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>
+                // {lang === 'ru' ? 'НОВАЯ ЗАКЛАДКА' : 'NEW BOOKMARK'}
+              </div>
+              
+              <input
+                type="text"
+                placeholder={lang === 'ru' ? 'Название закладки...' : 'Bookmark title...'}
+                value={bkmName}
+                onChange={e => setBkmName(e.target.value)}
+                style={{ fontSize: '11px', padding: '5px 8px' }}
+              />
 
-              return (
-                <div
-                  key={`${item.type}-${idx}`}
-                  style={{
-                    padding: '8px 12px',
-                    borderBottom: '1px solid rgba(30, 48, 30, 0.1)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    fontSize: '12px',
-                    cursor: 'pointer'
-                  }}
-                  onMouseOver={e => e.currentTarget.style.background = 'rgba(149, 192, 149, 0.03)'}
-                  onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <div 
-                    onClick={() => handleLocateEntity(item)}
-                    style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}
-                  >
-                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', color: labelColor }}>
-                      {item.name}
-                    </span>
-                    <span style={{ fontSize: '9px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      {item.type.toUpperCase()} · ({Math.round(item.x)}, {Math.round(item.z)})
-                    </span>
-                  </div>
-                  
-                  {/* Delete button directly in panel */}
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => handleDeleteEntity(item)}
-                    style={{ padding: '2px 6px', fontSize: '9px', fontFamily: 'monospace' }}
-                  >
-                    {t('map_del_btn')}
-                  </button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="number"
+                  placeholder="X"
+                  value={bkmX}
+                  onChange={e => setBkmX(e.target.value)}
+                  style={{ fontSize: '11px', padding: '5px 8px', flex: 1 }}
+                />
+                <input
+                  type="number"
+                  placeholder="Z"
+                  value={bkmZ}
+                  onChange={e => setBkmZ(e.target.value)}
+                  style={{ fontSize: '11px', padding: '5px 8px', flex: 1 }}
+                />
+              </div>
+
+              {/* Quick capture center coordinates helper */}
+              <button
+                type="button"
+                className="btn btn-accent"
+                onClick={() => {
+                  const center = getMapViewCenter();
+                  setBkmX(String(center.x));
+                  setBkmZ(String(center.z));
+                  toast.info(lang === 'ru' ? `Захвачены координаты центра: ${center.x}, ${center.z}` : `Captured center coords: ${center.x}, ${center.z}`);
+                }}
+                style={{ padding: '4px 8px', fontSize: '10px', justifyContent: 'center' }}
+              >
+                📍 {lang === 'ru' ? 'Захватить центр экрана' : 'Capture Center View'}
+              </button>
+
+              {/* Color selection dots */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', margin: '4px 0' }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                  {lang === 'ru' ? 'Цвет:' : 'Color:'}
+                </span>
+                {[
+                  '#74b9ff', // blue
+                  '#2ecc71', // green
+                  '#ff7675', // red
+                  '#ebd667', // yellow
+                  '#a6f5a6', // bright green
+                  '#c084fc'  // purple
+                ].map(c => {
+                  const isSelected = bkmColor === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setBkmColor(c)}
+                      style={{
+                        width: '14px',
+                        height: '14px',
+                        borderRadius: '50%',
+                        background: c,
+                        border: isSelected ? '2px solid #ffffff' : '1px solid rgba(0,0,0,0.3)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        transform: isSelected ? 'scale(1.2)' : 'none',
+                        transition: 'transform 0.1s ease'
+                      }}
+                    />
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-warning"
+                onClick={() => {
+                  if (!bkmName.trim()) {
+                    toast.error(lang === 'ru' ? 'Введите название!' : 'Enter a name!');
+                    return;
+                  }
+                  const x = parseFloat(bkmX);
+                  const z = parseFloat(bkmZ);
+                  if (isNaN(x) || isNaN(z)) {
+                    toast.error(lang === 'ru' ? 'Введите корректные X и Z!' : 'Enter valid X and Z!');
+                    return;
+                  }
+                  const newB = {
+                    id: Date.now(),
+                    name: bkmName.trim(),
+                    x,
+                    z,
+                    color: bkmColor
+                  };
+                  setBookmarks(prev => [newB, ...prev]);
+                  setBkmName('');
+                  setBkmX('');
+                  setBkmZ('');
+                  toast.success(lang === 'ru' ? 'Закладка сохранена!' : 'Bookmark saved!');
+                }}
+                style={{ padding: '6px 12px', fontSize: '11px', justifyContent: 'center', fontWeight: 'bold' }}
+              >
+                💾 {lang === 'ru' ? 'СОХРАНИТЬ ЗАКЛАДКУ' : 'SAVE BOOKMARK'}
+              </button>
+            </div>
+
+            {/* Bookmarks list */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {bookmarks.length === 0 ? (
+                <div style={{ padding: '24px', color: 'var(--text-secondary)', fontSize: '11px', textAlign: 'center', fontStyle: 'italic' }}>
+                  {lang === 'ru' ? 'Нет сохраненных закладок' : 'No saved bookmarks'}
                 </div>
-              );
-            })
-          )}
-        </div>
+              ) : (
+                bookmarks.map(b => (
+                  <div
+                    key={b.id}
+                    style={{
+                      padding: '8px 12px',
+                      borderBottom: '1px solid rgba(255,255,255,0.03)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div 
+                      onClick={() => {
+                        const canvas = canvasRef.current;
+                        if (!canvas) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const canvasCenterX = rect.width / 2;
+                        const canvasCenterY = rect.height / 2;
+                        const mapPxSize = 1024;
+                        const normX = b.x / mapSize;
+                        const normY = 1 - (b.z / mapSize);
+                        const mapPxX = normX * mapPxSize;
+                        const mapPxY = normY * mapPxSize;
+
+                        setScale(2.5);
+                        setOffset({
+                          x: canvasCenterX - mapPxX * 2.5,
+                          y: canvasCenterY - mapPxY * 2.5
+                        });
+                        toast.success(`${lang === 'ru' ? 'Переход к:' : 'Center on:'} ${b.name}`);
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, overflow: 'hidden' }}
+                    >
+                      <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: b.color, flexShrink: 0 }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', color: 'var(--text-glow)' }}>
+                          {b.name}
+                        </span>
+                        <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>
+                          ({Math.round(b.x)}, {Math.round(b.z)})
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={() => {
+                        if (window.confirm(lang === 'ru' ? `Удалить закладку "${b.name}"?` : `Delete bookmark "${b.name}"?`)) {
+                          setBookmarks(prev => prev.filter(item => item.id !== b.id));
+                          toast.success(lang === 'ru' ? 'Закладка удалена' : 'Bookmark deleted');
+                        }
+                      }}
+                      style={{ padding: '2px 6px', fontSize: '9px', fontFamily: 'monospace' }}
+                    >
+                      ✖
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+          </div>
+        )}
       </div>
 
       {/* Interactive Map canvas */}
-      <div ref={containerRef} className="map-canvas-container" style={{ flex: 1, position: 'relative' }}>
+      <div
+        ref={containerRef}
+        className="map-canvas-container"
+        style={{ flex: 1, position: 'relative' }}
+        onClick={() => contextMenu && setContextMenu(null)}
+      >
         <canvas
           ref={canvasRef}
           onWheel={handleWheel}
@@ -2700,6 +3409,10 @@ export default function TacticalMap({
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onDoubleClick={handleDoubleClick}
+          onContextMenu={e => {
+            e.preventDefault();
+            setContextMenu({ x: mouseCoords.x, z: mouseCoords.z, px: e.clientX, py: e.clientY, entity: hoveredEntity || null });
+          }}
           style={{ display: 'block', width: '100%', height: '100%', cursor: isPanning ? 'grabbing' : 'default' }}
         />
 
@@ -2774,25 +3487,623 @@ export default function TacticalMap({
           </div>
         )}
 
-        {/* Floating Controls / HUD Overlay */}
+        {/* Interactive Entity Counters HUD */}
         <div style={{
           position: 'absolute',
           top: '16px',
-          right: '16px',
-          background: 'rgba(7,9,7,0.85)',
+          left: '16px',
+          background: 'rgba(7,9,7,0.88)',
           border: '1px solid var(--border-color)',
-          padding: '6px 12px',
+          padding: '5px 12px',
           borderRadius: '2px',
           color: 'var(--text-glow)',
           fontSize: '11px',
           display: 'flex',
-          gap: '12px',
-          pointerEvents: 'none'
+          alignItems: 'center',
+          gap: '8px',
+          userSelect: 'none',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          zIndex: 10
         }}>
-          <div>X: {mouseCoords.x}</div>
-          <div>Z: {mouseCoords.z}</div>
-          <div style={{ color: 'var(--text-secondary)' }}>{t('map_double_click_spawn')}</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '9px', letterSpacing: '0.05em', marginRight: '4px', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>
+            {t('map_hud_entities') || 'ENTITIES:'}
+          </div>
+          {[
+            { label: 'AIR', key: 'airdrops', color: '#ebd667' },
+            { label: 'SAFE', key: 'safezones', color: '#559655' },
+            { label: 'P2P', key: 'traders', color: '#44aacc' },
+            { label: 'NPC', key: 'npcs', color: '#a6f5a6' },
+            { label: 'AI', key: 'patrols', color: 'var(--text-primary)' },
+            { label: 'QUEST', key: 'questObjectives', color: '#c084fc' },
+            { label: 'NOGO', key: 'nogoareas', color: '#cc4a4a' },
+            { label: 'ROAMING', key: 'roamingLocations', color: '#ff9f43' },
+            { label: 'MPG', key: 'spawner', color: '#ff7675' }
+          ].map(l => {
+            let count = 0;
+            if (l.key === 'patrols') {
+              count = new Set(entities.patrols.map(wp => wp.patrolIdx)).size;
+            } else if (l.key === 'spawner') {
+              count = (entities.spawnerTriggers?.length || 0) + (entities.spawnerSpawnPoints?.length || 0);
+            } else {
+              count = entities[l.key]?.length || 0;
+            }
+            
+            const isVisible = layers[l.key];
+            
+            return (
+              <div
+                key={l.key}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLayers(prev => ({ ...prev, [l.key]: !prev[l.key] }));
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: isVisible ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.01)',
+                  border: `1px solid ${isVisible ? l.color : 'rgba(255,255,255,0.08)'}`,
+                  padding: '2px 6px',
+                  borderRadius: '2px',
+                  cursor: 'pointer',
+                  fontSize: '9px',
+                  fontFamily: 'var(--font-mono)',
+                  color: isVisible ? l.color : 'var(--text-secondary)',
+                  opacity: isVisible ? 1 : 0.45,
+                  transition: 'all 0.15s ease',
+                }}
+                title={isVisible ? `Hide ${l.label} layer` : `Show ${l.label} layer`}
+              >
+                <span>{l.label}</span>
+                <strong style={{ 
+                  background: isVisible ? 'rgba(0,0,0,0.3)' : 'transparent',
+                  padding: '0px 3px', 
+                  borderRadius: '1px',
+                  marginLeft: '2px'
+                }}>{count}</strong>
+              </div>
+            );
+          })}
         </div>
+
+        {/* Floating Coordinates HUD */}
+        <div style={{
+          position: 'absolute',
+          top: '16px',
+          right: '16px',
+          background: 'rgba(7,9,7,0.88)',
+          border: '1px solid var(--border-color)',
+          padding: '5px 12px',
+          borderRadius: '2px',
+          color: 'var(--text-glow)',
+          fontSize: '11px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          pointerEvents: 'none',
+          userSelect: 'none',
+        }}>
+          <div style={{ fontFamily: 'var(--font-mono)' }}>X: <strong>{mouseCoords.x}</strong></div>
+          <div style={{ fontFamily: 'var(--font-mono)' }}>Z: <strong>{mouseCoords.z}</strong></div>
+          <div style={{ width: '1px', height: '14px', background: 'var(--border-color)', opacity: 0.5 }} />
+          <div style={{ color: 'var(--text-secondary)', fontSize: '9px', letterSpacing: '0.05em' }}>
+            [C] / {lang === 'ru' ? 'ПКМ' : 'RMB'} → {t('map_copy_coords')}
+          </div>
+        </div>
+
+        {/* Right-Click Context Menu */}
+        {contextMenu && (
+          <div
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              top: contextMenu.py,
+              left: contextMenu.px,
+              zIndex: 9999,
+              background: 'rgba(7,9,7,0.97)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '3px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
+              overflow: 'hidden',
+              minWidth: '210px',
+              pointerEvents: 'auto',
+            }}
+          >
+            {/* Header */}
+            <div style={{ padding: '4px 10px', fontSize: '9px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-color)', letterSpacing: '0.08em' }}>
+              {contextMenu.entity ? `// ENTITY: ${contextMenu.entity.type.toUpperCase()}` : '// CONTEXT_MENU'}
+            </div>
+
+            {/* Coords display */}
+            <div style={{ padding: '5px 12px', fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              {contextMenu.x}, 0.0, {contextMenu.z}
+            </div>
+
+            {/* === ENTITY CONTEXT === */}
+            {contextMenu.entity && (() => {
+              const ent = contextMenu.entity;
+              const ru = lang === 'ru';
+              return (
+                <>
+                  <div style={{ padding: '6px 12px 2px', fontSize: '11px', color: 'var(--text-glow)', fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {ent.name}
+                  </div>
+                  <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '4px 0' }} />
+
+                  {/* Copy entity name */}
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(ent.name)
+                        .then(() => toast.success(`${ru ? 'Скопировано' : 'Copied'}: ${ent.name}`))
+                        .catch(() => toast.error(ru ? 'Не удалось скопировать.' : 'Failed to copy.'));
+                      setContextMenu(null);
+                    }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    📋 {ru ? 'Копировать имя объекта' : 'Copy Object Name'}
+                  </button>
+
+                  {/* Copy coords */}
+                  <button
+                    onClick={() => {
+                      const text = `${contextMenu.x}, 0.0, ${contextMenu.z}`;
+                      navigator.clipboard.writeText(text)
+                        .then(() => toast.success(t('toast_coords_copied')))
+                        .catch(() => toast.error(ru ? 'Не удалось скопировать.' : 'Failed to copy.'));
+                      setContextMenu(null);
+                    }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    📋 {ru ? 'Копировать координаты' : 'Copy Coordinates'}
+                  </button>
+
+                  {/* Bookmark toggle */}
+                  {(() => {
+                    const isBookmarked = bookmarks.some(b => b.x === ent.x && b.z === ent.z);
+                    return (
+                      <button
+                        onClick={() => {
+                          if (isBookmarked) {
+                            setBookmarks(prev => prev.filter(b => !(b.x === ent.x && b.z === ent.z)));
+                            toast.success(ru ? `Удалено из избранного: ${ent.name}` : `Removed from bookmarks: ${ent.name}`);
+                          } else {
+                            const newB = {
+                              id: Date.now(),
+                              name: ent.name || ent.type,
+                              x: ent.x,
+                              z: ent.z,
+                              color: ent.type === 'safezone' ? '#2ecc71' : 
+                                     ent.type === 'airdrop' ? '#ebd667' : 
+                                     ent.type === 'traderzone' ? '#74b9ff' : 
+                                     ent.type === 'nogo_area' ? '#ff7675' : '#c084fc'
+                            };
+                            setBookmarks(prev => [newB, ...prev]);
+                            toast.success(ru ? `Добавлено в избранное: ${ent.name}` : `Added to bookmarks: ${ent.name}`);
+                          }
+                          setContextMenu(null);
+                        }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        ⭐ {isBookmarked ? (ru ? 'Убрать из избранного' : 'Remove Bookmark') : (ru ? 'Добавить в избранное' : 'Add to Bookmarks')}
+                      </button>
+                    );
+                  })()}
+
+                  {/* Add Spawn Point to this trigger */}
+                  {ent.type === 'spawner_trigger' && (
+                    <button
+                      onClick={() => {
+                        const trigger = configs[ent.filePath]?.content?.[ent.triggerIdx];
+                        if (trigger) {
+                          const currentPos = Array.isArray(trigger.spawnPositions) ? trigger.spawnPositions : [];
+                          const newPosStr = `${contextMenu.x.toFixed(6)} 0.0 ${contextMenu.z.toFixed(6)}`;
+                          onChangeField(ent.filePath, [ent.triggerIdx, 'spawnPositions'], [...currentPos, newPosStr]);
+                          toast.success(ru 
+                            ? `Точка спавна #${currentPos.length + 1} добавлена в ${trigger.notificationTitle || `Триггер #${trigger.pointId}`}`
+                            : `Spawn Point #${currentPos.length + 1} added to ${trigger.notificationTitle || `Trigger #${trigger.pointId}`}`
+                          );
+                        }
+                        setContextMenu(null);
+                      }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      📍 {ru ? 'Добавить точку спавна сюда' : 'Add spawn point here'}
+                    </button>
+                  )}
+
+                  <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '4px 0' }} />
+
+                  {/* Open in editor */}
+                  <button
+                    onClick={() => {
+                      if (ent.type === 'quest_objective') {
+                        if (ent.questId) { onSelectQuest(ent.questId); setActiveTab('quests'); }
+                        else alert(ru ? 'Объект квеста осиротан.' : 'Quest objective is orphaned.');
+                      } else if (ent.type === 'patrol_waypoint') {
+                        setActiveTab('aibots');
+                      } else if ((ent.type === 'spawner_trigger' || ent.type === 'spawner_spawn_point') && onNavigateToSpawner) {
+                        onNavigateToSpawner(ent.filePath, ent.triggerIdx);
+                      } else if (ent.filePath) {
+                        onOpenFile(ent.filePath);
+                      }
+                      setContextMenu(null);
+                    }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    📂 {ru ? 'ДОП. НАСТРОЙКИ' : 'OPEN SETTINGS'}
+                  </button>
+
+                  {/* Delete entity */}
+                  {ent.type !== 'quest_objective' && (
+                    <button
+                      onClick={() => { handleDeleteEntity(ent); setContextMenu(null); }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.12)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      🗑 {ru ? 'Удалить объект' : 'Delete Entity'}
+                    </button>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* === MAP CONTEXT (no entity) === */}
+            {!contextMenu.entity && (() => {
+              const ru = lang === 'ru';
+              const patrolCfgPath = 'expansion/settings/AIPatrolSettings.json';
+              const patrolFile = configs[patrolCfgPath];
+              const patrols = patrolFile?.success && Array.isArray(patrolFile.content?.Patrols) ? patrolFile.content.Patrols : [];
+
+              // Gather loaded MPG Spawner Triggers
+              const spawnerFiles = Object.keys(configs).filter(p => {
+                const lower = p.toLowerCase();
+                return lower.startsWith('mpg_spawner/points/') && lower.endsWith('.json');
+              }).sort();
+              const allTriggers = [];
+              spawnerFiles.forEach(fp => {
+                const f = configs[fp];
+                if (f?.success && Array.isArray(f.content)) {
+                  f.content.forEach((tr, trIdx) => {
+                    allTriggers.push({
+                      ...tr,
+                      filePath: fp,
+                      triggerIdx: trIdx,
+                      fileName: fp.split('/').pop()
+                    });
+                  });
+                }
+              });
+
+              const handleQuickSpawn = () => {
+                if (!contextMenu.spawnName?.trim()) return;
+                const name = contextMenu.spawnName.trim();
+                const radius = Number(contextMenu.spawnRadius) || 150;
+                if (contextMenu.spawnType === 'safezone') {
+                  const fp = 'expansion/settings/SafeZoneSettings.json';
+                  const f = configs[fp];
+                  if (f?.success) { onChangeField(fp, ['CircleZones'], [...(f.content.CircleZones || []), { Center: [contextMenu.x, 0.0, contextMenu.z], Radius: radius, Name: name }]); toast.success(`Safezone "${name}" ${ru ? 'создана' : 'created'}`); }
+                  else toast.error(ru ? 'SafeZoneSettings.json не найден' : 'SafeZoneSettings.json not found');
+                } else if (contextMenu.spawnType === 'roaming_location') {
+                  const fp = 'expansion/settings/AILocationSettings.json';
+                  const f = configs[fp];
+                  if (f?.success) { onChangeField(fp, ['RoamingLocations'], [...(f.content.RoamingLocations || []), { Name: name, Position: [contextMenu.x, 0.0, contextMenu.z], Radius: radius, Type: 'Village', Enabled: 1 }]); toast.success(`Roaming "${name}" ${ru ? 'создана' : 'created'}`); }
+                  else toast.error(ru ? 'AILocationSettings.json не найден' : 'AILocationSettings.json not found');
+                } else if (contextMenu.spawnType === 'nogo_area') {
+                  const fp = 'expansion/settings/AILocationSettings.json';
+                  const f = configs[fp];
+                  if (f?.success) { onChangeField(fp, ['NoGoAreas'], [...(f.content.NoGoAreas || []), { Name: name, Position: [contextMenu.x, 0.0, contextMenu.z], Radius: radius }]); toast.success(`NoGo Area "${name}" ${ru ? 'создана' : 'created'}`); }
+                  else toast.error(ru ? 'AILocationSettings.json не найден' : 'AILocationSettings.json not found');
+                } else if (contextMenu.spawnType === 'spawner_trigger') {
+                  const fp = contextMenu.spawnFile;
+                  if (!fp) {
+                    toast.error(ru ? 'Выберите файл конфигурации!' : 'Please select a configuration file!');
+                    return;
+                  }
+                  const f = configs[fp];
+                  if (f?.success && Array.isArray(f.content)) {
+                    const triggersArray = f.content;
+                    const nextId = triggersArray.length > 0
+                      ? Math.max(...triggersArray.map(t => Number(t.pointId) || 0).filter(id => !isNaN(id))) + 1
+                      : 1;
+                    
+                    const newTrigger = {
+                      pointId: nextId,
+                      isDebugEnabled: 0,
+                      isDisabled: 0,
+                      showVisualisation: 1,
+                      notificationTitle: name,
+                      notificationTextEnter: ru ? `Вы вошли в точку ${name}.` : `You entered point ${name}.`,
+                      notificationTextExit: ru ? `Вы покинули точку ${name}.` : `You left point ${name}.`,
+                      notificationTextSpawn: "",
+                      notificationTextWin: "",
+                      notificationTime: 5,
+                      notificationIcon: "set:dayz_gui image:iconSkull",
+                      triggerDependencies: [],
+                      triggerDependenciesAnyOf: 0,
+                      triggersToEnableOnEnter: [],
+                      triggersToEnableOnFirstSpawn: [],
+                      triggersToEnableOnWin: [],
+                      triggersToEnableOnLeave: [],
+                      triggerPosition: `${contextMenu.x.toFixed(6)} 0.0 ${contextMenu.z.toFixed(6)}`,
+                      triggerDebugColor: "blue",
+                      triggerRadius: `${radius.toFixed(1)}`,
+                      triggerHeight: "0.0",
+                      triggerWidthX: "0.0",
+                      triggerWidthY: "0.0",
+                      triggerFirstDelay: "180-300",
+                      triggerCooldown: "1800",
+                      triggerSafeDistance: 15.0,
+                      triggerEnterDelay: 0,
+                      triggerCleanupOnLeave: 1,
+                      triggerCleanupOnLunchTime: 0,
+                      triggerCleanupImmersive: 1,
+                      triggerCleanupDelay: 30,
+                      triggerInactiveResetDelay: 0,
+                      triggerWorkingTime: "0-24",
+                      triggerDisableOnWin: 0,
+                      triggerDisableOnLeave: 0,
+                      spawnPositions: [],
+                      spawnRadius: 10.0,
+                      spawnMin: 1,
+                      spawnMax: 3,
+                      spawnCountLimit: 10,
+                      spawnLoopInside: 1,
+                      spawnQueueDelay: 1000,
+                      spawnList: [],
+                      clearDeathAnimals: 5,
+                      clearDeathZombies: 5,
+                      mappingData: []
+                    };
+                    
+                    onChangeField(fp, [triggersArray.length], newTrigger);
+                    toast.success(ru ? `Триггер "${name}" создан` : `Trigger "${name}" created`);
+                  } else {
+                    toast.error(ru ? 'Файл не найден или поврежден' : 'File not found or invalid');
+                  }
+                }
+                setContextMenu(null);
+              };
+
+              return (
+                <>
+                  {/* Copy coords */}
+                  <button
+                    onClick={() => {
+                      const text = `${contextMenu.x}, 0.0, ${contextMenu.z}`;
+                      navigator.clipboard.writeText(text).then(() => toast.success(t('toast_coords_copied'))).catch(() => toast.error(ru ? 'Не удалось.' : 'Failed.'));
+                      setContextMenu(null);
+                    }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    📋 {ru ? 'Копировать координаты' : 'Copy Coordinates'}
+                  </button>
+
+                  <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '2px 0' }} />
+
+                  {/* Add Waypoint */}
+                  {patrols.length > 0 && (
+                    isDrawModeActive && activePatrolDrawIndex !== -1 && patrols[activePatrolDrawIndex]
+                      ? (
+                        <button
+                          onClick={() => {
+                            const p = patrols[activePatrolDrawIndex];
+                            const wps = Array.isArray(p.Waypoints) ? p.Waypoints : [];
+                            onChangeField(patrolCfgPath, ['Patrols', activePatrolDrawIndex, 'Waypoints'], [...wps, [contextMenu.x, 0.0, contextMenu.z]]);
+                            toast.success(ru ? `Вейпойнт #${wps.length + 1} добавлен в ${p.Name || `Патруль #${activePatrolDrawIndex + 1}`}` : `Waypoint #${wps.length + 1} added`);
+                            setContextMenu(null);
+                          }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          📌 {ru ? `Добавить вейпойнт → ${patrols[activePatrolDrawIndex].Name || `Патруль #${activePatrolDrawIndex + 1}`}` : `Add Waypoint → ${patrols[activePatrolDrawIndex].Name || `Patrol #${activePatrolDrawIndex + 1}`}`}
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setContextMenu(prev => ({ ...prev, showPatrols: !prev.showPatrols, showSpawnerTriggers: false, showSpawn: false }))}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <span>📌 {ru ? 'Добавить вейпойнт' : 'Add Waypoint'}</span>
+                            <span style={{ opacity: 0.5, fontSize: '10px' }}>{contextMenu.showPatrols ? '▲' : '▶'}</span>
+                          </button>
+                          {contextMenu.showPatrols && (
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', maxHeight: '150px', overflowY: 'auto' }}>
+                              {patrols.map((p, idx) => {
+                                const pn = p.Name || (ru ? `Патруль #${idx + 1}` : `Patrol #${idx + 1}`);
+                                return (
+                                  <button key={idx}
+                                    onClick={() => {
+                                      const wps = Array.isArray(p.Waypoints) ? p.Waypoints : [];
+                                      onChangeField(patrolCfgPath, ['Patrols', idx, 'Waypoints'], [...wps, [contextMenu.x, 0.0, contextMenu.z]]);
+                                      toast.success(ru ? `Вейпойнт #${wps.length + 1} добавлен в ${pn}` : `Waypoint #${wps.length + 1} added to ${pn}`);
+                                      setContextMenu(null);
+                                    }}
+                                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px 6px 22px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '10px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = 'var(--text-glow)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                                    title={pn}
+                                  >
+                                    ↳ {pn} <span style={{ opacity: 0.45, marginLeft: '6px' }}>({Array.isArray(p.Waypoints) ? p.Waypoints.length : 0} wp)</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      )
+                  )}
+
+                  <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '2px 0' }} />
+
+                  {/* Add MPG Spawn Point */}
+                  {selectedEntity && selectedEntity.type === 'spawner_trigger' ? (
+                    <button
+                      onClick={() => {
+                        const trigger = configs[selectedEntity.filePath]?.content?.[selectedEntity.triggerIdx];
+                        if (trigger) {
+                          const currentPos = Array.isArray(trigger.spawnPositions) ? trigger.spawnPositions : [];
+                          const newPosStr = `${contextMenu.x.toFixed(6)} 0.0 ${contextMenu.z.toFixed(6)}`;
+                          onChangeField(selectedEntity.filePath, [selectedEntity.triggerIdx, 'spawnPositions'], [...currentPos, newPosStr]);
+                          toast.success(ru 
+                            ? `Точка спавна #${currentPos.length + 1} добавлена в ${trigger.notificationTitle || `Триггер #${trigger.pointId}`}`
+                            : `Spawn Point #${currentPos.length + 1} added to ${trigger.notificationTitle || `Trigger #${trigger.pointId}`}`
+                          );
+                        }
+                        setContextMenu(null);
+                      }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      📍 {ru ? `Добавить точку спавна в: ${selectedEntity.name}` : `Add spawn point to: ${selectedEntity.name}`}
+                    </button>
+                  ) : (
+                    allTriggers.length > 0 && (
+                      <>
+                        <button
+                          onClick={() => setContextMenu(prev => ({ ...prev, showSpawnerTriggers: !prev.showSpawnerTriggers, showPatrols: false, showSpawn: false }))}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <span>📍 {t('map_add_spawner_point') || 'Add MPG Spawn Point'}</span>
+                          <span style={{ opacity: 0.5, fontSize: '10px' }}>{contextMenu.showSpawnerTriggers ? '▲' : '▶'}</span>
+                        </button>
+                        {contextMenu.showSpawnerTriggers && (
+                          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', maxHeight: '150px', overflowY: 'auto' }}>
+                            {allTriggers.map((trig, idx) => {
+                              const tn = trig.notificationTitle || (ru ? `Триггер #${trig.pointId}` : `Trigger #${trig.pointId}`);
+                              return (
+                                <button key={idx}
+                                  onClick={() => {
+                                    const currentPos = Array.isArray(trig.spawnPositions) ? trig.spawnPositions : [];
+                                    const newPosStr = `${contextMenu.x.toFixed(6)} 0.0 ${contextMenu.z.toFixed(6)}`;
+                                    onChangeField(trig.filePath, [trig.triggerIdx, 'spawnPositions'], [...currentPos, newPosStr]);
+                                    toast.success(ru 
+                                      ? `Точка спавна #${currentPos.length + 1} добавлена в ${tn}`
+                                      : `Spawn Point #${currentPos.length + 1} added to ${tn}`
+                                    );
+                                    setContextMenu(null);
+                                  }}
+                                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px 6px 22px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '10px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = 'var(--text-glow)'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                                  title={`${tn} (${trig.fileName})`}
+                                >
+                                  ↳ #{trig.pointId} {tn} <span style={{ opacity: 0.45, marginLeft: '6px' }}>({trig.fileName})</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )
+                  )}
+
+                  <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '2px 0' }} />
+
+                  {/* Quick Spawn */}
+                  <button
+                    onClick={() => setContextMenu(prev => ({ ...prev, showSpawn: !prev.showSpawn, showPatrols: false, showSpawnerTriggers: false, spawnType: null, spawnName: '', spawnRadius: 150 }))}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span>⚡ {ru ? 'Быстрый спавн' : 'Quick Spawn'}</span>
+                    <span style={{ opacity: 0.5, fontSize: '10px' }}>{contextMenu.showSpawn ? '▲' : '▶'}</span>
+                  </button>
+
+                  {contextMenu.showSpawn && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px 12px' }}>
+                      {!contextMenu.spawnType ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {[
+                            { type: 'safezone', label: ru ? '🛡 Безопасная зона' : '🛡 Safezone', color: '#6ecb8a' },
+                            { type: 'roaming_location', label: ru ? '🌍 Roaming Location' : '🌍 Roaming Location', color: '#82b4f5' },
+                            { type: 'nogo_area', label: ru ? '🚫 NoGo Area' : '🚫 NoGo Area', color: '#f08080' },
+                            { type: 'spawner_trigger', label: ru ? '👾 Триггер спавнера MPG' : '👾 MPG Spawner Trigger', color: '#ff7675' }
+                          ].map(({ type, label, color }) => (
+                            <button key={type}
+                              onClick={() => setContextMenu(prev => ({ ...prev, spawnType: type, spawnName: '', spawnRadius: 150, spawnFile: spawnerFiles[0] || '' }))}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 8px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '2px', color, cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.09)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                            <span>{contextMenu.spawnType === 'spawner_trigger' ? (ru ? 'Триггер MPG' : 'MPG Trigger') : contextMenu.spawnType}</span>
+                            <button onClick={() => setContextMenu(prev => ({ ...prev, spawnType: null }))} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '9px' }}>← {ru ? 'назад' : 'back'}</button>
+                          </div>
+
+                          {contextMenu.spawnType === 'spawner_trigger' && (
+                            <select
+                              value={contextMenu.spawnFile || ''}
+                              onChange={e => setContextMenu(prev => ({ ...prev, spawnFile: e.target.value }))}
+                              style={{ width: '100%', padding: '5px 8px', background: 'rgba(7,9,7,0.95)', border: '1px solid var(--border-color)', borderRadius: '2px', color: 'var(--text-glow)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}
+                            >
+                              <option value="">{t('spawner_select_file_ph') || "-- Select spawner file --"}</option>
+                              {spawnerFiles.map(fp => (
+                                <option key={fp} value={fp}>{fp.split('/').pop()}</option>
+                              ))}
+                            </select>
+                          )}
+
+                          <input
+                            autoFocus
+                            placeholder={ru ? 'Название...' : 'Name...'}
+                            value={contextMenu.spawnName || ''}
+                            onChange={e => setContextMenu(prev => ({ ...prev, spawnName: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter' && contextMenu.spawnName?.trim() && (contextMenu.spawnType !== 'spawner_trigger' || contextMenu.spawnFile)) handleQuickSpawn(); if (e.key === 'Escape') setContextMenu(null); }}
+                            style={{ width: '100%', padding: '5px 8px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '2px', color: 'var(--text-glow)', fontSize: '11px', fontFamily: 'var(--font-mono)', boxSizing: 'border-box' }}
+                          />
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <label style={{ fontSize: '9px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>R:</label>
+                            <input
+                              type="number"
+                              value={contextMenu.spawnRadius || 150}
+                              onChange={e => setContextMenu(prev => ({ ...prev, spawnRadius: e.target.value }))}
+                              style={{ width: '70px', padding: '4px 6px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '2px', color: 'var(--text-glow)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}
+                            />
+                            <button
+                              onClick={handleQuickSpawn}
+                              disabled={!contextMenu.spawnName?.trim() || (contextMenu.spawnType === 'spawner_trigger' && !contextMenu.spawnFile)}
+                              style={{ flex: 1, padding: '4px 8px', background: (contextMenu.spawnName?.trim() && (contextMenu.spawnType !== 'spawner_trigger' || contextMenu.spawnFile)) ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '2px', color: (contextMenu.spawnName?.trim() && (contextMenu.spawnType !== 'spawner_trigger' || contextMenu.spawnFile)) ? '#000' : 'var(--text-secondary)', cursor: (contextMenu.spawnName?.trim() && (contextMenu.spawnType !== 'spawner_trigger' || contextMenu.spawnFile)) ? 'pointer' : 'default', fontSize: '10px', fontFamily: 'var(--font-mono)', fontWeight: 700 }}
+                            >
+                              {ru ? 'СОЗДАТЬ' : 'CREATE'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+
 
         {/* Selected Entity Inspector Panel / Hovered Tooltip */}
         {selectedEntity ? (
@@ -2823,9 +4134,13 @@ export default function TacticalMap({
               </button>
             </div>
 
-            {selectedEntity.type === 'roaming_location' ? (
+            {['roaming_location', 'airdrop', 'safezone', 'safezone_cylinder'].includes(selectedEntity.type) ? (
               <div className="form-group" style={{ margin: 0 }}>
-                <label style={{ fontSize: '9px' }}>{t('map_settlement_name')}</label>
+                <label style={{ fontSize: '9px' }}>
+                  {selectedEntity.type === 'airdrop' && (t('map_airdrop_name') || "Airdrop Name")}
+                  {(selectedEntity.type === 'safezone' || selectedEntity.type === 'safezone_cylinder') && (t('map_safezone_name') || "Safezone Name")}
+                  {selectedEntity.type === 'roaming_location' && (t('map_settlement_name') || "Settlement Name")}
+                </label>
                 <input 
                   type="text" 
                   value={selectedEntity.name} 
@@ -2927,6 +4242,18 @@ export default function TacticalMap({
                   </label>
                 </div>
               </>
+            )}
+
+            {(selectedEntity.type === 'airdrop' || selectedEntity.type === 'safezone' || selectedEntity.type === 'safezone_cylinder') && (
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={{ fontSize: '9px' }}>{t('map_zone_radius_label') || "Radius (m)"}</label>
+                <input 
+                  type="number" 
+                  value={selectedEntity.radius} 
+                  onChange={e => handleUpdateSelectedField('Radius', Number(e.target.value))}
+                  style={{ padding: '4px 6px', fontSize: '11px' }}
+                />
+              </div>
             )}
             
             {selectedEntity.type === 'spawner_trigger' && (

@@ -16,7 +16,7 @@ const STATIC_ENUMS = {
   'DefaultStance': ['STANDING', 'CROUCHED', 'PRONE', 'RELAXED'],
   'WaypointInterpolation': ['', 'UniformCubic', 'Linear'],
   'Type': [1, 2, 3, 4], // Quest Type
-  'ObjectiveType': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  'ObjectiveType': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 };
 
 // Helper to check if a value is a 3D vector [x, y, z]
@@ -25,8 +25,14 @@ function isVector3(arr) {
 }
 
 // Collapsible Group Wrapper
-function Accordion({ title, children, isDirty, onReset, isList = false, onRemove, t }) {
+function Accordion({ title, children, isDirty, onReset, isList = false, onRemove, t, extraAction, forceOpen }) {
   const [isOpen, setIsOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (forceOpen) {
+      setIsOpen(true);
+    }
+  }, [forceOpen]);
 
   return (
     <div className="accordion" style={{ borderColor: isDirty ? 'var(--warning-color)' : 'var(--border-color)' }}>
@@ -37,7 +43,7 @@ function Accordion({ title, children, isDirty, onReset, isList = false, onRemove
           background: isDirty ? 'rgba(235, 214, 103, 0.03)' : 'var(--bg-secondary)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
           <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
             {isOpen ? '▼' : '▶'}
           </span>
@@ -46,13 +52,17 @@ function Accordion({ title, children, isDirty, onReset, isList = false, onRemove
             fontWeight: '700', 
             letterSpacing: '1px',
             color: isDirty ? 'var(--warning-color)' : 'var(--text-primary)',
-            textTransform: 'uppercase'
+            textTransform: 'uppercase',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden'
           }}>
             {title}
           </span>
           {isDirty && <span className="badge-dirty" />}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
+          {extraAction}
           {onReset && isDirty && (
             <button 
               className="btn btn-warning" 
@@ -104,6 +114,33 @@ function CustomCheckbox({ checked, onChange, label, isDirty }) {
   );
 }
 
+// Recursive search helper
+function nodeMatchesSearch(key, val, query) {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  if (key.toLowerCase().includes(q)) return true;
+  if (val === undefined || val === null) return false;
+  if (typeof val === 'string' && val.toLowerCase().includes(q)) return true;
+  if (typeof val === 'number' && String(val).includes(q)) return true;
+  if (typeof val === 'boolean' && String(val).includes(q)) return true;
+  if (Array.isArray(val)) {
+    return val.some((item, idx) => nodeMatchesSearch(String(idx), item, query));
+  }
+  if (typeof val === 'object') {
+    return Object.entries(val).some(([k, v]) => nodeMatchesSearch(k, v, query));
+  }
+  return false;
+}
+
+// Coordinate detection helper
+function hasCoordinates(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const keys = Object.keys(obj).map(k => k.toLowerCase());
+  if (keys.includes('x') && (keys.includes('z') || keys.includes('y'))) return true;
+  if (keys.includes('position') || keys.includes('center') || keys.includes('location') || keys.includes('waypoint')) return true;
+  return false;
+}
+
 // Recursive Form Generator
 function RenderFormNode({ 
   keyName, 
@@ -114,8 +151,13 @@ function RenderFormNode({
   onResetKey, 
   inferredEnums,
   onNavigateToMap,
-  t
+  t,
+  searchQuery
 }) {
+  if (searchQuery && !nodeMatchesSearch(keyName, value, searchQuery)) {
+    return null;
+  }
+
   const isDirty = JSON.stringify(value) !== JSON.stringify(originalValue);
   const displayLabel = keyName.replace(/([A-Z])/g, ' $1').trim(); // Convert CamelCase to readable spacing
   
@@ -269,6 +311,24 @@ function RenderFormNode({
             {value.map((item, idx) => {
               const origItem = (originalValue && originalValue[idx]) ? originalValue[idx] : {};
               const nameProp = item.Name || item.ClassName || item.NPCName || item.Title || `Item #${idx + 1}`;
+              
+              let itemExtraAction = null;
+              if (hasCoordinates(item) && onNavigateToMap) {
+                itemExtraAction = (
+                  <button
+                    type="button"
+                    className="btn btn-accent"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigateToMap(item);
+                    }}
+                    style={{ padding: '2px 6px', fontSize: '9px', fontFamily: 'var(--font-mono)' }}
+                  >
+                    📍 SHOW ON MAP
+                  </button>
+                );
+              }
+
               return (
                 <Accordion 
                   key={idx}
@@ -278,6 +338,8 @@ function RenderFormNode({
                   isList={true}
                   onRemove={() => handleRemoveItem(idx)}
                   t={t}
+                  extraAction={itemExtraAction}
+                  forceOpen={!!searchQuery}
                 >
                   {Object.keys(item).map(k => (
                     <RenderFormNode
@@ -291,6 +353,7 @@ function RenderFormNode({
                       inferredEnums={inferredEnums}
                       onNavigateToMap={onNavigateToMap}
                       t={t}
+                      searchQuery={searchQuery}
                     />
                   ))}
                 </Accordion>
@@ -336,12 +399,31 @@ function RenderFormNode({
 
   // 4. Object check (nested config properties)
   if (typeof value === 'object' && value !== null) {
+    let objExtraAction = null;
+    if (hasCoordinates(value) && onNavigateToMap) {
+      objExtraAction = (
+        <button
+          type="button"
+          className="btn btn-accent"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigateToMap(value);
+          }}
+          style={{ padding: '2px 6px', fontSize: '9px', fontFamily: 'var(--font-mono)' }}
+        >
+          📍 SHOW ON MAP
+        </button>
+      );
+    }
+
     return (
       <Accordion 
         title={displayLabel} 
         isDirty={isDirty}
         onReset={() => onResetKey(path)}
         t={t}
+        extraAction={objExtraAction}
+        forceOpen={!!searchQuery}
       >
         {Object.keys(value).map(k => (
           <RenderFormNode
@@ -355,6 +437,7 @@ function RenderFormNode({
             inferredEnums={inferredEnums}
             onNavigateToMap={onNavigateToMap}
             t={t}
+            searchQuery={searchQuery}
           />
         ))}
       </Accordion>
@@ -369,10 +452,22 @@ function RenderFormNode({
   // Extra mapping logic: check if path ends with specific enum-like properties
   if (!enumOptions) {
     for (const [enumKey, options] of Object.entries(STATIC_ENUMS)) {
+      if (enumKey === 'Type' || enumKey === 'ObjectiveType') {
+        continue;
+      }
       if (pathString.endsWith(enumKey)) {
         enumOptions = options;
         break;
       }
+    }
+  }
+
+  // Type Guard: Ensure actual value type matches the enum elements type
+  if (enumOptions && enumOptions.length > 0) {
+    const enumValType = typeof enumOptions[0];
+    const actualValType = typeof value;
+    if (actualValType !== enumValType) {
+      enumOptions = undefined;
     }
   }
 
@@ -447,6 +542,7 @@ export default function ConfigForm({
   onNavigateToMap
 }) {
   const { t } = useTranslation();
+  const [searchQuery, setSearchQuery] = useState('');
 
   if (!config) {
     return (
@@ -542,6 +638,44 @@ export default function ConfigForm({
         </div>
       </div>
 
+      {/* Sticky Search/Filter Bar */}
+      <div style={{
+        padding: '10px 20px',
+        background: 'var(--bg-tertiary)',
+        borderBottom: '1px solid var(--border-color)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px'
+      }}>
+        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', letterSpacing: '1px' }}>
+          🔍 {t('search_title') || "FILTER FIELDS:"}
+        </span>
+        <input 
+          type="text"
+          placeholder={t('search_placeholder') || "Type to filter configuration properties..."}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            flex: 1,
+            padding: '6px 12px',
+            fontSize: '12px',
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border-color)',
+            color: 'var(--text-primary)',
+            borderRadius: '4px'
+          }}
+        />
+        {searchQuery && (
+          <button 
+            className="btn" 
+            onClick={() => setSearchQuery('')}
+            style={{ padding: '6px 12px', fontSize: '11px' }}
+          >
+            {t('modal_confirm_clear_db_btn') || "Clear"}
+          </button>
+        )}
+      </div>
+
       {/* Form Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
@@ -557,6 +691,7 @@ export default function ConfigForm({
               inferredEnums={inferredEnums}
               onNavigateToMap={onNavigateToMap}
               t={t}
+              searchQuery={searchQuery}
             />
           ))}
         </div>

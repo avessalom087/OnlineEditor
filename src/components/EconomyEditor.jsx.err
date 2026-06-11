@@ -71,7 +71,7 @@ function SortableHeader({ field, label, sortField, sortDir, onSort, style = {} }
 
 // ─── Main EconomyEditor ───────────────────────────────────────────────────────
 
-export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCreateFile, xmlItems = [], onShowConfirm }) {
+export default function EconomyEditor({ configs, onChangeField, onSaveFile, xmlItems = [], onShowConfirm }) {
   const toast = useToast();
   const { t, lang } = useTranslation();
   // ─ Database helpers ────────────────────────────────────────────────────────
@@ -98,25 +98,9 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
 
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [copiedAttachments, setCopiedAttachments] = useState(null);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [bulkOp, setBulkOp] = useState('mult-buy');
   const [bulkVal, setBulkVal] = useState('1.1');
-  const [showHelpModal, setShowHelpModal] = useState(false);
-
-  // ─ Trader Creation Wizard states ──────────────────────────────────────────
-  const [showTraderWizard, setShowTraderWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState(1);
-  const [wizardFilename, setWizardFilename] = useState('');
-  const [wizardDisplayName, setWizardDisplayName] = useState('');
-  const [wizardIcon, setWizardIcon] = useState('Shotgun');
-  const [wizardFaction, setWizardFaction] = useState('');
-  const [wizardMinRep, setWizardMinRep] = useState(0);
-  const [wizardMaxRep, setWizardMaxRep] = useState(2147483647);
-  const [wizardQuestId, setWizardQuestId] = useState(-1);
-  const [wizardSelectedCats, setWizardSelectedCats] = useState(new Set());
-  const [wizardDefaultMode, setWizardDefaultMode] = useState(3); // 3 = Both
-  const [wizardCurrency, setWizardCurrency] = useState('expansionbanknotehryvnia');
-  const [wizardCatSearch, setWizardCatSearch] = useState('');
-  const [wizardCustomIcon, setWizardCustomIcon] = useState('');
 
   useEffect(() => {
     localStorage.setItem('dayz_editor_economy_sub_tab', subTab);
@@ -297,7 +281,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
     return map;
   }, [configs, categoryPaths]);
 
-  const isDuplicate = (cn) => { if (!cn) return false; const cats = crossCatMap.get(cn.toLowerCase()); return cats && cats.length > 1; };
+"  const isDuplicate = (cn) => { if (!cn) return false; const cats = crossCatMap.get(cn.toLowerCase()); return cats && cats.length > 1; };
   const getDupCats  = (cn) => { if (!cn) return []; return crossCatMap.get(cn.toLowerCase()) || []; };
 
   // ─ Economy Overview analysis ───────────────────────────────────────────────
@@ -309,6 +293,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
     let priceCount = 0;
     const allItems = [];
     const anomalies = [];
+    const duplicatesMap = new Map();
 
     categoryPaths.forEach(p => {
       const file = configs[p];
@@ -341,68 +326,12 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
           catPath: p
         });
 
-        // 1. Min Price > Max Price
         if (item.MinPriceThreshold > item.MaxPriceThreshold) {
           anomalies.push({
-            type: 'error',
+            type: 'min_gt_max',
             classname: item.ClassName,
-            desc: lang === 'ru' ? `Мин. цена (${item.MinPriceThreshold}$) больше Макс. цены (${item.MaxPriceThreshold}$)` : `Min price (${item.MinPriceThreshold}$) exceeds Max price (${item.MaxPriceThreshold}$)`,
-            catName,
-            catPath: p
-          });
-        }
-        // 2. Min Stock > Max Stock
-        if (item.MinStockThreshold > item.MaxStockThreshold) {
-          anomalies.push({
-            type: 'error',
-            classname: item.ClassName,
-            desc: lang === 'ru' ? `Мин. запас (${item.MinStockThreshold}) больше Макс. запаса (${item.MaxStockThreshold})` : `Min stock (${item.MinStockThreshold}) exceeds Max stock (${item.MaxStockThreshold})`,
-            catName,
-            catPath: p
-          });
-        }
-        // 3. Duplicate items
-        const dupCats = crossCatMap.get(cnLower);
-        if (dupCats && dupCats.length > 1) {
-          anomalies.push({
-            type: 'warning',
-            classname: item.ClassName,
-            desc: lang === 'ru' ? `Дубликат в категориях: ${dupCats.filter(c => c !== catName).join(', ')}` : `Duplicate in categories: ${dupCats.filter(c => c !== catName).join(', ')}`,
-            catName,
-            catPath: p
-          });
-        }
-        // 4. Missing in types.xml
-        if (xmlItems.length > 0 && !xmlItemsSet.has(cnLower)) {
-          anomalies.push({
-            type: 'info',
-            classname: item.ClassName,
-            desc: lang === 'ru' ? `Отсутствует в types.xml` : `Missing in types.xml`,
-            catName,
-            catPath: p
-          });
-        }
-      });
-    });
-
-    const avgMinPrice = priceCount > 0 ? Math.round(totalPriceSumMin / priceCount) : 0;
-    const avgMaxPrice = priceCount > 0 ? Math.round(totalPriceSumMax / priceCount) : 0;
-
-    // Сортировка топ-10 самых дорогих предметов по MaxPriceThreshold
-    const topExpensive = [...allItems]
-      .filter(i => typeof i.MaxPriceThreshold === 'number')
-      .sort((a, b) => b.MaxPriceThreshold - a.MaxPriceThreshold)
-      .slice(0, 10);
-
-    return {
-      totalCategories,
-      totalItems,
-      avgMinPrice,
-      avgMaxPrice,
-      anomalies,
-      topExpensive
-    };
-  }, [configs, categoryPaths, crossCatMap, xmlItemsSet, xmlItems, lang]);
+            desc: `Мин. цена (${item.MinPriceThreshold}$)
+<truncated 1816 bytes>
 
   // ─ Auto-select first or fallback on load ───────────────────────────────────
   useEffect(() => {
@@ -691,20 +620,16 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
       {/* Sub-tab bar */}
       <div style={{ display: 'flex', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', padding: '8px 16px', alignItems: 'center', gap: '12px' }}>
         <button className={`btn ${subTab === 'overview' ? 'btn-accent' : ''}`} onClick={() => setSubTab('overview')} style={{ padding: '6px 16px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold' }}>
-          📊 {lang === 'ru' ? 'ОБЗОР И АНОМАЛИИ' : 'OVERVIEW & ANOMALIES'}
+          📊 ОБЗОР И АНОМАЛИИ
         </button>
         <button className={`btn ${subTab === 'categories' ? 'btn-accent' : ''}`} onClick={() => setSubTab('categories')} style={{ padding: '6px 16px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold' }}>
-          {t('econ_tab_categories', { count: categoryPaths.length })}
+          📁 MARKET CATEGORIES ({categoryPaths.length})
         </button>
         <button className={`btn ${subTab === 'traders' ? 'btn-accent' : ''}`} onClick={() => setSubTab('traders')} style={{ padding: '6px 16px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold' }}>
-          {t('econ_tab_traders', { count: traderPaths.length })}
+          🤝 TRADER SETTINGS ({traderPaths.length})
         </button>
-        <button 
-          className="btn" 
-          onClick={() => setShowHelpModal(true)} 
-          style={{ marginLeft: 'auto', padding: '6px 14px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold', background: 'rgba(255,193,7,0.1)', border: '1px solid rgba(255,193,7,0.3)', color: '#ffd54f' }}
-        >
-          ❓ {lang === 'ru' ? 'СПРАВКА / ЛЕГЕНДА' : 'HELP / LEGEND'}
+        <button className="btn" onClick={() => setShowHelpModal(true)} style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: '11px', fontWeight: 'bold', background: 'rgba(149,192,149,0.1)', border: '1px solid var(--border-color)' }}>
+          ❓ СПРАВКА ПО ЭКОНОМИКЕ
         </button>
       </div>
 
@@ -712,190 +637,61 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
         {/* ── SIDEBAR ────────────────────────────────────────────────────── */}
-        {subTab !== 'overview' && (
-          <div style={{ width: '240px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', userSelect: 'none' }}>
-            <div style={{ padding: '12px 16px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>
-                  {subTab === 'categories' 
-                    ? (lang === 'ru' ? '// КАТЕГОРИИ РЫНКА' : '// MARKET CATEGORIES') 
-                    : (lang === 'ru' ? '// ТОРГОВЦЫ' : '// TRADERS')}
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-dark)', marginTop: '2px' }}>
-                  {subTab === 'categories' 
-                    ? (lang === 'ru' ? `ВСЕГО: ${categoryPaths.length} ФАЙЛОВ` : `TOTAL: ${categoryPaths.length} FILES`)
-                    : (lang === 'ru' ? `ВСЕГО: ${traderPaths.length} ТОРГОВЦЕВ` : `TOTAL: ${traderPaths.length} TRADERS`)}
-                </div>
-              </div>
-              {subTab === 'traders' && (
-                <button
-                  className="btn btn-accent"
-                  onClick={() => {
-                    setWizardStep(1);
-                    setWizardFilename('');
-                    setWizardDisplayName('');
-                    setWizardIcon('Shotgun');
-                    setWizardFaction('');
-                    setWizardMinRep(0);
-                    setWizardMaxRep(2147483647);
-                    setWizardQuestId(-1);
-                    setWizardSelectedCats(new Set());
-                    setWizardDefaultMode(3);
-                    setWizardCurrency('expansionbanknotehryvnia');
-                    setWizardCatSearch('');
-                    setShowTraderWizard(true);
-                  }}
-                  style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 'bold', letterSpacing: '0.5px' }}
-                >
-                  {lang === 'ru' ? '+ СОЗДАТЬ ТОРГОВЦА' : '+ CREATE TRADER'}
-                </button>
-              )}
+        <div style={{ width: '240px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', userSelect: 'none' }}>
+          <div style={{ padding: '12px 16px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)' }}>
+            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>
+              {subTab === 'categories' ? '// MARKET_CATEGORIES' : '// SERVER_TRADERS'}
             </div>
-
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              {(subTab === 'categories' ? categoryPaths : traderPaths).map(path => {
-                const isSelected = path === (subTab === 'categories' ? selectedCategoryPath : selectedTraderPath);
-                const file = configs[path];
-                const hasUnsaved = file && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
-                const name = path.split('/').pop().replace('.json', '').replace(/_/g, ' ').toUpperCase();
-                // B1: Item count badge
-                const itemCount = subTab === 'categories' && file?.success && Array.isArray(file.content?.Items) ? file.content.Items.length : null;
-
-                return (
-                  <div
-                    key={path}
-                    onClick={() => subTab === 'categories' ? setSelectedCategoryPath(path) : setSelectedTraderPath(path)}
-                    style={{
-                      padding: '10px 16px', cursor: 'pointer', fontSize: '12px',
-                      background: isSelected ? 'rgba(149,192,149,0.1)' : 'transparent',
-                      borderLeft: isSelected ? '2px solid var(--text-primary)' : '2px solid transparent',
-                      color: isSelected ? 'var(--text-glow)' : 'var(--text-primary)',
-                      borderBottom: '1px solid rgba(30,48,30,0.1)',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      transition: 'all 0.1s',
-                    }}
-                    onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(149,192,149,0.03)'; }}
-                    onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <span style={{ fontFamily: 'var(--font-heading)', fontWeight: '600', letterSpacing: '0.5px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {name}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                      {/* B1: item count */}
-                      {itemCount !== null && (
-                        <span style={{ fontSize: '10px', color: 'var(--text-dark)', background: 'rgba(149,192,149,0.08)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0 5px', lineHeight: '16px', fontFamily: 'var(--font-mono)' }}>
-                          {itemCount}
-                        </span>
-                      )}
-                      {hasUnsaved && <span className="badge-dirty" />}
-                    </div>
-                  </div>
-                );
-              })}
+            <div style={{ fontSize: '11px', color: 'var(--text-dark)', marginTop: '2px' }}>
+              TOTAL: {subTab === 'categories' ? categoryPaths.length + ' FILES' : traderPaths.length + ' TRADERS'}
             </div>
           </div>
-        )}
+
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {(subTab === 'categories' ? categoryPaths : traderPaths).map(path => {
+              const isSelected = path === (subTab === 'categories' ? selectedCategoryPath : selectedTraderPath);
+              const file = configs[path];
+              const hasUnsaved = file && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
+              const name = path.split('/').pop().replace('.json', '').replace(/_/g, ' ').toUpperCase();
+              // B1: Item count badge
+              const itemCount = subTab === 'categories' && file?.success && Array.isArray(file.content?.Items) ? file.content.Items.length : null;
+
+              return (
+                <div
+                  key={path}
+                  onClick={() => subTab === 'categories' ? setSelectedCategoryPath(path) : setSelectedTraderPath(path)}
+                  style={{
+                    padding: '10px 16px', cursor: 'pointer', fontSize: '12px',
+                    background: isSelected ? 'rgba(149,192,149,0.1)' : 'transparent',
+                    borderLeft: isSelected ? '2px solid var(--text-primary)' : '2px solid transparent',
+                    color: isSelected ? 'var(--text-glow)' : 'var(--text-primary)',
+                    borderBottom: '1px solid rgba(30,48,30,0.1)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    transition: 'all 0.1s',
+                  }}
+                  onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(149,192,149,0.03)'; }}
+                  onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span style={{ fontFamily: 'var(--font-heading)', fontWeight: '600', letterSpacing: '0.5px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {name}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {/* B1: item count */}
+                    {itemCount !== null && (
+                      <span style={{ fontSize: '10px', color: 'var(--text-dark)', background: 'rgba(149,192,149,0.08)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0 5px', lineHeight: '16px', fontFamily: 'var(--font-mono)' }}>
+                        {itemCount}
+                      </span>
+                    )}
+                    {hasUnsaved && <span className="badge-dirty" />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* ── EDITOR AREA ────────────────────────────────────────────────── */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-
-          {subTab === 'overview' && (
-            <div style={{ padding: '30px', display: 'flex', flexDirection: 'column', gap: '30px', background: 'var(--bg-primary)' }}>
-              {/* Заголовок */}
-              <div>
-                <h2 style={{ margin: 0, fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '24px', letterSpacing: '1px' }}>
-                  📊 {lang === 'ru' ? 'ОБЗОР ЭКОНОМИКИ И АНОМАЛИИ' : 'ECONOMY OVERVIEW & ANOMALIES'}
-                </h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {lang === 'ru' ? 'Общий анализ файлов конфигурации рынка и поиск ошибок баланса.' : 'General analysis of market configuration files and balance diagnostics.'}
-                </p>
-              </div>
-
-              {/* Карточки статистики */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-                {[
-                  { label: lang === 'ru' ? 'ВСЕГО КАТЕГОРИЙ' : 'TOTAL CATEGORIES', val: economyOverview.totalCategories, color: 'var(--accent-glow)' },
-                  { label: lang === 'ru' ? 'ВСЕГО ПРЕДМЕТОВ' : 'TOTAL ITEMS', val: economyOverview.totalItems, color: 'var(--text-glow)' },
-                  { label: lang === 'ru' ? 'СРЕДНЯЯ ПОКУПКА' : 'AVG MIN (BUY) PRICE', val: `${economyOverview.avgMinPrice}$`, color: '#ffd54f' },
-                  { label: lang === 'ru' ? 'СРЕДНЯЯ ПРОДАЖА' : 'AVG MAX (SELL) PRICE', val: `${economyOverview.avgMaxPrice}$`, color: '#ffd54f' },
-                  { label: lang === 'ru' ? 'ОБНАРУЖЕНО ПРОБЛЕМ' : 'ANOMALIES DETECTED', val: economyOverview.anomalies.length, color: economyOverview.anomalies.length > 0 ? '#ff6b6b' : 'var(--text-secondary)' }
-                ].map(({ label, val, color }) => (
-                  <div key={label} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', letterSpacing: '1px' }}>{label}</span>
-                    <strong style={{ fontSize: '24px', fontFamily: 'var(--font-heading)', color }}>{val}</strong>
-                  </div>
-                ))}
-              </div>
-
-              {/* Сплит: Аномалии и Топ-10 дорогих */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', alignItems: 'start' }}>
-                
-                {/* Левая колонка: Список аномалий */}
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ padding: '14px 20px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold' }}>
-                    ⚠️ {lang === 'ru' ? 'ВЫЯВЛЕННЫЕ АНОМАЛИИ' : 'DETECTED ANOMALIES'} ({economyOverview.anomalies.length})
-                  </div>
-                  <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '10px 20px' }}>
-                    {economyOverview.anomalies.length === 0 ? (
-                      <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                        🎉 {lang === 'ru' ? 'Аномалий не обнаружено. Экономика стабильна!' : 'No anomalies detected. Economy is healthy!'}
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {economyOverview.anomalies.map((an, idx) => (
-                          <div key={idx} style={{ 
-                            padding: '10px 14px', 
-                            background: an.type === 'error' ? 'rgba(255,107,107,0.06)' : (an.type === 'warning' ? 'rgba(255,193,7,0.04)' : 'rgba(130,180,245,0.04)'), 
-                            border: `1px solid ${an.type === 'error' ? 'rgba(255,107,107,0.2)' : (an.type === 'warning' ? 'rgba(255,193,7,0.15)' : 'rgba(130,180,245,0.15)')}`, 
-                            borderRadius: '3px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: '12px'
-                          }}>
-                            <div>
-                              <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)' }}>{an.classname}</strong>
-                              <div style={{ color: 'var(--text-primary)', marginTop: '2px' }}>{an.desc}</div>
-                            </div>
-                            <button 
-                              className="btn" 
-                              onClick={() => {
-                                setSubTab('categories');
-                                setSelectedCategoryPath(an.catPath);
-                                setItemQuery(an.classname);
-                              }}
-                              style={{ padding: '3px 8px', fontSize: '11px', whiteSpace: 'nowrap' }}
-                            >
-                              {lang === 'ru' ? 'Перейти →' : 'Fix →'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Правая колонка: Топ-10 дорогих */}
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ padding: '14px 20px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold' }}>
-                    💎 {lang === 'ru' ? 'ТОП-10 САМЫХ ДОРОГИХ' : 'TOP 10 MOST EXPENSIVE'}
-                  </div>
-                  <div style={{ padding: '10px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {economyOverview.topExpensive.map((item, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '10px' }}>
-                          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginRight: '6px' }}>#{idx+1}</span>
-                          <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)' }} title={item.ClassName}>{item.ClassName}</strong>
-                        </div>
-                        <span style={{ color: '#ffd54f', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{item.MaxPriceThreshold}$</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
 
           {subTab === 'categories' ? (
             activeCategoryConfig ? (
@@ -1053,59 +849,23 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <label style={{ fontSize: '11px', color: 'var(--text-primary)' }}>{t('econ_bulk_op')}</label>
-                    <select
-                      id="bulk-op"
-                      value={bulkOp}
-                      onChange={e => setBulkOp(e.target.value)}
-                      style={{ padding: '4px 8px', fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)' }}
-                    >
+                    <select id="bulk-op" style={{ padding: '4px 8px', fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)' }}>
                       <option value="mult-buy">{t('econ_bulk_op_mult_buy')}</option>
                       <option value="mult-sell">{t('econ_bulk_op_mult_sell')}</option>
                       <option value="sync-sell-percent">{t('econ_bulk_op_sync_sell')}</option>
-                      <option value="add-attachment">{lang === 'ru' ? 'Добавить обвес' : 'Add Spawn Attachment'}</option>
-                      <option value="remove-attachment">{lang === 'ru' ? 'Удалить обвес' : 'Remove Spawn Attachment'}</option>
-                      <option value="clear-attachments">{lang === 'ru' ? 'Очистить все обвесы' : 'Clear Spawn Attachments'}</option>
                     </select>
                   </div>
-                  {bulkOp !== 'clear-attachments' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <label style={{ fontSize: '11px', color: 'var(--text-primary)' }}>{t('econ_bulk_val')}</label>
-                      {['add-attachment', 'remove-attachment'].includes(bulkOp) ? (
-                        <input
-                          type="text"
-                          id="bulk-val"
-                          placeholder={lang === 'ru' ? 'Имя обвеса...' : 'Attachment name...'}
-                          style={{ padding: '4px 8px', fontSize: '11px', width: '150px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)' }}
-                        />
-                      ) : (
-                        <input
-                          type="number"
-                          id="bulk-val"
-                          defaultValue="1.1"
-                          step="any"
-                          style={{ padding: '4px 8px', fontSize: '11px', width: '60px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)', textAlign: 'center' }}
-                        />
-                      )}
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-primary)' }}>{t('econ_bulk_val')}</label>
+                    <input type="number" id="bulk-val" defaultValue="1.1" step="any" style={{ padding: '4px 8px', fontSize: '11px', width: '60px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)', textAlign: 'center' }} />
+                  </div>
                    <button
                     className="btn btn-accent"
                     style={{ padding: '4px 10px', fontSize: '11px' }}
                     onClick={() => {
                       const op  = document.getElementById('bulk-op').value;
-                      const valEl = document.getElementById('bulk-val');
-                      const valStr = valEl ? valEl.value : '';
-                      const val = parseFloat(valStr);
-
-                      if (['mult-buy', 'mult-sell', 'sync-sell-percent'].includes(op) && isNaN(val)) {
-                        toast.error(t('econ_toast_bulk_invalid_val'));
-                        return;
-                      }
-                      if (['add-attachment', 'remove-attachment'].includes(op) && !valStr.trim()) {
-                        toast.error(lang === 'ru' ? 'Введите имя обвеса' : 'Enter attachment name');
-                        return;
-                      }
-
+                      const val = parseFloat(document.getElementById('bulk-val').value);
+                      if (isNaN(val)) { toast.error(t('econ_toast_bulk_invalid_val')); return; }
                       onShowConfirm({
                         title: t('econ_bulk_confirm_title'),
                         body: t('econ_bulk_confirm_body', { count: selectedItems.size > 0 ? selectedItems.size : filteredItems.length }),
@@ -1127,19 +887,6 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                               u.SellPricePercent = Math.max(0, Math.round(cur * val * 10) / 10);
                             } else if (op === 'sync-sell-percent') {
                               u.SellPricePercent = Math.max(0, Math.round(val * 10) / 10);
-                            } else if (op === 'add-attachment') {
-                              const atts = u.SpawnAttachments ? [...u.SpawnAttachments] : [];
-                              const nameToAdd = valStr.trim();
-                              if (!atts.includes(nameToAdd)) {
-                                atts.push(nameToAdd);
-                              }
-                              u.SpawnAttachments = atts;
-                            } else if (op === 'remove-attachment') {
-                              const atts = u.SpawnAttachments ? [...u.SpawnAttachments] : [];
-                              const nameToRemove = valStr.trim().toLowerCase();
-                              u.SpawnAttachments = atts.filter(a => a.toLowerCase() !== nameToRemove);
-                            } else if (op === 'clear-attachments') {
-                              u.SpawnAttachments = [];
                             }
                             return u;
                           });
@@ -1280,19 +1027,18 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                               />
                             </th>
                             {/* B2: Sortable headers */}
-                            <SortableHeader field="ClassName"          label={t('econ_th_classname')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '24%' }} />
-                            <SortableHeader field="MinPriceThreshold"  label={t('econ_th_minprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
-                            <SortableHeader field="MaxPriceThreshold"  label={t('econ_th_maxprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
-                            <SortableHeader field="MinStockThreshold"  label={t('econ_th_minstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} />
-                            <SortableHeader field="MaxStockThreshold"  label={t('econ_th_maxstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} />
-                            <SortableHeader field="SellPricePercent"   label={t('econ_th_sellpct')}     sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} />
-                            <th style={{ width: '15%', textAlign: 'center' }}>{lang === 'ru' ? 'Обвесы' : 'Attachments'}</th>
+                            <SortableHeader field="ClassName"          label={t('econ_th_classname')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '28%' }} />
+                            <SortableHeader field="MinPriceThreshold"  label={t('econ_th_minprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '11%', textAlign: 'center' }} />
+                            <SortableHeader field="MaxPriceThreshold"  label={t('econ_th_maxprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '11%', textAlign: 'center' }} />
+                            <SortableHeader field="MinStockThreshold"  label={t('econ_th_minstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
+                            <SortableHeader field="MaxStockThreshold"  label={t('econ_th_maxstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
+                            <SortableHeader field="SellPricePercent"   label={t('econ_th_sellpct')}     sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
                             <th style={{ width: '10%', textAlign: 'center' }}>{t('econ_th_actions')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredItems.length === 0 ? (
-                            <tr><td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                            <tr><td colSpan="8" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
                               {itemQuery ? t('econ_no_items_match') : t('econ_no_items_add')}
                             </td></tr>
                           ) : (
@@ -1307,204 +1053,47 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                               const minStockErr = item.MinStockThreshold  > item.MaxStockThreshold;
 
                               return (
-                                <React.Fragment key={item.originalIndex}>
-                                  <tr style={{ background: isSelected ? 'rgba(149,192,149,0.06)' : 'transparent' }}>
-                                    {/* B3: Row checkbox */}
-                                    <td style={{ textAlign: 'center' }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={() => toggleItemSelect(item.originalIndex)}
-                                        style={{ cursor: 'pointer', accentColor: 'var(--text-glow)' }}
+                                <tr key={item.originalIndex} style={{ background: isSelected ? 'rgba(149,192,149,0.06)' : 'transparent' }}>
+                                  {/* B3: Row checkbox */}
+                                  <td style={{ textAlign: 'center' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => toggleItemSelect(item.originalIndex)}
+                                      style={{ cursor: 'pointer', accentColor: 'var(--text-glow)' }}
+                                    />
+                                  </td>
+                                  <td style={{ fontFamily: 'var(--font-heading)', fontWeight: '600', fontSize: '14px', color: 'var(--text-glow)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                                      <EditableCell
+                                        value={item.ClassName} originalValue={origItem.ClassName}
+                                        onChange={val => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'ClassName'], val)}
                                       />
-                                    </td>
-                                    <td style={{ fontFamily: 'var(--font-heading)', fontWeight: '600', fontSize: '14px', color: 'var(--text-glow)' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-                                        <EditableCell
-                                          value={item.ClassName} originalValue={origItem.ClassName}
-                                          onChange={val => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'ClassName'], val)}
-                                        />
-                                        {/* B9: Duplicate badge */}
-                                        {isDup && (
-                                          <span className="dup-badge" title={`Also in: ${dupCats.filter(c => c !== selectedCategoryPath.split('/').pop().replace('.json','')).join(', ')}`}>
-                                            ⚠ DUP
-                                          </span>
-                                        )}
-                                        {isItemMissing(item.ClassName) && (
-                                          <span title={t('econ_item_missing_tooltip')} style={{ color: 'var(--warning-color)', fontSize: '12px', marginLeft: '6px', cursor: 'help' }}>⚠️</span>
-                                        )}
-                                      </div>
-                                    </td>
-                                    {/* B10: error highlights on min>max cells */}
-                                    <td><EditableCell type="number" value={item.MinPriceThreshold} originalValue={origItem.MinPriceThreshold} hasError={minPriceErr} onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'MinPriceThreshold'], v)} style={{ textAlign: 'center' }} /></td>
-                                    <td><EditableCell type="number" value={item.MaxPriceThreshold} originalValue={origItem.MaxPriceThreshold} hasError={minPriceErr} onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'MaxPriceThreshold'], v)} style={{ textAlign: 'center' }} /></td>
-                                    <td><EditableCell type="number" value={item.MinStockThreshold} originalValue={origItem.MinStockThreshold} hasError={minStockErr} onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'MinStockThreshold'], v)} style={{ textAlign: 'center' }} /></td>
-                                    <td><EditableCell type="number" value={item.MaxStockThreshold} originalValue={origItem.MaxStockThreshold} hasError={minStockErr} onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'MaxStockThreshold'], v)} style={{ textAlign: 'center' }} /></td>
-                                    <td><EditableCell type="number" value={item.SellPricePercent}  originalValue={origItem.SellPricePercent}  onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'SellPricePercent'], v)} style={{ textAlign: 'center' }} /></td>
-                                    {/* Attachments Column */}
-                                    <td style={{ textAlign: 'center' }}>
-                                      <button
-                                        className="btn"
-                                        onClick={() => {
-                                          setExpandedRows(prev => {
-                                            const next = new Set(prev);
-                                            if (next.has(item.originalIndex)) {
-                                              next.delete(item.originalIndex);
-                                            } else {
-                                              next.add(item.originalIndex);
-                                            }
-                                            return next;
-                                          });
-                                        }}
-                                        style={{
-                                          padding: '4px 8px',
-                                          fontSize: '11px',
-                                          background: (item.SpawnAttachments && item.SpawnAttachments.length > 0) ? 'rgba(130,180,245,0.15)' : 'transparent',
-                                          border: (item.SpawnAttachments && item.SpawnAttachments.length > 0) ? '1px solid rgba(130,180,245,0.3)' : '1px solid var(--border-color)',
-                                          color: (item.SpawnAttachments && item.SpawnAttachments.length > 0) ? '#82b4f5' : 'var(--text-secondary)',
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '6px'
-                                        }}
-                                      >
-                                        📎 {item.SpawnAttachments ? item.SpawnAttachments.length : 0}
-                                        <span style={{ fontSize: '9px', opacity: 0.7 }}>
-                                          {expandedRows.has(item.originalIndex) ? '▲' : '▼'}
+                                      {/* B9: Duplicate badge */}
+                                      {isDup && (
+                                        <span className="dup-badge" title={`Also in: ${dupCats.filter(c => c !== selectedCategoryPath.split('/').pop().replace('.json','')).join(', ')}`}>
+                                          ⚠ DUP
                                         </span>
-                                      </button>
-                                    </td>
-                                    <td style={{ textAlign: 'center' }}>
-                                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                        {/* B8: Copy button */}
-                                        <button className="btn" onClick={() => handleCopyItem(item)} style={{ padding: '3px 6px', fontSize: '11px' }} title={t('econ_copy_item_tooltip')}>📋</button>
-                                        <button className="btn btn-danger" onClick={() => handleRemoveItem(item.originalIndex)} style={{ padding: '3px 7px', fontSize: '11px', fontFamily: 'monospace' }}>×</button>
-                                      </div>
-                                    </td>
-                                  </tr>
-
-                                  {/* Expandable attachments editor drawer */}
-                                  {expandedRows.has(item.originalIndex) && (
-                                    <tr style={{ background: 'rgba(130,180,245,0.02)' }}>
-                                      <td colSpan="9" style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-color)' }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', fontFamily: 'var(--font-mono)' }}>
-                                              📎 {lang === 'ru' ? 'НАСТРОЙКА ОБВЕСОВ (СПАВН)' : 'SPAWN ATTACHMENTS'} FOR <span style={{ color: 'var(--accent-glow)' }}>{item.ClassName}</span>
-                                            </span>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
-                                              <button
-                                                className="btn"
-                                                onClick={() => {
-                                                  if (item.SpawnAttachments && item.SpawnAttachments.length > 0) {
-                                                    setCopiedAttachments([...item.SpawnAttachments]);
-                                                    toast.info(lang === 'ru' ? 'Обвесы скопированы' : 'Attachments copied');
-                                                  } else {
-                                                    toast.error(lang === 'ru' ? 'Нет обвесов для копирования' : 'No attachments to copy');
-                                                  }
-                                                }}
-                                                style={{ padding: '3px 8px', fontSize: '10px' }}
-                                              >
-                                                {lang === 'ru' ? 'Копировать' : 'Copy'}
-                                              </button>
-                                              {copiedAttachments && (
-                                                <button
-                                                  className="btn btn-accent"
-                                                  onClick={() => {
-                                                    onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'SpawnAttachments'], [...copiedAttachments]);
-                                                    toast.success(lang === 'ru' ? 'Обвесы вставлены' : 'Attachments pasted');
-                                                  }}
-                                                  style={{ padding: '3px 8px', fontSize: '10px' }}
-                                                >
-                                                  {lang === 'ru' ? 'Вставить' : 'Paste'} ({copiedAttachments.length})
-                                                </button>
-                                              )}
-                                              <button
-                                                className="btn btn-danger"
-                                                onClick={() => {
-                                                  onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'SpawnAttachments'], []);
-                                                  toast.warning(lang === 'ru' ? 'Обвесы очищены' : 'Attachments cleared');
-                                                }}
-                                                style={{ padding: '3px 8px', fontSize: '10px' }}
-                                              >
-                                                {lang === 'ru' ? 'Очистить' : 'Clear'}
-                                              </button>
-                                            </div>
-                                          </div>
-
-                                          {/* Current Attachments list */}
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', minHeight: '24px', alignItems: 'center' }}>
-                                            {(!item.SpawnAttachments || item.SpawnAttachments.length === 0) ? (
-                                              <span style={{ fontSize: '11px', color: 'var(--text-dark)', fontStyle: 'italic' }}>
-                                                {lang === 'ru' ? 'Нет установленных обвесов. Добавьте ниже.' : 'No attachments configured. Add below.'}
-                                              </span>
-                                            ) : (
-                                              item.SpawnAttachments.map((att, attIdx) => (
-                                                <span
-                                                  key={attIdx}
-                                                  style={{
-                                                    background: 'rgba(255,255,255,0.04)',
-                                                    border: '1px solid var(--border-color)',
-                                                    borderRadius: '3px',
-                                                    padding: '2px 8px',
-                                                    fontSize: '11px',
-                                                    fontFamily: 'var(--font-mono)',
-                                                    color: 'var(--text-primary)',
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: '6px'
-                                                  }}
-                                                >
-                                                  {att}
-                                                  {isItemMissing(att) && <span title={t('econ_item_missing_tooltip')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
-                                                  <button
-                                                    onClick={() => {
-                                                      const updatedAtts = [...item.SpawnAttachments];
-                                                      updatedAtts.splice(attIdx, 1);
-                                                      onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'SpawnAttachments'], updatedAtts);
-                                                    }}
-                                                    style={{
-                                                      background: 'none',
-                                                      border: 'none',
-                                                      color: '#ff6b6b',
-                                                      cursor: 'pointer',
-                                                      fontSize: '12px',
-                                                      padding: '0 2px',
-                                                      display: 'inline-flex',
-                                                      alignItems: 'center'
-                                                    }}
-                                                  >
-                                                    ×
-                                                  </button>
-                                                </span>
-                                              ))
-                                            )}
-                                          </div>
-
-                                          {/* Add Attachment autocomplete */}
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '350px', marginTop: '4px' }}>
-                                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                                              {lang === 'ru' ? 'Добавить обвес:' : 'Add attachment:'}
-                                            </span>
-                                            <AutocompleteInput
-                                              suggestions={suggestions}
-                                              placeholder={t('econ_type_classname')}
-                                              onSelect={(attName) => {
-                                                const currentAtts = item.SpawnAttachments || [];
-                                                if (currentAtts.includes(attName)) {
-                                                  toast.error(lang === 'ru' ? 'Этот обвес уже добавлен' : 'Attachment already added');
-                                                  return;
-                                                }
-                                                onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'SpawnAttachments'], [...currentAtts, attName]);
-                                                toast.success(lang === 'ru' ? `Добавлен обвес: ${attName}` : `Added attachment: ${attName}`);
-                                              }}
-                                              style={{ flex: 1 }}
-                                            />
-                                          </div>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  )}
-                                </React.Fragment>
+                                      )}
+                                      {isItemMissing(item.ClassName) && (
+                                        <span title={t('econ_item_missing_tooltip')} style={{ color: 'var(--warning-color)', fontSize: '12px', marginLeft: '6px', cursor: 'help' }}>⚠️</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  {/* B10: error highlights on min>max cells */}
+                                  <td><EditableCell type="number" value={item.MinPriceThreshold} originalValue={origItem.MinPriceThreshold} hasError={minPriceErr} onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'MinPriceThreshold'], v)} style={{ textAlign: 'center' }} /></td>
+                                  <td><EditableCell type="number" value={item.MaxPriceThreshold} originalValue={origItem.MaxPriceThreshold} hasError={minPriceErr} onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'MaxPriceThreshold'], v)} style={{ textAlign: 'center' }} /></td>
+                                  <td><EditableCell type="number" value={item.MinStockThreshold} originalValue={origItem.MinStockThreshold} hasError={minStockErr} onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'MinStockThreshold'], v)} style={{ textAlign: 'center' }} /></td>
+                                  <td><EditableCell type="number" value={item.MaxStockThreshold} originalValue={origItem.MaxStockThreshold} hasError={minStockErr} onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'MaxStockThreshold'], v)} style={{ textAlign: 'center' }} /></td>
+                                  <td><EditableCell type="number" value={item.SellPricePercent}  originalValue={origItem.SellPricePercent}  onChange={v => onChangeField(selectedCategoryPath, ['Items', item.originalIndex, 'SellPricePercent'], v)} style={{ textAlign: 'center' }} /></td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                      {/* B8: Copy button */}
+                                      <button className="btn" onClick={() => handleCopyItem(item)} style={{ padding: '3px 6px', fontSize: '11px' }} title={t('econ_copy_item_tooltip')}>📋</button>
+                                      <button className="btn btn-danger" onClick={() => handleRemoveItem(item.originalIndex)} style={{ padding: '3px 7px', fontSize: '11px', fontFamily: 'monospace' }}>×</button>
+                                    </div>
+                                  </td>
+                                </tr>
                               );
                             })
                           )}
@@ -1624,25 +1213,9 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                         ) : (
                           (activeTraderConfig.content.Categories || []).map((catStr, idx) => {
                             const { name, mode } = parseTraderCategory(catStr);
-                            const matchingPath = categoryPaths.find(p => p.split('/').pop().toLowerCase() === `${name.toLowerCase()}.json`);
                             return (
                               <tr key={idx}>
-                                <td style={{ fontFamily: 'var(--font-heading)', fontWeight: '600', color: 'var(--text-glow)' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  {matchingPath && (
-                                    <button
-                                      className="btn"
-                                      onClick={() => {
-                                        setSubTab('categories');
-                                        setSelectedCategoryPath(matchingPath);
-                                      }}
-                                      style={{ padding: '2px 6px', fontSize: '10px' }}
-                                      title={t('econ_th_goto') || 'Перейти'}
-                                    >
-                                      📂
-                                    </button>
-                                  )}
-                                  <span>{name}</span>
-                                </div></td>
+                                <td style={{ fontFamily: 'var(--font-heading)', fontWeight: '600', color: 'var(--text-glow)' }}>{name}</td>
                                 <td style={{ textAlign: 'center' }}>
                                   <select value={mode} onChange={e => handleTraderCategoryOverrideChange(idx, Number(e.target.value))} style={{ fontSize: '11px', padding: '4px', width: '180px', margin: '0 auto' }}>
                                     <option value={3}>{t('trader_direction_both')}</option>
@@ -1693,11 +1266,9 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                         ) : (
                           filteredTraderItems.map(([classname, val]) => (
                             <tr key={classname}>
-                              <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontSize: '13px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  {classname}
-                                  {isItemMissing(classname) && <span title={t('econ_item_missing_trader_tooltip')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
-                                </div>
+                              <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {classname}
+                                {isItemMissing(classname) && <span title={t('econ_item_missing_trader_tooltip')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
                               </td>
                               <td style={{ textAlign: 'center' }}>
                                 <select value={val} onChange={e => handleTraderAddItemOverride(classname, Number(e.target.value))} style={{ fontSize: '11px', padding: '4px', width: '180px', margin: '0 auto' }}>
@@ -2133,7 +1704,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                 onClick={() => setShowBulkPricingModal(false)}
                 style={{ padding: '8px 16px' }}
               >
-                {t('modal_confirm_cancel')}
+                {t('confirm_cancel') || "Cancel"}
               </button>
               <button 
                 className="btn btn-warning" 
@@ -2146,629 +1717,6 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
           </div>
         </div>
       )}
-
-      {/* 🧙 Trader Creation Wizard Modal */}
-      {showTraderWizard && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.85)', zIndex: 99995,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(3px)',
-        }}>
-          <div style={{
-            width: '600px',
-            maxHeight: '90vh',
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border-glow)',
-            borderRadius: '4px',
-            boxShadow: '0 8px 40px rgba(0,0,0,0.8), 0 0 15px rgba(130,180,245,0.15)',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            animation: 'toastIn 0.2s ease',
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '16px 20px',
-              background: 'var(--bg-tertiary)',
-              borderBottom: '1px solid var(--border-color)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}>
-              <div>
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px' }}>
-                  // {lang === 'ru' ? 'МАСТЕР СОЗДАНИЯ ТОРГОВЦА' : 'TRADER CREATION WIZARD'}
-                </div>
-                <h3 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '18px' }}>
-                  {lang === 'ru' ? `Шаг ${wizardStep} из 3` : `Step ${wizardStep} of 3`}
-                </h3>
-              </div>
-              <button 
-                className="btn" 
-                onClick={() => setShowTraderWizard(false)} 
-                style={{ padding: '4px 10px', fontSize: '12px' }}
-              >
-                {t('xml_close_btn')}
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ padding: '20px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              
-              {/* Step indicator bar */}
-              <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
-                {[1, 2, 3].map(s => (
-                  <div key={s} style={{ 
-                    flex: 1, 
-                    height: '4px', 
-                    background: wizardStep >= s ? 'var(--accent-glow)' : 'rgba(255,255,255,0.1)',
-                    borderRadius: '2px',
-                    transition: 'background 0.3s'
-                  }} />
-                ))}
-              </div>
-
-              {wizardStep === 1 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* Filename */}
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      {lang === 'ru' ? 'ИМЯ ФАЙЛА (В СИСТЕМЕ)' : 'SYSTEM FILENAME'} *
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <input 
-                        type="text" 
-                        value={wizardFilename} 
-                        onChange={e => setWizardFilename(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
-                        placeholder="e.g. weapons_merchant" 
-                        autoFocus
-                      />
-                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>.json</span>
-                    </div>
-                    {traderPaths.some(p => p.split('/').pop().toLowerCase() === `${wizardFilename.toLowerCase()}.json`) && (
-                      <span style={{ fontSize: '11px', color: '#ff6b6b', marginTop: '4px', display: 'block' }}>
-                        ⚠️ {lang === 'ru' ? 'Файл с таким именем уже существует!' : 'A trader with this filename already exists!'}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Display Name */}
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      {lang === 'ru' ? 'ОТОБРАЖАЕМОЕ ИМЯ (В ИГРЕ)' : 'IN-GAME DISPLAY NAME'} *
-                    </label>
-                    <input 
-                      type="text" 
-                      value={wizardDisplayName} 
-                      onChange={e => setWizardDisplayName(e.target.value)}
-                      placeholder="e.g. Weapons & Ammo Dealer" 
-                    />
-                  </div>
-
-                  {/* Trader Icon presets */}
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      {lang === 'ru' ? 'ИКОНКА ТОРГОВЦА' : 'TRADER ICON'}
-                    </label>
-                    <select 
-                      value={wizardIcon} 
-                      onChange={e => setWizardIcon(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        background: 'var(--bg-primary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: 'var(--text-glow)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '12px',
-                        outline: 'none',
-                        cursor: 'pointer',
-                        boxSizing: 'border-box',
-                        appearance: 'none',
-                        backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2395c095\' stroke-width=\'3\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpolyline points=\'6 9 12 15 18 9\'%3E%3C/polyline%3E%3C/svg%3E")',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right 12px center',
-                        backgroundSize: '10px'
-                      }}
-                    >
-                      {['Shotgun', 'Car', 'Clothing', 'Melee', 'Medical', 'Food', 'Boats', 'Exchange', 'Custom'].map(icon => (
-                        <option key={icon} value={icon}>{icon}</option>
-                      ))}
-                    </select>
-                    {wizardIcon === 'Custom' && (
-                      <input 
-                        type="text" 
-                        value={wizardCustomIcon}
-                        onChange={e => setWizardCustomIcon(e.target.value)}
-                        placeholder="Enter custom icon name..." 
-                        style={{ marginTop: '6px' }}
-                      />
-                    )}
-                  </div>
-
-                  {/* Required Faction */}
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      {lang === 'ru' ? 'НЕОБХОДИМАЯ ФРАКЦИЯ' : 'REQUIRED FACTION'}
-                    </label>
-                    <input 
-                      type="text" 
-                      value={wizardFaction} 
-                      onChange={e => setWizardFaction(e.target.value)}
-                      placeholder="e.g. InvincibleObservers" 
-                    />
-                  </div>
-
-                  {/* Reputation */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        {lang === 'ru' ? 'МИН. РЕПУТАЦИЯ' : 'MIN REQUIRED REP'}
-                      </label>
-                      <input 
-                        type="number" 
-                        value={wizardMinRep} 
-                        onChange={e => setWizardMinRep(Number(e.target.value))} 
-                      />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        {lang === 'ru' ? 'МАКС. РЕПУТАЦИЯ' : 'MAX REQUIRED REP'}
-                      </label>
-                      <input 
-                        type="number" 
-                        value={wizardMaxRep} 
-                        onChange={e => setWizardMaxRep(Number(e.target.value))} 
-                      />
-                    </div>
-                  </div>
-
-                  {/* Quest Req */}
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      {lang === 'ru' ? 'НЕОБХОДИМЫЙ ПРОЙДЕННЫЙ КВЕСТ' : 'COMPLETED QUEST REQUIREMENT'}
-                    </label>
-                    <select 
-                      value={wizardQuestId} 
-                      onChange={e => setWizardQuestId(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        background: 'var(--bg-primary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: 'var(--text-glow)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '12px',
-                        outline: 'none',
-                        cursor: 'pointer',
-                        boxSizing: 'border-box',
-                        appearance: 'none',
-                        backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2395c095\' stroke-width=\'3\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpolyline points=\'6 9 12 15 18 9\'%3E%3C/polyline%3E%3C/svg%3E")',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right 12px center',
-                        backgroundSize: '10px'
-                      }}
-                    >
-                      <option value={-1}>{t('trader_quest_none')}</option>
-                      {questsList.map(q => (
-                        <option key={q.id} value={q.id}>ID {q.id}: {q.title}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {wizardStep === 2 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: '100%', overflow: 'hidden' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    {lang === 'ru' 
-                      ? 'Выберите категории товаров, которые будут продаваться у этого торговца:' 
-                      : 'Choose market categories that will be attached to this trader:'}
-                  </div>
-                  
-                  {/* Filter & Selection Controls */}
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <div style={{ position: 'relative', flex: 1 }}>
-                      <input 
-                        type="text" 
-                        placeholder={lang === 'ru' ? 'Поиск категории...' : 'Search category...'} 
-                        value={wizardCatSearch}
-                        onChange={e => setWizardCatSearch(e.target.value)}
-                        style={{ paddingLeft: '28px' }}
-                      />
-                      <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '11px' }}>🔍</span>
-                    </div>
-                    <button 
-                      className="btn" 
-                      onClick={() => {
-                        const filtered = marketCategoryNames.filter(name => name.toLowerCase().includes(wizardCatSearch.toLowerCase()));
-                        setWizardSelectedCats(prev => {
-                          const next = new Set(prev);
-                          filtered.forEach(c => next.add(c));
-                          return next;
-                        });
-                      }}
-                      style={{ padding: '6px 10px', fontSize: '11px' }}
-                    >
-                      {lang === 'ru' ? 'Выбрать все' : 'Select All'}
-                    </button>
-                    <button 
-                      className="btn" 
-                      onClick={() => {
-                        const filtered = marketCategoryNames.filter(name => name.toLowerCase().includes(wizardCatSearch.toLowerCase()));
-                        setWizardSelectedCats(prev => {
-                          const next = new Set(prev);
-                          filtered.forEach(c => next.delete(c));
-                          return next;
-                        });
-                      }}
-                      style={{ padding: '6px 10px', fontSize: '11px' }}
-                    >
-                      {lang === 'ru' ? 'Снять все' : 'Clear All'}
-                    </button>
-                  </div>
-
-                  {/* Checklist of Categories */}
-                  <div style={{ 
-                    flex: 1, 
-                    border: '1px solid var(--border-color)', 
-                    background: 'var(--bg-primary)',
-                    maxHeight: '320px',
-                    overflowY: 'auto',
-                    borderRadius: '2px',
-                    display: 'flex',
-                    flexDirection: 'column'
-                  }}>
-                    {marketCategoryNames
-                      .filter(name => name.toLowerCase().includes(wizardCatSearch.toLowerCase()))
-                      .map(name => {
-                        const isSelected = wizardSelectedCats.has(name);
-                        return (
-                          <div 
-                            key={name}
-                            onClick={() => {
-                              setWizardSelectedCats(prev => {
-                                const next = new Set(prev);
-                                if (next.has(name)) next.delete(name);
-                                else next.add(name);
-                                return next;
-                              });
-                            }}
-                            style={{
-                              padding: '8px 12px',
-                              borderBottom: '1px solid rgba(255,255,255,0.02)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '10px',
-                              cursor: 'pointer',
-                              background: isSelected ? 'rgba(130,180,245,0.04)' : 'transparent',
-                            }}
-                          >
-                            <input 
-                              type="checkbox" 
-                              checked={isSelected}
-                              readOnly
-                              style={{ cursor: 'pointer' }}
-                            />
-                            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: '600', fontSize: '13px', color: isSelected ? 'var(--text-glow)' : 'var(--text-primary)' }}>
-                              {name.toUpperCase()}
-                            </span>
-                          </div>
-                        );
-                      })}
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                    {lang === 'ru' ? `Выбрано категорий: ${wizardSelectedCats.size}` : `Selected categories: ${wizardSelectedCats.size}`}
-                  </div>
-                </div>
-              )}
-
-              {wizardStep === 3 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* Default Direction Override */}
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      {lang === 'ru' ? 'РЕЖИМ ТОРГОВЛИ ПО УМОЛЧАНИЮ' : 'DEFAULT TRADE DIRECTION'}
-                    </label>
-                    <select 
-                      value={wizardDefaultMode} 
-                      onChange={e => setWizardDefaultMode(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        background: 'var(--bg-primary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: 'var(--text-glow)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '12px',
-                        outline: 'none',
-                        cursor: 'pointer',
-                        boxSizing: 'border-box',
-                        appearance: 'none',
-                        backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2395c095\' stroke-width=\'3\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpolyline points=\'6 9 12 15 18 9\'%3E%3C/polyline%3E%3C/svg%3E")',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right 12px center',
-                        backgroundSize: '10px'
-                      }}
-                    >
-                      <option value={3}>{t('trader_direction_both')}</option>
-                      <option value={1}>{t('trader_direction_buy')}</option>
-                      <option value={2}>{t('trader_direction_sell')}</option>
-                      <option value={0}>{t('trader_direction_disabled')}</option>
-                    </select>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                      {lang === 'ru' 
-                        ? 'Выбранное направление применится ко всем привязанным категориям.' 
-                        : 'The chosen mode will apply to all associated categories.'}
-                    </span>
-                  </div>
-
-                  {/* Accepted Currency */}
-                  <div>
-                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      {lang === 'ru' ? 'ПРИНИМАЕМАЯ ВАЛЮТА' : 'ACCEPTED CURRENCY'}
-                    </label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <input 
-                        type="text" 
-                        value={wizardCurrency} 
-                        onChange={e => setWizardCurrency(e.target.value)}
-                        placeholder="e.g. expansionbanknotehryvnia"
-                      />
-                      
-                      {/* Quick Currency Presets */}
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
-                        {[
-                          { id: 'expansionbanknotehryvnia', label: lang === 'ru' ? '₴ Гривна' : '₴ Hryvnia' },
-                          { id: 'expansionbanknoteeuro', label: lang === 'ru' ? '€ Евро' : '€ Euro' },
-                          { id: 'expansionbanknotedollar', label: lang === 'ru' ? '$ Доллар' : '$ Dollar' },
-                          { id: 'expansionbanknoteruble', label: lang === 'ru' ? '₽ Рубль' : '₽ Ruble' },
-                          { id: 'expansiongoldbar', label: lang === 'ru' ? '🪙 Золото' : '🪙 Gold Bar' }
-                        ].map(curr => {
-                          const isSelected = wizardCurrency.toLowerCase() === curr.id;
-                          return (
-                            <div
-                              key={curr.id}
-                              onClick={() => setWizardCurrency(curr.id)}
-                              style={{
-                                fontSize: '10px',
-                                padding: '4px 8px',
-                                background: isSelected ? 'rgba(149,192,149,0.15)' : 'var(--bg-primary)',
-                                border: isSelected ? '1px solid var(--accent-glow)' : '1px solid var(--border-color)',
-                                borderRadius: '3px',
-                                color: isSelected ? 'var(--text-glow)' : 'var(--text-secondary)',
-                                cursor: 'pointer',
-                                transition: 'all 0.1s',
-                                userSelect: 'none'
-                              }}
-                            >
-                              {curr.label}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <span style={{ fontSize: '10px', color: 'var(--text-dark)', marginTop: '4px' }}>
-                        {lang === 'ru' ? 'Поиск в базе типов для автодополнения:' : 'Search database to autocomplete:'}
-                      </span>
-                      <AutocompleteInput 
-                        suggestions={suggestions} 
-                        placeholder={t('trader_search_class')} 
-                        onSelect={setWizardCurrency} 
-                        showButton={false}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-            </div>
-
-            {/* Modal Footer */}
-            <div style={{
-              padding: '16px 20px',
-              background: 'var(--bg-tertiary)',
-              borderTop: '1px solid var(--border-color)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '10px',
-            }}>
-              <div>
-                {wizardStep > 1 && (
-                  <button 
-                    className="btn" 
-                    onClick={() => setWizardStep(prev => prev - 1)}
-                    style={{ padding: '8px 16px' }}
-                  >
-                    ← {lang === 'ru' ? 'Назад' : 'Back'}
-                  </button>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button 
-                  className="btn" 
-                  onClick={() => setShowTraderWizard(false)}
-                  style={{ padding: '8px 16px' }}
-                >
-                  {t('modal_confirm_cancel')}
-                </button>
-                
-                {wizardStep < 3 ? (
-                  <button 
-                    className="btn btn-accent" 
-                    onClick={() => setWizardStep(prev => prev + 1)}
-                    style={{ padding: '8px 20px', fontWeight: 'bold' }}
-                    disabled={
-                      wizardStep === 1 && (
-                        !wizardFilename.trim() || 
-                        !wizardDisplayName.trim() || 
-                        traderPaths.some(p => p.split('/').pop().toLowerCase() === `${wizardFilename.toLowerCase()}.json`)
-                      )
-                    }
-                  >
-                    {lang === 'ru' ? 'Далее →' : 'Next →'}
-                  </button>
-                ) : (
-                  <button 
-                    className="btn btn-accent" 
-                    onClick={() => {
-                      if (!wizardFilename.trim() || !wizardDisplayName.trim()) {
-                        toast.error(lang === 'ru' ? 'Имя файла и отображаемое имя обязательны!' : 'Filename and Display Name are required!');
-                        return;
-                      }
-
-                      const finalFilename = `expansionmod/traders/${wizardFilename.toLowerCase().trim()}.json`;
-                      const newTraderConfig = {
-                        m_Version: 13,
-                        DisplayName: wizardDisplayName,
-                        MinRequiredReputation: Number(wizardMinRep),
-                        MaxRequiredReputation: Number(wizardMaxRep),
-                        RequiredFaction: wizardFaction,
-                        RequiredCompletedQuestID: Number(wizardQuestId),
-                        TraderIcon: wizardIcon === 'Custom' ? wizardCustomIcon : wizardIcon,
-                        Currencies: wizardCurrency.trim() ? [wizardCurrency.trim().toLowerCase()] : [],
-                        DisplayCurrencyValue: 1,
-                        DisplayCurrencyName: "",
-                        UseCategoryOrder: 0,
-                        Categories: Array.from(wizardSelectedCats).map(cat => 
-                          wizardDefaultMode === 3 ? cat : `${cat}:${wizardDefaultMode}`
-                        ),
-                        Items: {}
-                      };
-
-                      onCreateFile(finalFilename, newTraderConfig);
-                      setSelectedTraderPath(finalFilename);
-                      setSubTab('traders');
-                      setShowTraderWizard(false);
-                    }}
-                    style={{ padding: '8px 20px', fontWeight: 'bold' }}
-                  >
-                    {lang === 'ru' ? '✓ СОЗДАТЬ' : '✓ CREATE'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ❓ Help / Legend Modal */}
-      {showHelpModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.85)', zIndex: 99998,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(4px)',
-        }} onClick={() => setShowHelpModal(false)}>
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: '600px',
-              maxHeight: '85vh',
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-glow)',
-              borderRadius: '4px',
-              boxShadow: '0 8px 40px rgba(0,0,0,0.9), 0 0 20px rgba(255,193,7,0.1)',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              animation: 'toastIn 0.2s ease',
-            }}
-          >
-            {/* Header */}
-            <div style={{
-              padding: '16px 20px',
-              background: 'rgba(255,193,7,0.08)',
-              borderBottom: '1px solid rgba(255,193,7,0.2)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <span style={{ fontFamily: 'var(--font-heading)', fontSize: '14px', fontWeight: 'bold', color: '#ffd54f', letterSpacing: '1px' }}>
-                ❓ {lang === 'ru' ? 'СПРАВКА / ЛЕГЕНДА' : 'HELP / LEGEND'}
-              </span>
-              <button onClick={() => setShowHelpModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>×</button>
-            </div>
-
-            {/* Body */}
-            <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-              {/* Color Legend */}
-              <div>
-                <div style={{ fontSize: '11px', color: '#ffd54f', letterSpacing: '2px', fontWeight: 'bold', marginBottom: '10px' }}>
-                  {lang === 'ru' ? '// ЦВЕТОВАЯ ЛЕГЕНДА' : '// COLOR LEGEND'}
-                </div>
-                {[
-                  { color: 'var(--text-glow)', label: lang === 'ru' ? 'Обычный предмет — данные в норме' : 'Normal item — data is valid' },
-                  { color: '#ffd54f', label: lang === 'ru' ? 'Изменённые данные (отличаются от исходника)' : 'Modified data (differs from disk)' },
-                  { color: 'var(--danger-color)', label: lang === 'ru' ? 'Ошибка: Мин. > Макс. (цена или запас)' : 'Error: Min > Max (price or stock)' },
-                  { color: 'var(--warning-color)', label: lang === 'ru' ? '⚠️ Предмет не найден в базе types.xml' : '⚠️ Item not found in types.xml database' },
-                  { color: '#82b4f5', label: lang === 'ru' ? 'Предмет имеет назначенные обвесы (attachments)' : 'Item has configured spawn attachments' },
-                ].map(({ color, label }) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                    <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: color, flexShrink: 0, boxShadow: `0 0 6px ${color}` }} />
-                    <span style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{label}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Categories section */}
-              <div>
-                <div style={{ fontSize: '11px', color: '#ffd54f', letterSpacing: '2px', fontWeight: 'bold', marginBottom: '10px' }}>
-                  {lang === 'ru' ? '// КАТЕГОРИИ РЫНКА' : '// MARKET CATEGORIES'}
-                </div>
-                {[
-                  { icon: '📋', text: lang === 'ru' ? 'Нажмите на предмет для редактирования значений прямо в таблице' : 'Click any cell to edit its value inline in the table' },
-                  { icon: '📁', text: lang === 'ru' ? 'Кнопка 📂 в строке торговца открывает связанную категорию рынка' : '📂 button on a trader row navigates to the linked market category' },
-                  { icon: '⚠️', text: lang === 'ru' ? 'Значок ⚠ DUP означает, что предмет продублирован в других категориях' : '⚠ DUP badge means the item exists in other categories too' },
-                  { icon: '📎', text: lang === 'ru' ? 'Столбец «Обвесы» позволяет настроить предметы для спавна с аттачментами (SpawnAttachments)' : 'Attachments column lets you configure items to spawn with SpawnAttachments' },
-                  { icon: '🛠', text: lang === 'ru' ? 'Массовые операции применяются к выделенным предметам или ко всему списку' : 'Bulk actions apply to selected items or all items in the list' },
-                ].map(({ icon, text }) => (
-                  <div key={text} style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '14px', flexShrink: 0 }}>{icon}</span>
-                    <span style={{ fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5' }}>{text}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Traders section */}
-              <div>
-                <div style={{ fontSize: '11px', color: '#ffd54f', letterSpacing: '2px', fontWeight: 'bold', marginBottom: '10px' }}>
-                  {lang === 'ru' ? '// ТОРГОВЦЫ' : '// TRADERS'}
-                </div>
-                {[
-                  { icon: '🤝', text: lang === 'ru' ? 'Выберите торговца из левой панели для редактирования его параметров' : 'Select a trader from the left sidebar to edit its configuration' },
-                  { icon: '💱', text: lang === 'ru' ? 'Раздел «Валюты» определяет, какие предметы принимаются как оплата' : 'The Currencies section defines what items are accepted as payment' },
-                  { icon: '🗂', text: lang === 'ru' ? 'Категории торговца ссылаются на файлы из вкладки «Категории рынка»' : 'Trader categories link to files from the Market Categories tab' },
-                  { icon: '⚙️', text: lang === 'ru' ? 'Индивидуальные наценки позволяют переопределить режим торговли для конкретных предметов' : 'Item overrides let you set per-item trade direction independently of the category' },
-                  { icon: '✨', text: lang === 'ru' ? 'Кнопка «+ СОЗДАТЬ ТОРГОВЦА» запускает мастер создания нового файла торговца' : '+ CREATE TRADER button launches the wizard to generate a new trader config file' },
-                ].map(({ icon, text }) => (
-                  <div key={text} style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '14px', flexShrink: 0 }}>{icon}</span>
-                    <span style={{ fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5' }}>{text}</span>
-                  </div>
-                ))}
-              </div>
-
-            </div>
-
-            {/* Footer */}
-            <div style={{
-              padding: '12px 20px',
-              background: 'var(--bg-tertiary)',
-              borderTop: '1px solid var(--border-color)',
-              display: 'flex', justifyContent: 'flex-end',
-            }}>
-              <button className="btn" onClick={() => setShowHelpModal(false)} style={{ padding: '6px 20px', fontSize: '12px' }}>
-                {lang === 'ru' ? '× ЗАКРЫТЬ' : '× CLOSE'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

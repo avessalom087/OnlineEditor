@@ -302,7 +302,10 @@ export default function MPGSpawnerEditor({
   onDeleteFile,
   onOpenFile,
   xmlItems = [],
-  onStartCoordinatePick
+  onStartCoordinatePick,
+  selectedSpawnerFilePath,
+  selectedSpawnerTriggerIdx,
+  onClearSpawnerNavigation
 }) {
   const { t, lang } = useTranslation();
 
@@ -355,6 +358,19 @@ export default function MPGSpawnerEditor({
       setSelectedPointPath(pointPaths[0]);
     }
   }, [pointPaths, selectedPointPath]);
+
+  // Sync state when navigated from Tactical Map
+  useEffect(() => {
+    if (selectedSpawnerFilePath) {
+      setSelectedPointPath(selectedSpawnerFilePath);
+      if (selectedSpawnerTriggerIdx !== null && selectedSpawnerTriggerIdx !== undefined) {
+        setSelectedTriggerIdx(selectedSpawnerTriggerIdx);
+      }
+      if (onClearSpawnerNavigation) {
+        onClearSpawnerNavigation();
+      }
+    }
+  }, [selectedSpawnerFilePath, selectedSpawnerTriggerIdx, onClearSpawnerNavigation]);
 
   // Helpers for checking if file is dirty
   const isFileDirty = (path) => {
@@ -2717,6 +2733,164 @@ export default function MPGSpawnerEditor({
                                         </div>
                                       )}
                                     </div>
+
+                                    {/* Collapsible Bulk Transforms Panel */}
+                                    <details style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '8px', marginTop: '4px' }}>
+                                      <summary style={{ fontSize: '10px', color: '#ebd667', fontWeight: 'bold', cursor: 'pointer', userSelect: 'none' }}>
+                                        🛠️ {lang === 'ru' ? "Групповые трансформации (сдвиг и поворот)" : "Bulk Transform Controls"}
+                                      </summary>
+                                      
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                                        {/* Shift Positions */}
+                                        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                          <span style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
+                                            1. {lang === 'ru' ? "СДВИГ КООРДИНАТ (МЕТРЫ)" : "SHIFT GROUP COORDINATES (METERS)"}
+                                          </span>
+                                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <input 
+                                              type="number" 
+                                              step="any" 
+                                              id={`bulk-shift-x-${mapIdx}`}
+                                              placeholder="Δ X"
+                                              style={{ width: '60px', fontSize: '10px', padding: '3px' }} 
+                                            />
+                                            <input 
+                                              type="number" 
+                                              step="any" 
+                                              id={`bulk-shift-y-${mapIdx}`}
+                                              placeholder="Δ Y"
+                                              style={{ width: '60px', fontSize: '10px', padding: '3px' }} 
+                                            />
+                                            <input 
+                                              type="number" 
+                                              step="any" 
+                                              id={`bulk-shift-z-${mapIdx}`}
+                                              placeholder="Δ Z"
+                                              style={{ width: '60px', fontSize: '10px', padding: '3px' }} 
+                                            />
+                                            <button
+                                              type="button"
+                                              className="btn btn-accent"
+                                              style={{ padding: '4px 8px', fontSize: '9px' }}
+                                              onClick={() => {
+                                                const dx = parseFloat(document.getElementById(`bulk-shift-x-${mapIdx}`).value) || 0;
+                                                const dy = parseFloat(document.getElementById(`bulk-shift-y-${mapIdx}`).value) || 0;
+                                                const dz = parseFloat(document.getElementById(`bulk-shift-z-${mapIdx}`).value) || 0;
+                                                
+                                                if (dx === 0 && dy === 0 && dz === 0) {
+                                                  alert(lang === 'ru' ? "Введите ненулевые значения сдвига!" : "Please enter a non-zero shift offset!");
+                                                  return;
+                                                }
+
+                                                const updated = allObjects.map(obj => {
+                                                  if (!Array.isArray(obj.pos) || obj.pos.length !== 3) return obj;
+                                                  return {
+                                                    ...obj,
+                                                    pos: [
+                                                      parseFloat((obj.pos[0] + dx).toFixed(4)),
+                                                      parseFloat((obj.pos[1] + dy).toFixed(4)),
+                                                      parseFloat((obj.pos[2] + dz).toFixed(4))
+                                                    ]
+                                                  };
+                                                });
+
+                                                onChangeField(selectedPointPath, [selectedTriggerIdx, 'mappingData', mapIdx, 'mappingObjects'], updated);
+                                                alert(lang === 'ru' 
+                                                  ? `Успешно сдвинуто ${updated.length} объектов на [X: ${dx}, Y: ${dy}, Z: ${dz}]!` 
+                                                  : `Successfully shifted ${updated.length} objects by [X: ${dx}, Y: ${dy}, Z: ${dz}]!`
+                                                );
+                                                
+                                                document.getElementById(`bulk-shift-x-${mapIdx}`).value = "";
+                                                document.getElementById(`bulk-shift-y-${mapIdx}`).value = "";
+                                                document.getElementById(`bulk-shift-z-${mapIdx}`).value = "";
+                                              }}
+                                            >
+                                              {lang === 'ru' ? "Применить" : "Apply Shift"}
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {/* Rotate around centroid */}
+                                        <div>
+                                          <span style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
+                                            2. {lang === 'ru' ? "ПОВОРОТ ГРУППЫ ВОКРУГ ЦЕНТРА (ГРАДУСЫ)" : "ROTATE GROUP AROUND GEOMETRIC CENTER (DEGREES)"}
+                                          </span>
+                                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <input 
+                                              type="number" 
+                                              step="any" 
+                                              id={`bulk-rot-deg-${mapIdx}`}
+                                              placeholder={lang === 'ru' ? "Угол в град." : "Angle (deg)"}
+                                              style={{ width: '100px', fontSize: '10px', padding: '3px' }} 
+                                            />
+                                            <button
+                                              type="button"
+                                              className="btn btn-accent"
+                                              style={{ padding: '4px 8px', fontSize: '9px' }}
+                                              onClick={() => {
+                                                const deg = parseFloat(document.getElementById(`bulk-rot-deg-${mapIdx}`).value);
+                                                if (isNaN(deg) || deg === 0) {
+                                                  alert(lang === 'ru' ? "Введите корректный ненулевой угол!" : "Please enter a valid non-zero angle!");
+                                                  return;
+                                                }
+
+                                                const nonNullObjects = allObjects.filter(o => Array.isArray(o.pos) && o.pos.length === 3);
+                                                if (nonNullObjects.length === 0) {
+                                                  alert(lang === 'ru' ? "Нет объектов с корректными координатами!" : "No valid objects to rotate!");
+                                                  return;
+                                                }
+
+                                                let sumX = 0, sumY = 0, sumZ = 0;
+                                                nonNullObjects.forEach(o => {
+                                                  sumX += o.pos[0];
+                                                  sumY += o.pos[1];
+                                                  sumZ += o.pos[2];
+                                                });
+                                                const centerX = sumX / nonNullObjects.length;
+                                                const centerY = sumY / nonNullObjects.length;
+                                                const centerZ = sumZ / nonNullObjects.length;
+
+                                                const rad = (deg * Math.PI) / 180;
+                                                const cos = Math.cos(rad);
+                                                const sin = Math.sin(rad);
+
+                                                const updated = allObjects.map(obj => {
+                                                  if (!Array.isArray(obj.pos) || obj.pos.length !== 3) return obj;
+                                                  
+                                                  // Shift to origin, rotate, shift back
+                                                  const rx = obj.pos[0] - centerX;
+                                                  const rz = obj.pos[2] - centerZ;
+                                                  const newX = centerX + (rx * cos - rz * sin);
+                                                  const newZ = centerZ + (rx * sin + rz * cos);
+                                                  
+                                                  // Rotate orientation (Yaw/Y)
+                                                  const currentYpr = Array.isArray(obj.ypr) && obj.ypr.length === 3 ? [...obj.ypr] : [0, 0, 0];
+                                                  currentYpr[0] = (currentYpr[0] + deg) % 360;
+                                                  if (currentYpr[0] < -180) currentYpr[0] += 360;
+                                                  if (currentYpr[0] > 180) currentYpr[0] -= 360;
+
+                                                  return {
+                                                    ...obj,
+                                                    pos: [parseFloat(newX.toFixed(4)), obj.pos[1], parseFloat(newZ.toFixed(4))],
+                                                    ypr: [parseFloat(currentYpr[0].toFixed(3)), currentYpr[1], currentYpr[2]]
+                                                  };
+                                                });
+
+                                                onChangeField(selectedPointPath, [selectedTriggerIdx, 'mappingData', mapIdx, 'mappingObjects'], updated);
+                                                alert(lang === 'ru'
+                                                  ? `Успешно повернуто ${updated.length} объектов на ${deg} градусов вокруг центра [X: ${centerX.toFixed(2)}, Z: ${centerZ.toFixed(2)}]!`
+                                                  : `Successfully rotated ${updated.length} objects by ${deg}° around centroid [X: ${centerX.toFixed(2)}, Z: ${centerZ.toFixed(2)}]!`
+                                                );
+
+                                                document.getElementById(`bulk-rot-deg-${mapIdx}`).value = "";
+                                              }}
+                                            >
+                                              {lang === 'ru' ? "Повернуть" : "Rotate"}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </details>
 
                                     {/* Objects list table */}
                                     <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '2px' }}>

@@ -71,6 +71,7 @@ export default function Dashboard({
     }
   };
   const [backups, setBackups] = useState([]);
+  const [isParsingXml, setIsParsingXml] = useState(false);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [errorBackups, setErrorBackups] = useState(null);
   const [expandedBackups, setExpandedBackups] = useState({});
@@ -88,17 +89,29 @@ export default function Dashboard({
     dirtyFiles,
     allQuestsIds,
     marketCategories,
-    marketItems
+    marketItems,
+    totalPatrolWaypoints,
+    totalMpgSpawnerFiles,
+    totalMpgTriggers,
+    totalMpgSpawnPoints,
+    totalQuestObjectives,
+    objectiveTypesBreakdown
   } = useMemo(() => {
     let tQuests = 0;
     let tNPCs = 0;
     let tMarketItems = 0;
     let tPatrols = 0;
     let tSafeZones = 0;
+    let tPatrolWaypoints = 0;
+    let tMpgSpawnerFiles = 0;
+    let tMpgTriggers = 0;
+    let tMpgSpawnPoints = 0;
+    let tQuestObjectivesCount = 0;
 
     const synErrors = [];
     const structWarnings = [];
     const dFiles = [];
+    const objectiveTypesBreakdown = {};
 
     // Extract all Quest IDs, market categories, and market items to check for broken links
     const allQuestsIds = new Set();
@@ -154,11 +167,34 @@ export default function Dashboard({
       }
       if (lowerPath === 'expansion/settings/aipatrolsettings.json' && Array.isArray(content.Patrols)) {
         tPatrols += content.Patrols.length;
+        content.Patrols.forEach(p => {
+          if (Array.isArray(p.Waypoints)) {
+            tPatrolWaypoints += p.Waypoints.length;
+          }
+        });
       }
       if (lowerPath === 'expansion/settings/safezonesettings.json') {
         if (Array.isArray(content.CircleZones)) tSafeZones += content.CircleZones.length;
         if (Array.isArray(content.PolygonZones)) tSafeZones += content.PolygonZones.length;
         if (Array.isArray(content.CylinderZones)) tSafeZones += content.CylinderZones.length;
+      }
+      // Quest objective types
+      if (lowerPath.startsWith('expansionmod/quests/objectives/')) {
+        tQuestObjectivesCount++;
+        if (content.ObjectiveType !== undefined) {
+          const typeNum = content.ObjectiveType;
+          objectiveTypesBreakdown[typeNum] = (objectiveTypesBreakdown[typeNum] || 0) + 1;
+        }
+      }
+      // MPG Spawners
+      if (lowerPath.startsWith('mpg_spawner/points/') && lowerPath.endsWith('.json') && Array.isArray(content)) {
+        tMpgSpawnerFiles++;
+        content.forEach(trig => {
+          tMpgTriggers++;
+          if (Array.isArray(trig.spawnPositions)) {
+            tMpgSpawnPoints += trig.spawnPositions.length;
+          }
+        });
       }
 
       // Run structural validator using schema report
@@ -185,7 +221,13 @@ export default function Dashboard({
       dirtyFiles: dFiles,
       allQuestsIds,
       marketCategories,
-      marketItems
+      marketItems,
+      totalPatrolWaypoints: tPatrolWaypoints,
+      totalMpgSpawnerFiles: tMpgSpawnerFiles,
+      totalMpgTriggers: tMpgTriggers,
+      totalMpgSpawnPoints: tMpgSpawnPoints,
+      totalQuestObjectives: tQuestObjectivesCount,
+      objectiveTypesBreakdown
     };
   }, [configs, schemaReport, paths.length]); // paths.length is added just in case files are added/deleted
 
@@ -275,7 +317,8 @@ export default function Dashboard({
           { id: 'status', label: t('dash_sub_status'), icon: '🖥️' },
           { id: 'changelog', label: t('dash_sub_changelog'), icon: '📊', count: dirtyFiles.length },
           { id: 'backups', label: t('dash_sub_backups'), icon: '📂' },
-          { id: 'validator', label: t('tab_validator'), icon: '🔍' }
+          { id: 'validator', label: t('tab_validator'), icon: '🔍' },
+          { id: 'analytics', label: t('dash_sub_analytics') || 'SERVER ANALYTICS', icon: '📈' }
         ].map(tab => (
           <button
             key={tab.id}
@@ -563,7 +606,49 @@ export default function Dashboard({
           </div>
 
           {/* Server Item Database (types.xml uploader) */}
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px' }}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', position: 'relative' }}>
+            {isParsingXml && (
+              <div style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(7, 9, 7, 0.75)',
+                backdropFilter: 'blur(4px)',
+                WebkitBackdropFilter: 'blur(4px)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px',
+                zIndex: 10,
+                borderRadius: '2px'
+              }}>
+                <style dangerouslySetInnerHTML={{__html: `
+                  @keyframes spin-xml {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                `}} />
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  border: '3px solid rgba(255,255,255,0.08)',
+                  borderTop: '3px solid var(--accent-primary)',
+                  borderRadius: '50%',
+                  animation: 'spin-xml 0.8s linear infinite'
+                }} />
+                <div style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  color: 'var(--text-glow)',
+                  fontWeight: 'bold',
+                  letterSpacing: '1px',
+                  textShadow: '0 0 8px var(--accent-glow)'
+                }}>
+                  {lang === 'ru' ? 'ПАРСИНГ БАЗЫ ДАННЫХ...' : 'PARSING DATABASE...'}
+                </div>
+              </div>
+            )}
+
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('db_title')}</div>
@@ -599,95 +684,150 @@ export default function Dashboard({
                       const file = event.target.files[0];
                       if (!file) return;
 
+                      const mergeChoice = Array.isArray(xmlItems) && xmlItems.length > 0
+                        ? window.confirm(t('db_merge_confirm', { count: xmlItems.length }))
+                        : false;
+
+                      setIsParsingXml(true);
+
                       const reader = new FileReader();
                       reader.onload = (e) => {
                         try {
                           const text = e.target.result;
-                          const parser = new DOMParser();
-                          const xmlDoc = parser.parseFromString(text, 'text/xml');
-                          
-                          const parseError = xmlDoc.getElementsByTagName('parsererror');
-                          if (parseError.length > 0) {
-                            throw new Error('Invalid XML format: ' + parseError[0].textContent);
-                          }
 
-                          const typeNodes = xmlDoc.getElementsByTagName('type');
-                          const newItems = [];
-                          let fileDuplicatesCount = 0;
-                          const seenInFile = new Set();
-                          
-                          for (let i = 0; i < typeNodes.length; i++) {
-                            const name = typeNodes[i].getAttribute('name');
-                            if (name) {
-                              if (seenInFile.has(name)) {
-                                fileDuplicatesCount++;
+                          // Inline Web Worker from blob
+                          const workerCode = `
+                            self.onmessage = function(e) {
+                              try {
+                                const { text, xmlItems, mergeChoice } = e.data;
+                                
+                                // Clean comments
+                                const cleanText = text.replace(/<!--[\\s\\S]*?-->/g, '');
+                                
+                                // Fast regex parser
+                                const regex = /<type\\s+name=["']([^"']+)["']/g;
+                                const newItems = [];
+                                let fileDuplicatesCount = 0;
+                                const seenInFile = new Set();
+                                
+                                let match;
+                                while ((match = regex.exec(cleanText)) !== null) {
+                                  const name = match[1];
+                                  if (name) {
+                                    if (seenInFile.has(name)) {
+                                      fileDuplicatesCount++;
+                                    } else {
+                                      seenInFile.add(name);
+                                      newItems.push(name);
+                                    }
+                                  }
+                                }
+                                
+                                if (newItems.length === 0) {
+                                  self.postMessage({ success: false, error: 'no_tags' });
+                                  return;
+                                }
+                                
+                                let finalItems = [];
+                                let mergeCount = 0;
+                                let databaseDuplicatesCount = 0;
+                                let mergedMode = false;
+                                
+                                if (mergeChoice && xmlItems && xmlItems.length > 0) {
+                                  mergedMode = true;
+                                  const existingSet = new Set(xmlItems);
+                                  newItems.forEach(item => {
+                                    if (existingSet.has(item)) {
+                                      databaseDuplicatesCount++;
+                                    } else {
+                                      existingSet.add(item);
+                                      mergeCount++;
+                                    }
+                                  });
+                                  finalItems = Array.from(existingSet);
+                                } else {
+                                  finalItems = newItems;
+                                }
+                                
+                                self.postMessage({
+                                  success: true,
+                                  finalItems,
+                                  newItemsLength: newItems.length,
+                                  fileDuplicatesCount,
+                                  mergeCount,
+                                  databaseDuplicatesCount,
+                                  mergedMode
+                                });
+                              } catch (err) {
+                                self.postMessage({ success: false, error: err.message });
+                              }
+                            };
+                          `;
+
+                          const blob = new Blob([workerCode], { type: 'application/javascript' });
+                          const worker = new Worker(URL.createObjectURL(blob));
+
+                          worker.onmessage = (evt) => {
+                            const data = evt.data;
+                            setIsParsingXml(false);
+                            worker.terminate();
+
+                            if (data.success) {
+                              const {
+                                finalItems,
+                                newItemsLength,
+                                fileDuplicatesCount,
+                                mergeCount,
+                                databaseDuplicatesCount,
+                                mergedMode
+                              } = data;
+
+                              localStorage.setItem('dayz_editor_xml_items', JSON.stringify(finalItems));
+                              onUpdateXmlItems(finalItems);
+
+                              if (mergedMode) {
+                                alert(
+                                  t('db_import_completed_merge', {
+                                    file: file.name,
+                                    parsed: newItemsLength,
+                                    internal: fileDuplicatesCount,
+                                    merged: mergeCount,
+                                    dbDupes: databaseDuplicatesCount,
+                                    total: finalItems.length
+                                  })
+                                );
                               } else {
-                                seenInFile.add(name);
-                                newItems.push(name);
+                                alert(
+                                  t('db_import_completed_overwrite', {
+                                    file: file.name,
+                                    parsed: newItemsLength,
+                                    internal: fileDuplicatesCount,
+                                    total: finalItems.length
+                                  })
+                                );
+                              }
+                            } else {
+                              if (data.error === 'no_tags') {
+                                alert(t('db_no_tags'));
+                              } else {
+                                alert(t('db_parse_failed', { error: data.error }));
                               }
                             }
-                          }
+                            event.target.value = '';
+                          };
 
-                          if (newItems.length === 0) {
-                            alert(t('db_no_tags'));
-                            return;
-                          }
+                          worker.onerror = (err) => {
+                            setIsParsingXml(false);
+                            worker.terminate();
+                            alert(t('db_parse_failed', { error: err.message }));
+                            event.target.value = '';
+                          };
 
-                          let finalItems = [];
-                          let mergeCount = 0;
-                          let databaseDuplicatesCount = 0;
-                          let mergedMode = false;
-
-                          if (Array.isArray(xmlItems) && xmlItems.length > 0) {
-                            const mergeChoice = window.confirm(
-                              t('db_merge_confirm', { count: xmlItems.length })
-                            );
-
-                            if (mergeChoice) {
-                              mergedMode = true;
-                              const existingSet = new Set(xmlItems);
-                              newItems.forEach(item => {
-                                if (existingSet.has(item)) {
-                                  databaseDuplicatesCount++;
-                                } else {
-                                  existingSet.add(item);
-                                  mergeCount++;
-                                }
-                              });
-                              finalItems = Array.from(existingSet);
-                            } else {
-                              finalItems = newItems;
-                            }
-                          } else {
-                            finalItems = newItems;
-                          }
-
-                          localStorage.setItem('dayz_editor_xml_items', JSON.stringify(finalItems));
-                          onUpdateXmlItems(finalItems);
-
-                          if (mergedMode) {
-                            alert(
-                              t('db_import_completed_merge', {
-                                file: file.name,
-                                parsed: newItems.length,
-                                internal: fileDuplicatesCount,
-                                merged: mergeCount,
-                                dbDupes: databaseDuplicatesCount,
-                                total: finalItems.length
-                              })
-                            );
-                          } else {
-                            alert(
-                              t('db_import_completed_overwrite', {
-                                file: file.name,
-                                parsed: newItems.length,
-                                internal: fileDuplicatesCount,
-                                total: finalItems.length
-                              })
-                            );
-                          }
+                          worker.postMessage({ text, xmlItems, mergeChoice });
                         } catch (err) {
+                          setIsParsingXml(false);
                           alert(t('db_parse_failed', { error: err.message }));
+                          event.target.value = '';
                         }
                       };
                       reader.readAsText(file);
@@ -991,6 +1131,27 @@ export default function Dashboard({
         <ValidatorPanel schemaReport={schemaReport} t={t} />
       )}
 
+      {activeSubTab === 'analytics' && (
+        <AnalyticsPanel 
+          totalQuests={totalQuests}
+          totalNPCs={totalNPCs}
+          totalMarketItems={totalMarketItems}
+          totalPatrols={totalPatrols}
+          totalSafeZones={totalSafeZones}
+          totalFiles={totalFiles}
+          totalPatrolWaypoints={totalPatrolWaypoints}
+          totalMpgSpawnerFiles={totalMpgSpawnerFiles}
+          totalMpgTriggers={totalMpgTriggers}
+          totalMpgSpawnPoints={totalMpgSpawnPoints}
+          totalQuestObjectives={totalQuestObjectives}
+          objectiveTypesBreakdown={objectiveTypesBreakdown}
+          marketItems={marketItems}
+          xmlItems={xmlItems}
+          t={t}
+          lang={lang}
+        />
+      )}
+
     </div>
   );
 }
@@ -1233,6 +1394,423 @@ function ValidatorPanel({ schemaReport, t }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AnalyticsPanel({
+  totalQuests,
+  totalNPCs,
+  totalMarketItems,
+  totalPatrols,
+  totalSafeZones,
+  totalFiles,
+  totalPatrolWaypoints,
+  totalMpgSpawnerFiles,
+  totalMpgTriggers,
+  totalMpgSpawnPoints,
+  totalQuestObjectives,
+  objectiveTypesBreakdown,
+  marketItems,
+  xmlItems = [],
+  t,
+  lang
+}) {
+  // 1. Donut Chart Calculations
+  const donutData = [
+    { label: lang === 'ru' ? 'Квесты' : 'Quests', count: totalQuests, color: '#a29bfe' },
+    { label: lang === 'ru' ? 'Безопасные зоны' : 'Safezones', count: totalSafeZones, color: '#2ecc71' },
+    { label: lang === 'ru' ? 'NPC Персонажи' : 'NPCs', count: totalNPCs, color: '#eccc68' },
+    { label: lang === 'ru' ? 'ИИ Патрули' : 'AI Patrols', count: totalPatrols, color: '#ff7675' },
+    { label: lang === 'ru' ? 'Цели квестов' : 'Quest Objectives', count: totalQuestObjectives, color: '#fd79a8' },
+    { label: lang === 'ru' ? 'Триггеры MPG' : 'MPG Triggers', count: totalMpgTriggers, color: '#74b9ff' }
+  ].filter(item => item.count > 0);
+
+  const totalEntityCount = donutData.reduce((acc, curr) => acc + curr.count, 0);
+  const R = 70;
+  const circumference = 2 * Math.PI * R;
+  let accumulatedCircumference = 0;
+  const donutSlices = donutData.map(item => {
+    const percentage = totalEntityCount > 0 ? item.count / totalEntityCount : 0;
+    const strokeLength = percentage * circumference;
+    const strokeOffset = circumference - strokeLength + accumulatedCircumference;
+    accumulatedCircumference += strokeLength;
+    return {
+      ...item,
+      percentage: Math.round(percentage * 100),
+      strokeDasharray: `${strokeLength} ${circumference}`,
+      strokeDashoffset: strokeOffset
+    };
+  });
+
+  // 2. Bar Chart Calculations
+  const typeNames = {
+    2: { label: lang === 'ru' ? 'Убийство (Kill)' : 'Kill Target', color: '#ff7675' },
+    3: { label: lang === 'ru' ? 'Путешествие' : 'Travel', color: '#74b9ff' },
+    4: { label: lang === 'ru' ? 'Сбор' : 'Collection', color: '#ffeaa7' },
+    5: { label: lang === 'ru' ? 'Доставка' : 'Delivery', color: '#a29bfe' },
+    6: { label: lang === 'ru' ? 'Сокровища' : 'Treasure Hunt', color: '#fab1a0' },
+    7: { label: lang === 'ru' ? 'ИИ Патруль' : 'AI Patrol', color: '#81ecec' },
+    8: { label: lang === 'ru' ? 'ИИ Лагерь' : 'AI Camp', color: '#fdcb6e' },
+    9: { label: lang === 'ru' ? 'VIP Эскорт' : 'VIP Escort', color: '#e84393' },
+    10: { label: lang === 'ru' ? 'Действие' : 'Action', color: '#fd79a8' },
+    11: { label: lang === 'ru' ? 'Крафт' : 'Crafting', color: '#55efc4' }
+  };
+
+  const activeObjKeys = Object.keys(objectiveTypesBreakdown || {}).filter(k => objectiveTypesBreakdown[k] > 0);
+  const maxObjVal = Math.max(...Object.values(objectiveTypesBreakdown || {}), 1);
+
+  // 3. Trader XML database coverage
+  const hasXml = Array.isArray(xmlItems) && xmlItems.length > 0;
+  const uniqueMarketItemsCount = marketItems ? marketItems.size : 0;
+  const xmlTotalCount = hasXml ? xmlItems.length : 0;
+  const coveragePct = hasXml ? Math.min(Math.round((uniqueMarketItemsCount / xmlTotalCount) * 100), 100) : 0;
+  const C_coverage = 2 * Math.PI * 60;
+  const strokeOffsetCoverage = C_coverage - (coveragePct / 100) * C_coverage;
+
+  // Find orphaned trader items (configured in market but not in types.xml database)
+  const orphanedMarketItems = useMemo(() => {
+    if (!hasXml || !marketItems) return 0;
+    const xmlSet = new Set(xmlItems.map(i => i.toLowerCase()));
+    let count = 0;
+    marketItems.forEach(i => {
+      if (!xmlSet.has(i.toLowerCase())) count++;
+    });
+    return count;
+  }, [marketItems, xmlItems, hasXml]);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginTop: '16px' }}>
+      
+      {/* 1. Entity Distribution Donut Chart */}
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div>
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// CONFIGURATION_MAP_ENTITIES</div>
+          <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>
+            {lang === 'ru' ? 'Распределение объектов' : 'Entity Distribution Ratio'}
+          </h2>
+        </div>
+
+        {totalEntityCount === 0 ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', minHeight: '200px' }}>
+            {lang === 'ru' ? 'Нет размещенных объектов на карте' : 'No mapped entities detected'}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '32px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <div style={{ position: 'relative', width: '180px', height: '180px' }}>
+              <svg width="180" height="180" viewBox="0 0 200 200">
+                <circle cx="100" cy="100" r="70" fill="transparent" stroke="rgba(255,255,255,0.03)" strokeWidth="22" />
+                {donutSlices.map((slice, idx) => (
+                  <circle
+                    key={idx}
+                    cx="100"
+                    cy="100"
+                    r="70"
+                    fill="transparent"
+                    stroke={slice.color}
+                    strokeWidth="22"
+                    strokeDasharray={slice.strokeDasharray}
+                    strokeDashoffset={slice.strokeDashoffset}
+                    transform="rotate(-90 100 100)"
+                    style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                  />
+                ))}
+              </svg>
+              <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '28px', fontWeight: 'bold', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)' }}>{totalEntityCount}</span>
+                <span style={{ fontSize: '9px', color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  {lang === 'ru' ? 'всего' : 'total'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, minWidth: '180px' }}>
+              {donutSlices.map((slice, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ display: 'inline-block', width: '10px', height: '10px', background: slice.color, borderRadius: '2px' }} />
+                    <span style={{ color: 'var(--text-primary)' }}>{slice.label}</span>
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>
+                    <span style={{ color: 'var(--text-glow)' }}>{slice.count}</span>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '10px', marginLeft: '6px' }}>({slice.percentage}%)</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 2. Trader Database Coverage Circular Gauge */}
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div>
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// TRADER_ITEMS_INTEGRATION</div>
+          <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>
+            {lang === 'ru' ? 'Покрытие базы данных XML' : 'Trader XML Database Coverage'}
+          </h2>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <div style={{ position: 'relative', width: '140px', height: '140px' }}>
+            <svg width="140" height="140" viewBox="0 0 150 150">
+              <defs>
+                <filter id="glow-neon" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.5" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+              </defs>
+              <circle cx="75" cy="75" r="60" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="12" />
+              <circle 
+                cx="75" 
+                cy="75" 
+                r="60" 
+                fill="none" 
+                stroke={hasXml ? "#00ffff" : "rgba(255,255,255,0.15)"}
+                strokeWidth="12" 
+                strokeDasharray="377" 
+                strokeDashoffset={hasXml ? strokeOffsetCoverage : 377} 
+                strokeLinecap="round"
+                transform="rotate(-90 75 75)"
+                filter={hasXml ? "url(#glow-neon)" : "none"}
+                style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+              />
+              <text 
+                x="75" 
+                y="82" 
+                fill="#ffffff" 
+                fontSize="24px" 
+                fontFamily="var(--font-heading)" 
+                fontWeight="bold" 
+                textAnchor="middle"
+              >
+                {hasXml ? `${coveragePct}%` : 'N/A'}
+              </text>
+            </svg>
+          </div>
+
+          <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ background: 'var(--bg-primary)', padding: '10px', borderRadius: '2px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                {lang === 'ru' ? 'Активных товаров торговцев:' : 'Trader active items:'}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--text-glow)', fontSize: '14px' }}>
+                {uniqueMarketItemsCount}
+              </span>
+            </div>
+
+            <div style={{ background: 'var(--bg-primary)', padding: '10px', borderRadius: '2px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                {lang === 'ru' ? 'Всего предметов в types.xml:' : 'Total types.xml database:'}
+              </span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: hasXml ? '#2ecc71' : 'var(--text-dark)', fontSize: '14px' }}>
+                {hasXml ? xmlTotalCount : (lang === 'ru' ? 'не загружен' : 'Not Loaded')}
+              </span>
+            </div>
+
+            {hasXml && (
+              <div 
+                style={{ 
+                  background: 'rgba(235, 103, 103, 0.03)', 
+                  padding: '10px', 
+                  borderRadius: '2px', 
+                  border: orphanedMarketItems > 0 ? '1px solid rgba(235, 103, 103, 0.3)' : '1px solid var(--border-color)', 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center' 
+                }}
+              >
+                <span style={{ fontSize: '12px', color: orphanedMarketItems > 0 ? 'var(--danger-color)' : 'var(--text-secondary)' }}>
+                  {lang === 'ru' ? 'Устаревшие/неизвестные товары (ошибки):' : 'Orphaned/Unknown items (errors):'}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: orphanedMarketItems > 0 ? 'var(--danger-color)' : '#2ecc71', fontSize: '14px' }}>
+                  {orphanedMarketItems}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Quest Objectives by Type Bar Chart */}
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div>
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// QUEST_OBJECTIVES_CLASSIFICATION</div>
+          <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>
+            {lang === 'ru' ? 'Цели квестов по типам' : 'Quest Objectives by Type'}
+          </h2>
+        </div>
+
+        {activeObjKeys.length === 0 ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border-color)', color: 'var(--text-secondary)', minHeight: '200px' }}>
+            {lang === 'ru' ? 'Нет созданных целей квестов' : 'No quest objectives configured'}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <svg width="460" height="190">
+                <line x1="40" y1="150" x2="450" y2="150" stroke="var(--border-color)" strokeWidth="1" />
+                {(() => {
+                  const chartWidth = 410;
+                  const chartHeight = 150;
+                  const barPadding = 16;
+                  const numBars = activeObjKeys.length;
+                  const barWidth = Math.max(16, (chartWidth - (numBars - 1) * barPadding) / numBars);
+
+                  return activeObjKeys.map((key, idx) => {
+                    const count = objectiveTypesBreakdown[key];
+                    const info = typeNames[key] || { label: `Type ${key}`, color: '#95afc0' };
+                    const barHeight = (count / maxObjVal) * (chartHeight - 30);
+                    const x = 45 + idx * (barWidth + barPadding);
+                    const y = chartHeight - barHeight;
+
+                    return (
+                      <g key={key}>
+                        {/* Bar */}
+                        <rect
+                          x={x}
+                          y={y}
+                          width={barWidth}
+                          height={barHeight}
+                          fill={info.color}
+                          rx="2"
+                          ry="2"
+                          opacity="0.85"
+                          style={{ transition: 'all 0.3s ease' }}
+                        />
+                        {/* Count text */}
+                        <text
+                          x={x + barWidth / 2}
+                          y={y - 6}
+                          fill="var(--text-primary)"
+                          fontSize="9px"
+                          fontFamily="var(--font-mono)"
+                          fontWeight="bold"
+                          textAnchor="middle"
+                        >
+                          {count}
+                        </text>
+                        {/* Short code label */}
+                        <text
+                          x={x + barWidth / 2}
+                          y={chartHeight + 14}
+                          fill="var(--text-secondary)"
+                          fontSize="8px"
+                          fontFamily="var(--font-mono)"
+                          textAnchor="middle"
+                        >
+                          {info.label.split(' ')[0]}
+                        </text>
+                      </g>
+                    );
+                  });
+                })()}
+              </svg>
+            </div>
+            
+            {/* Detailed Legend */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '10px' }}>
+              {activeObjKeys.map(key => {
+                const info = typeNames[key] || { label: `Type ${key}`, color: '#95afc0' };
+                return (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '8px', height: '8px', background: info.color, borderRadius: '1px' }} />
+                      <span style={{ color: 'var(--text-secondary)' }}>{info.label}</span>
+                    </div>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--text-glow)' }}>
+                      {objectiveTypesBreakdown[key]}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. MPG Spawners & AI Patrols detailed metrics */}
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div>
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>// SPATIAL_AND_AI_METRICS</div>
+          <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>
+            {lang === 'ru' ? 'Аналитика ИИ и MPG спавнеров' : 'Spatial Spawner & Patrol Metrics'}
+          </h2>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* MPG Spawner stats */}
+          <div>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--text-glow)', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px', display: 'flex', gap: '6px' }}>
+              <span>👾</span>
+              <span>MPG Spawner</span>
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              <div style={{ background: 'var(--bg-primary)', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '2px', textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'Файлы точек' : 'Points Files'}</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', marginTop: '4px' }}>{totalMpgSpawnerFiles}</div>
+              </div>
+              <div style={{ background: 'var(--bg-primary)', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '2px', textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'Всего триггеров' : 'Total Triggers'}</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', marginTop: '4px' }}>{totalMpgTriggers}</div>
+              </div>
+              <div style={{ background: 'var(--bg-primary)', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '2px', textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'Точки спавна' : 'Spawn Points'}</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', marginTop: '4px' }}>{totalMpgSpawnPoints}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* AI Patrols stats */}
+          <div>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '12px', color: 'var(--text-glow)', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px', display: 'flex', gap: '6px' }}>
+              <span>🤖</span>
+              <span>{lang === 'ru' ? 'ИИ Патрули' : 'AI Patrol Routes'}</span>
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ background: 'var(--bg-primary)', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '2px', textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'Активные патрули' : 'Active Patrols'}</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', marginTop: '4px' }}>{totalPatrols}</div>
+              </div>
+              <div style={{ background: 'var(--bg-primary)', padding: '8px', border: '1px solid var(--border-color)', borderRadius: '2px', textAlign: 'center' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'Всего точек пути' : 'Total Waypoints'}</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', marginTop: '4px' }}>{totalPatrolWaypoints}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Warnings & Optimization section */}
+          {(() => {
+            const issues = [];
+            if (totalPatrols > 0 && totalPatrolWaypoints === 0) {
+              issues.push({ text: lang === 'ru' ? 'ВНИМАНИЕ: Все патрули имеют 0 точек пути (будут стоять на месте).' : 'WARNING: All AI patrols have 0 waypoints (they will remain static).', type: 'warning' });
+            }
+            if (totalMpgTriggers > 0 && totalMpgSpawnPoints === 0) {
+              issues.push({ text: lang === 'ru' ? 'ВНИМАНИЕ: MPG спавнеры загружены, но нет ни одной точки спавна.' : 'WARNING: MPG triggers are loaded but contain no spawn points.', type: 'warning' });
+            }
+            if (issues.length === 0) {
+              return (
+                <div style={{ background: 'rgba(74, 154, 74, 0.03)', border: '1px solid rgba(74, 154, 74, 0.2)', padding: '10px', borderRadius: '2px', fontSize: '11px', color: '#a6f5a6', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span>✓</span>
+                  <span>{lang === 'ru' ? 'Пространственные структуры оптимизированы и валидны.' : 'Spatial structures optimized and valid.'}</span>
+                </div>
+              );
+            }
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {issues.map((issue, idx) => (
+                  <div key={idx} style={{ background: 'rgba(235, 214, 103, 0.04)', border: '1px solid rgba(235, 214, 103, 0.3)', padding: '10px', borderRadius: '2px', fontSize: '11px', color: 'var(--warning-color)', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <span>⚠️</span>
+                    <span>{issue.text}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+        </div>
+      </div>
+
     </div>
   );
 }
