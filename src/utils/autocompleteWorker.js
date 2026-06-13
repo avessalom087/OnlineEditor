@@ -30,7 +30,11 @@ export class AutocompleteWorkerWrapper {
   constructor() {
     try {
       const blob = new Blob([workerCode], { type: 'application/javascript' });
-      this.worker = new Worker(URL.createObjectURL(blob));
+      const blobUrl = URL.createObjectURL(blob);
+      this.worker = new Worker(blobUrl);
+      // Immediately revoke the Blob URL — the Worker already holds an internal
+      // reference to the compiled script, so this is safe and prevents a leak.
+      URL.revokeObjectURL(blobUrl);
       this.callbacks = new Map();
       this.searchId = 0;
 

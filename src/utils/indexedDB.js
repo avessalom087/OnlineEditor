@@ -1,77 +1,122 @@
 const DB_NAME = 'ExpansionEditorDB';
 const STORE_NAME = 'settings';
-const KEY_NAME = 'directoryHandle';
+const DB_VERSION = 1;
+
+// ─── Single shared connection ─────────────────────────────────────────────────
+// Cached promise so every caller awaits the same open operation rather than
+// each one independently opening a new IDBDatabase connection.
+let _dbPromise = null;
+
+/**
+ * Opens (or returns the already-open) IndexedDB database.
+ * Caches the connection after the first successful open.
+ * @returns {Promise<IDBDatabase>}
+ */
+function openDB() {
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = new Promise((resolve, reject) => {
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+      };
+      request.onsuccess = (e) => resolve(e.target.result);
+      request.onerror  = ()  => {
+        _dbPromise = null; // allow retry on next call
+        reject(request.error);
+      };
+      request.onblocked = () => {
+        // Another tab has an older version open; reset so we can retry later.
+        _dbPromise = null;
+        reject(new Error('IndexedDB connection blocked'));
+      };
+    } catch (err) {
+      _dbPromise = null;
+      reject(err);
+    }
+  });
+  return _dbPromise;
+}
+
+/**
+ * Generic read helper: resolves with the stored value or `null`.
+ * @param {IDBValidKey} key
+ * @returns {Promise<any>}
+ */
+function dbGet(key) {
+  return openDB().then(
+    db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).get(key);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror   = () => reject(req.error);
+    })
+  );
+}
+
+/**
+ * Generic write helper: stores `value` under `key`.
+ * @param {IDBValidKey} key
+ * @param {any} value
+ * @returns {Promise<void>}
+ */
+function dbPut(key, value) {
+  return openDB().then(
+    db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const req = tx.objectStore(STORE_NAME).put(value, key);
+      req.onsuccess = () => resolve();
+      req.onerror   = () => reject(req.error);
+    })
+  );
+}
+
+/**
+ * Generic delete helper: removes the entry under `key`.
+ * Always resolves (treats missing key as a no-op).
+ * @param {IDBValidKey} key
+ * @returns {Promise<void>}
+ */
+function dbDelete(key) {
+  return openDB().then(
+    db => new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const req = tx.objectStore(STORE_NAME).delete(key);
+      req.onsuccess = () => resolve();
+      req.onerror   = () => resolve(); // non-fatal
+    })
+  );
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+const KEY_HANDLE  = 'directoryHandle';
+const KEY_XML     = 'xmlItems';
+const KEY_DRAFT   = 'draft';
+
+// ── Directory handle ──────────────────────────────────────────────────────────
 
 /**
  * Retrieves the saved FileSystemDirectoryHandle from IndexedDB.
  * @returns {Promise<FileSystemDirectoryHandle|null>}
  */
 export function getSavedHandle() {
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
-        const getReq = store.get(KEY_NAME);
-        getReq.onsuccess = () => {
-          resolve(getReq.result || null);
-        };
-        getReq.onerror = () => {
-          resolve(null);
-        };
-      };
-      request.onerror = () => {
-        resolve(null);
-      };
-    } catch (err) {
-      console.error('IndexedDB open error:', err);
-      resolve(null);
-    }
+  return dbGet(KEY_HANDLE).catch(err => {
+    console.error('IndexedDB getSavedHandle error:', err);
+    return null;
   });
 }
 
 /**
  * Saves a FileSystemDirectoryHandle to IndexedDB.
- * @param {FileSystemDirectoryHandle} handle 
+ * @param {FileSystemDirectoryHandle} handle
  * @returns {Promise<void>}
  */
 export function saveHandle(handle) {
-  return new Promise((resolve, reject) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const putReq = store.put(handle, KEY_NAME);
-        putReq.onsuccess = () => {
-          resolve();
-        };
-        putReq.onerror = () => {
-          reject(putReq.error);
-        };
-      };
-      request.onerror = () => {
-        reject(request.error);
-      };
-    } catch (err) {
-      reject(err);
-    }
-  });
+  return dbPut(KEY_HANDLE, handle);
 }
 
 /**
@@ -79,103 +124,31 @@ export function saveHandle(handle) {
  * @returns {Promise<void>}
  */
 export function clearSavedHandle() {
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const deleteReq = store.delete(KEY_NAME);
-        deleteReq.onsuccess = () => {
-          resolve();
-        };
-        deleteReq.onerror = () => {
-          resolve();
-        };
-      };
-      request.onerror = () => {
-        resolve();
-      };
-    } catch (err) {
-      console.error('IndexedDB clear error:', err);
-      resolve();
-    }
+  return dbDelete(KEY_HANDLE).catch(err => {
+    console.error('IndexedDB clearSavedHandle error:', err);
   });
 }
 
-const XML_ITEMS_KEY = 'xmlItems';
+// ── XML items ─────────────────────────────────────────────────────────────────
 
 /**
  * Retrieves the saved types.xml items list from IndexedDB.
  * @returns {Promise<Array|null>}
  */
 export function getXmlItems() {
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
-        const getReq = store.get(XML_ITEMS_KEY);
-        getReq.onsuccess = () => {
-          resolve(getReq.result || null);
-        };
-        getReq.onerror = () => {
-          resolve(null);
-        };
-      };
-      request.onerror = () => {
-        resolve(null);
-      };
-    } catch (err) {
-      console.error('IndexedDB open error (xml items):', err);
-      resolve(null);
-    }
+  return dbGet(KEY_XML).catch(err => {
+    console.error('IndexedDB getXmlItems error:', err);
+    return null;
   });
 }
 
 /**
  * Saves types.xml items list to IndexedDB.
- * @param {Array} items 
+ * @param {Array} items
  * @returns {Promise<void>}
  */
 export function saveXmlItems(items) {
-  return new Promise((resolve, reject) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const putReq = store.put(items, XML_ITEMS_KEY);
-        putReq.onsuccess = () => {
-          resolve();
-        };
-        putReq.onerror = () => {
-          reject(putReq.error);
-        };
-      };
-      request.onerror = () => {
-        reject(request.error);
-      };
-    } catch (err) {
-      reject(err);
-    }
-  });
+  return dbPut(KEY_XML, items);
 }
 
 /**
@@ -183,103 +156,31 @@ export function saveXmlItems(items) {
  * @returns {Promise<void>}
  */
 export function clearXmlItems() {
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const deleteReq = store.delete(XML_ITEMS_KEY);
-        deleteReq.onsuccess = () => {
-          resolve();
-        };
-        deleteReq.onerror = () => {
-          resolve();
-        };
-      };
-      request.onerror = () => {
-        resolve();
-      };
-    } catch (err) {
-      console.error('IndexedDB clear error (xml items):', err);
-      resolve();
-    }
+  return dbDelete(KEY_XML).catch(err => {
+    console.error('IndexedDB clearXmlItems error:', err);
   });
 }
 
-const DRAFT_KEY = 'draft';
+// ── Draft ─────────────────────────────────────────────────────────────────────
 
 /**
  * Retrieves the saved draft from IndexedDB.
  * @returns {Promise<object|null>}
  */
 export function getDraft() {
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
-        const getReq = store.get(DRAFT_KEY);
-        getReq.onsuccess = () => {
-          resolve(getReq.result || null);
-        };
-        getReq.onerror = () => {
-          resolve(null);
-        };
-      };
-      request.onerror = () => {
-        resolve(null);
-      };
-    } catch (err) {
-      console.error('IndexedDB open error (getDraft):', err);
-      resolve(null);
-    }
+  return dbGet(KEY_DRAFT).catch(err => {
+    console.error('IndexedDB getDraft error:', err);
+    return null;
   });
 }
 
 /**
  * Saves a draft to IndexedDB.
- * @param {object} draft 
+ * @param {object} draft
  * @returns {Promise<void>}
  */
 export function saveDraft(draft) {
-  return new Promise((resolve, reject) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const putReq = store.put(draft, DRAFT_KEY);
-        putReq.onsuccess = () => {
-          resolve();
-        };
-        putReq.onerror = () => {
-          reject(putReq.error);
-        };
-      };
-      request.onerror = () => {
-        reject(request.error);
-      };
-    } catch (err) {
-      reject(err);
-    }
-  });
+  return dbPut(KEY_DRAFT, draft);
 }
 
 /**
@@ -287,27 +188,7 @@ export function saveDraft(draft) {
  * @returns {Promise<void>}
  */
 export function clearDraft() {
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onsuccess = (e) => {
-        const db = e.target.result;
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const deleteReq = store.delete(DRAFT_KEY);
-        deleteReq.onsuccess = () => {
-          resolve();
-        };
-        deleteReq.onerror = () => {
-          resolve();
-        };
-      };
-      request.onerror = () => {
-        resolve();
-      };
-    } catch (err) {
-      console.error('IndexedDB clear error (clearDraft):', err);
-      resolve();
-    }
+  return dbDelete(KEY_DRAFT).catch(err => {
+    console.error('IndexedDB clearDraft error:', err);
   });
 }

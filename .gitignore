@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Vite cache
+.vite/
+
+# Editor artifacts — backup and error snapshots should never be committed
+*.bak
+*.err
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local env files
+.env
+.env.local

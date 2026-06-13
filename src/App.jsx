@@ -20,8 +20,19 @@ import { useTranslation } from './utils/localization';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Creates a deep clone of `obj`, mutates it at `path`, and returns the clone.
+ * Uses `structuredClone` (native, ~2–5x faster than JSON round-trip for
+ * typical config objects) with a JSON fallback for environments that don't
+ * support it yet (older Safari).
+ */
+function deepClone(obj) {
+  if (typeof structuredClone === 'function') return structuredClone(obj);
+  return JSON.parse(JSON.stringify(obj));
+}
+
 function setNestedValue(obj, path, value) {
-  const newObj = JSON.parse(JSON.stringify(obj));
+  const newObj = deepClone(obj);
   let current = newObj;
   for (let i = 0; i < path.length - 1; i++) {
     const key = path[i];
@@ -223,6 +234,7 @@ export default function App() {
 }
 
 // Helper to parse button text and wrap label part in responsive class
+// Defined outside AppContent to avoid re-creation on every render.
 const renderResponsiveButtonText = (text) => {
   if (!text) return null;
   const parts = text.split(' ');
@@ -236,6 +248,34 @@ const renderResponsiveButtonText = (text) => {
   }
   return <span>{text}</span>;
 };
+
+// ─── TabBtn — defined outside AppContent so React doesn't recreate it each render
+const TabBtn = ({ id, label, badge, activeTab, setActiveTab }) => (
+  <button
+    className={`nav-tab ${activeTab === id ? 'active' : ''}`}
+    onClick={() => setActiveTab(id)}
+    style={{ position: 'relative' }}
+  >
+    {label}
+    {badge > 0 && (
+      <span style={{
+        position: 'absolute',
+        top: '4px', right: '4px',
+        fontSize: '9px',
+        fontFamily: 'var(--font-mono)',
+        color: 'var(--warning-color)',
+        background: 'rgba(235,214,103,0.15)',
+        border: '1px solid rgba(235,214,103,0.3)',
+        borderRadius: '8px',
+        padding: '0 4px',
+        lineHeight: '14px',
+        fontWeight: 'bold',
+      }}>
+        {badge}
+      </span>
+    )}
+  </button>
+);
 
 // ─── AppContent (all logic lives here) ───────────────────────────────────────
 
@@ -261,18 +301,34 @@ function AppContent() {
   const [configs, setConfigs]           = useState({});
   const [schemaReport, setSchemaReport] = useState(null);
   const [backups, setBackups]           = useState([]);
-  
 
-  // Undo/Redo history stacks
+  // ── Undo/Redo history stacks ──────────────────────────────────────────────
+  // Each entry is a *per-file diff* — { filePath, prevContent } — rather than
+  // a full snapshot of the entire configs object. This reduces memory usage
+  // from O(n_files * n_steps) to O(1_file * n_steps) per edit.
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
 
+  /**
+   * Applies a `configs` update and records a per-file undo entry for every
+   * file that changed between `prev` and `next`.
+   */
   const updateConfigs = (updater) => {
     setConfigs(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       if (next === prev) return prev;
-      setUndoStack(prevUndo => [...prevUndo, prev].slice(-40));
-      setRedoStack([]);
+
+      // Collect only the files that actually changed
+      const diffs = [];
+      for (const filePath of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+        if (prev[filePath]?.content !== next[filePath]?.content) {
+          diffs.push({ filePath, prevContent: prev[filePath]?.content });
+        }
+      }
+      if (diffs.length > 0) {
+        setUndoStack(prevUndo => [...prevUndo, diffs].slice(-40));
+        setRedoStack([]);
+      }
       return next;
     });
   };
@@ -280,10 +336,25 @@ function AppContent() {
   const handleUndo = useCallback(() => {
     setUndoStack(prevUndo => {
       if (prevUndo.length === 0) return prevUndo;
-      const last = prevUndo[prevUndo.length - 1];
+      const diffs = prevUndo[prevUndo.length - 1]; // array of { filePath, prevContent }
       setConfigs(currentConfigs => {
-        setRedoStack(prevRedo => [...prevRedo, currentConfigs]);
-        return last;
+        // Build forward diffs for redo (capture current content of each affected file)
+        const redoDiffs = diffs.map(({ filePath }) => ({
+          filePath,
+          prevContent: currentConfigs[filePath]?.content,
+        }));
+        setRedoStack(prevRedo => [...prevRedo, redoDiffs]);
+        // Apply undo: restore prevContent for each changed file
+        const restored = { ...currentConfigs };
+        diffs.forEach(({ filePath, prevContent }) => {
+          if (restored[filePath]) {
+            restored[filePath] = { ...restored[filePath], content: prevContent };
+          } else if (prevContent === undefined) {
+            // File didn't exist before — remove it
+            delete restored[filePath];
+          }
+        });
+        return restored;
       });
       return prevUndo.slice(0, -1);
     });
@@ -293,10 +364,24 @@ function AppContent() {
   const handleRedo = useCallback(() => {
     setRedoStack(prevRedo => {
       if (prevRedo.length === 0) return prevRedo;
-      const next = prevRedo[prevRedo.length - 1];
+      const diffs = prevRedo[prevRedo.length - 1];
       setConfigs(currentConfigs => {
-        setUndoStack(prevUndo => [...prevUndo, currentConfigs]);
-        return next;
+        // Build undo diffs before applying redo
+        const undoDiffs = diffs.map(({ filePath }) => ({
+          filePath,
+          prevContent: currentConfigs[filePath]?.content,
+        }));
+        setUndoStack(prevUndo => [...prevUndo, undoDiffs]);
+        // Apply redo
+        const restored = { ...currentConfigs };
+        diffs.forEach(({ filePath, prevContent }) => {
+          if (restored[filePath]) {
+            restored[filePath] = { ...restored[filePath], content: prevContent };
+          } else if (prevContent === undefined) {
+            delete restored[filePath];
+          }
+        });
+        return restored;
       });
       return prevRedo.slice(0, -1);
     });
@@ -525,7 +610,10 @@ function AppContent() {
         Object.entries(data.configs).forEach(([path, value]) => {
           loadedConfigs[path] = {
             ...value,
-            originalContent: value.success ? JSON.parse(JSON.stringify(value.content)) : null,
+            // Snapshot of the on-disk content for dirty tracking.
+            // isDirty starts as false — no unsaved changes right after load.
+            originalContent: value.success ? deepClone(value.content) : null,
+            isDirty: false,
           };
         });
 
@@ -577,17 +665,24 @@ function AppContent() {
   }, [toast, loadBackups, t]);
 
   const handleRestoreBackup = useCallback(async (backupName) => {
-    if (window.confirm(t('modal_confirm_restore_body', { backup: backupName }) || `Are you sure you want to restore backup "${backupName}"? All unsaved changes will be overwritten!`)) {
-      try {
-        setLoading(true);
-        await fileService.restoreBackup(backupName);
-        toast.success(t('toast_restore_success', { backup: backupName }) || `Backup "${backupName}" restored successfully!`);
-        fetchConfigs();
-      } catch (err) {
-        toast.error(`Restoration failed: ${err.message}`);
-        setLoading(false);
-      }
-    }
+    setConfirmDialog({
+      title: t('modal_confirm_restore_title') || 'RESTORE BACKUP',
+      body: t('modal_confirm_restore_body', { backup: backupName }) || `Are you sure you want to restore backup "${backupName}"? All unsaved changes will be overwritten!`,
+      severity: 'warning',
+      confirmLabel: t('modal_confirm_restore_btn') || 'RESTORE',
+      cancelLabel: t('modal_confirm_cancel') || 'CANCEL',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          await fileService.restoreBackup(backupName);
+          toast.success(t('toast_restore_success', { backup: backupName }) || `Backup "${backupName}" restored successfully!`);
+          fetchConfigs();
+        } catch (err) {
+          toast.error(`Restoration failed: ${err.message}`);
+          setLoading(false);
+        }
+      },
+    });
   }, [fetchConfigs, t]);
 
   // ── Folder Selection and Connection Handlers ──────────────────────────────
@@ -654,10 +749,11 @@ function AppContent() {
     if (loading || !hasAccess) return;
 
     const handler = setTimeout(() => {
+      // Use the pre-computed isDirty flag set by updateConfigs — avoids
+      // repeated JSON.stringify on large config objects every second.
       const dirtyData = {};
       Object.entries(configs).forEach(([path, file]) => {
-        if (file.success && file.originalContent &&
-            JSON.stringify(file.content) !== JSON.stringify(file.originalContent)) {
+        if (file.success && file.isDirty) {
           dirtyData[path] = file.content;
         }
       });
@@ -709,7 +805,12 @@ function AppContent() {
       const updated = { ...prev };
       Object.entries(draftToRestore).forEach(([filePath, content]) => {
         if (updated[filePath]) {
-          updated[filePath] = { ...updated[filePath], content: JSON.parse(JSON.stringify(content)) };
+          const restoredContent = deepClone(content);
+          const origContent = updated[filePath].originalContent;
+          const isDirty = origContent
+            ? JSON.stringify(restoredContent) !== JSON.stringify(origContent)
+            : true;
+          updated[filePath] = { ...updated[filePath], content: restoredContent, isDirty };
         }
       });
       return updated;
@@ -731,14 +832,18 @@ function AppContent() {
     updateConfigs(prev => {
       const file = prev[filePath];
       if (!file || !file.success) return prev;
+      let newContent;
       if (pathArray.length === 0) {
-        const valToSet = typeof newValue === 'function' ? newValue(file.content) : newValue;
-        return { ...prev, [filePath]: { ...file, content: valToSet } };
+        newContent = typeof newValue === 'function' ? newValue(file.content) : newValue;
+      } else {
+        const currentValue = getNestedValue(file.content, pathArray);
+        const valToSet = typeof newValue === 'function' ? newValue(currentValue) : newValue;
+        newContent = setNestedValue(file.content, pathArray, valToSet);
       }
-      // Support functional state updates: if newValue is a function, pass it the current nested value
-      const currentValue = getNestedValue(file.content, pathArray);
-      const valToSet = typeof newValue === 'function' ? newValue(currentValue) : newValue;
-      return { ...prev, [filePath]: { ...file, content: setNestedValue(file.content, pathArray, valToSet) } };
+      const isDirty = file.originalContent
+        ? JSON.stringify(newContent) !== JSON.stringify(file.originalContent)
+        : true;
+      return { ...prev, [filePath]: { ...file, content: newContent, isDirty } };
     });
   };
 
@@ -747,8 +852,10 @@ function AppContent() {
       const file = prev[filePath];
       if (!file || !file.success || !file.originalContent) return prev;
       const origVal = getNestedValue(file.originalContent, pathArray);
-      const valToSet = origVal === undefined ? null : JSON.parse(JSON.stringify(origVal));
-      return { ...prev, [filePath]: { ...file, content: setNestedValue(file.content, pathArray, valToSet) } };
+      const valToSet = origVal === undefined ? null : deepClone(origVal);
+      const newContent = setNestedValue(file.content, pathArray, valToSet);
+      const isDirty = JSON.stringify(newContent) !== JSON.stringify(file.originalContent);
+      return { ...prev, [filePath]: { ...file, content: newContent, isDirty } };
     });
   };
 
@@ -756,7 +863,7 @@ function AppContent() {
     updateConfigs(prev => {
       const file = prev[filePath];
       if (!file || !file.originalContent) return prev;
-      return { ...prev, [filePath]: { ...file, content: JSON.parse(JSON.stringify(file.originalContent)) } };
+      return { ...prev, [filePath]: { ...file, content: deepClone(file.originalContent), isDirty: false } };
     });
   };
 
@@ -768,7 +875,8 @@ function AppContent() {
       .then(() => {
         setConfigs(prev => {
           const f = prev[filePath];
-          return { ...prev, [filePath]: { ...f, originalContent: JSON.parse(JSON.stringify(f.content)) } };
+          const newOriginal = deepClone(f.content);
+          return { ...prev, [filePath]: { ...f, originalContent: newOriginal, isDirty: false } };
         });
         toast.success(t('toast_file_saved', { file: filePath.split('/').pop() }));
         fileService.saveSettings({ mapSize, isCustomPreset, customSizeStr, layers, lang, activeTab }).catch(err => console.error(err));
@@ -784,7 +892,7 @@ function AppContent() {
           const updated = { ...prev };
           dirtyFilesList.forEach(df => {
             const f = updated[df.filePath];
-            updated[df.filePath] = { ...f, originalContent: JSON.parse(JSON.stringify(f.content)) };
+            updated[df.filePath] = { ...f, originalContent: deepClone(f.content), isDirty: false };
           });
           return updated;
         });
@@ -798,7 +906,8 @@ function AppContent() {
   const handleSaveAll = useCallback(() => {
     const dirtyFilesList = [];
     Object.entries(configs).forEach(([path, file]) => {
-      if (file.success && JSON.stringify(file.content) !== JSON.stringify(file.originalContent)) {
+      // Use pre-computed isDirty flag — no JSON.stringify comparison here
+      if (file.success && file.isDirty) {
         dirtyFilesList.push({ filePath: path, content: file.content });
       }
     });
@@ -844,7 +953,7 @@ function AppContent() {
           Object.keys(reverted).forEach(path => {
             const file = reverted[path];
             if (file.originalContent) {
-              reverted[path] = { ...file, content: JSON.parse(JSON.stringify(file.originalContent)) };
+              reverted[path] = { ...file, content: deepClone(file.originalContent), isDirty: false };
             }
           });
           return reverted;
@@ -858,12 +967,14 @@ function AppContent() {
   const handleCreateFile = (filePath, content) => {
     fileService.saveFile(filePath, content)
       .then(() => {
+        const clonedContent = deepClone(content);
         setConfigs(prev => ({
           ...prev,
           [filePath]: {
             success: true,
-            content: JSON.parse(JSON.stringify(content)),
-            originalContent: JSON.parse(JSON.stringify(content)),
+            content: clonedContent,
+            originalContent: deepClone(content),
+            isDirty: false,
             sizeBytes: JSON.stringify(content).length,
           },
         }));
@@ -892,7 +1003,8 @@ function AppContent() {
           [filePath]: {
             success: true,
             content: data.content,
-            originalContent: JSON.parse(JSON.stringify(data.content)),
+            originalContent: deepClone(data.content),
+            isDirty: false,
             sizeBytes: JSON.stringify(data.content).length,
           },
         }));
@@ -917,7 +1029,8 @@ function AppContent() {
           [filePath]: {
             success: true,
             content: data.content,
-            originalContent: JSON.parse(JSON.stringify(data.content)),
+            originalContent: deepClone(data.content),
+            isDirty: false,
             sizeBytes: JSON.stringify(data.content).length,
           },
         }));
@@ -953,7 +1066,7 @@ function AppContent() {
         const fileSchema = schemaReport?.files?.[filePath]?.schema;
         if (fileSchema) {
           const fileErrors = validateConfig(file.content, fileSchema, filePath, questIds, marketCategories, marketItems, updated);
-          let content = JSON.parse(JSON.stringify(file.content));
+          let content = deepClone(file.content);
           let changed = false;
           fileErrors.forEach(err => {
             if (err.fixable) {
@@ -962,7 +1075,12 @@ function AppContent() {
               changed = true;
             }
           });
-          if (changed) updated[filePath] = { ...file, content };
+          if (changed) {
+            const isDirty = file.originalContent
+              ? JSON.stringify(content) !== JSON.stringify(file.originalContent)
+              : true;
+            updated[filePath] = { ...file, content, isDirty };
+          }
         }
       });
       return updated;
@@ -1001,11 +1119,10 @@ function AppContent() {
   };
 
   // ── Computed dirty set ────────────────────────────────────────────────────
+  // isDirty flag is maintained incrementally by updateConfigs/handleChangeField.
+  // No JSON.stringify comparison needed here — O(n) flag read only.
   const dirtyFiles = new Set(
-    Object.keys(configs).filter(path => {
-      const file = configs[path];
-      return file.success && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
-    })
+    Object.keys(configs).filter(path => configs[path].success && configs[path].isDirty)
   );
 
   // Warn on accidental tab close or page reload when unsaved changes exist
@@ -1023,40 +1140,13 @@ function AppContent() {
     };
   }, [dirtyFiles.size]);
 
-  // ── Tab badge helper ──────────────────────────────────────────────────────
-  const TabBtn = ({ id, label, badge }) => (
-    <button
-      className={`nav-tab ${activeTab === id ? 'active' : ''}`}
-      onClick={() => setActiveTab(id)}
-      style={{ position: 'relative' }}
-    >
-      {label}
-      {badge > 0 && (
-        <span style={{
-          position: 'absolute',
-          top: '4px', right: '4px',
-          fontSize: '9px',
-          fontFamily: 'var(--font-mono)',
-          color: 'var(--warning-color)',
-          background: 'rgba(235,214,103,0.15)',
-          border: '1px solid rgba(235,214,103,0.3)',
-          borderRadius: '8px',
-          padding: '0 4px',
-          lineHeight: '14px',
-          fontWeight: 'bold',
-        }}>
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-
   // ─── Count tab-specific dirty files ─────────────────────────────────────
-  const dirtyEconomy  = [...dirtyFiles].filter(p => p.startsWith('expansionmod/market/') || p.startsWith('expansionmod/traders/')).length;
-  const dirtyQuests   = [...dirtyFiles].filter(p => p.startsWith('expansionmod/quests/')).length;
-  const dirtyAiBots   = [...dirtyFiles].filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
-  const dirtySettings = [...dirtyFiles].filter(p => p.includes('settings')).length;
-  const dirtySpawner  = [...dirtyFiles].filter(p => p.toLowerCase().startsWith('mpg_spawner/')).length;
+  const dirtyFilesArr = [...dirtyFiles];
+  const dirtyEconomy  = dirtyFilesArr.filter(p => p.startsWith('expansionmod/market/') || p.startsWith('expansionmod/traders/')).length;
+  const dirtyQuests   = dirtyFilesArr.filter(p => p.startsWith('expansionmod/quests/')).length;
+  const dirtyAiBots   = dirtyFilesArr.filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
+  const dirtySettings = dirtyFilesArr.filter(p => p.includes('settings')).length;
+  const dirtySpawner  = dirtyFilesArr.filter(p => p.toLowerCase().startsWith('mpg_spawner/')).length;
 
   // ── Welcome Screen Component ──────────────────────────────────────────────
   if (!hasAccess && !loading) {
@@ -1329,14 +1419,14 @@ function AppContent() {
 
         {/* Navigation tabs */}
         <nav className="header-nav-tabs">
-          <TabBtn id="dashboard"  label={t('tab_dashboard')} />
-          <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy} />
-          <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests} />
-          <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots} />
-          <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings} />
-          <TabBtn id="map"        label={t('tab_map')} />
-          <TabBtn id="spawner"    label={t('tab_spawner')}    badge={dirtySpawner} />
-          <TabBtn id="raw_editor" label={t('tab_raw_editor')} />
+          <TabBtn id="dashboard"  label={t('tab_dashboard')}                activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy}   activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests}    activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots}    activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings}  activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="map"        label={t('tab_map')}                        activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="spawner"    label={t('tab_spawner')}    badge={dirtySpawner}   activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="raw_editor" label={t('tab_raw_editor')}                activeTab={activeTab} setActiveTab={setActiveTab} />
         </nav>
 
         {/* Actions row */}

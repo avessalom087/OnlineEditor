@@ -218,7 +218,9 @@ async function rotateBackups(rootDirHandle) {
       if (entry.kind === 'directory' && (entry.name.startsWith('backup_file_') || entry.name.startsWith('backup_all_'))) {
         const parts = entry.name.split('_');
         const timestamp = parseInt(parts[2], 10);
-        if (!isNaN(timestamp)) {
+        // Guard: skip entries where timestamp is not a valid positive number
+        // (e.g. manually created folders like "backup_all_0" or "backup_all_abc")
+        if (!isNaN(timestamp) && timestamp > 0) {
           if (timestamp < threeDaysAgo) {
             await backupsDirHandle.removeEntry(entry.name, { recursive: true });
             console.log(`[BACKUP ROTATION] Deleted backup older than 3 days: ${entry.name}`);
