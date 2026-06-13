@@ -64,7 +64,7 @@ export default function SettingsEditor({
           {settingsPaths.map(path => {
             const isSelected = path === selectedSettingsPath;
             const file = configs[path];
-            const hasUnsaved = file && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
+            const hasUnsaved = file?.isDirty;
             const success = file ? file.success : true;
             
             // Clean filename for display, e.g. "SafeZoneSettings"

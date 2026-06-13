@@ -70,7 +70,7 @@ export function validateBeforeExport(configs) {
     if (!file.success || !file.content || !file.originalContent) return;
 
     // Only validate files that have been modified
-    const isDirty = JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
+    const isDirty = file.isDirty;
     if (!isDirty) return;
 
     const lp = path.toLowerCase();

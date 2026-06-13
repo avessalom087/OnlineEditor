@@ -143,7 +143,7 @@ export default function Dashboard({
       const lowerPath = filePath.toLowerCase();
 
       // Track unsaved modifications
-      const isDirty = file.success && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
+      const isDirty = file.success && file.isDirty;
       if (isDirty) {
         dFiles.push({ filePath, sizeBytes: file.sizeBytes });
       }
@@ -259,7 +259,7 @@ export default function Dashboard({
     const list = [];
     paths.forEach(filePath => {
       const file = configs[filePath];
-      if (file.success && file.originalContent && JSON.stringify(file.content) !== JSON.stringify(file.originalContent)) {
+      if (file.success && file.originalContent && file.isDirty) {
         const diffs = getDiffPaths(file.originalContent, file.content);
         if (diffs.length > 0) {
           list.push({

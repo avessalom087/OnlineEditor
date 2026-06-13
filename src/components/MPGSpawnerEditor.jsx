@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
+import FormCard from './shared/FormCard';
 import { useTranslation } from '../utils/localization';
 
 // Helper to parse pipe-delimited spawn list entry
@@ -375,7 +376,7 @@ export default function MPGSpawnerEditor({
   // Helpers for checking if file is dirty
   const isFileDirty = (path) => {
     const file = configs[path];
-    return file && file.success && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
+    return file && file.success && file.isDirty;
   };
 
   // -------------------------------------------------------------
@@ -1327,10 +1328,10 @@ export default function MPGSpawnerEditor({
                   </div>
 
                   {/* Dimensions Box */}
-                  <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', background: 'var(--bg-secondary)' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-glow)', marginBottom: '12px' }}>
-                      📐 {lang === 'ru' ? 'Размеры триггера (Поддерживают диапазоны, например 10.0-15.0)' : 'Trigger Dimensions (Supports ranges, e.g. 10.0-15.0)'}
-                    </div>
+                  <FormCard
+                    bg="secondary"
+                    title={lang === 'ru' ? '📐 Размеры триггера (Поддерживают диапазоны, например 10.0-15.0)' : '📐 Trigger Dimensions (Supports ranges, e.g. 10.0-15.0)'}
+                  >
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
                       <div>
                         <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
@@ -1383,10 +1384,10 @@ export default function MPGSpawnerEditor({
                         ? 'Если высота задана, триггер станет цилиндрическим. Если заданы длина Х и Y, он станет кубическим.' 
                         : 'If height is set, it becomes a cylinder. If Width X and Y are set, it becomes cubic (ignoring radius).'}
                     </div>
-                  </div>
+                  </FormCard>
 
                   {/* Core switches */}
-                  <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <FormCard bg="secondary" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <label className="checkbox-container">
                       <div className={`checkbox-custom ${selectedTrigger.isDisabled === 1 ? 'checked' : ''}`}
                         onClick={() => handleUpdateTriggerField('isDisabled', selectedTrigger.isDisabled === 1 ? 0 : 1)} />
@@ -1410,7 +1411,7 @@ export default function MPGSpawnerEditor({
                         {t('spawner_show_visualisation')} (Требуется мод @MPG_spawn_zone)
                       </span>
                     </label>
-                  </div>
+                  </FormCard>
 
                 </div>
               )}

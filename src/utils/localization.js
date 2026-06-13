@@ -343,7 +343,7 @@ export const translations = {
     ai_subtab_patrols: "PATROLS",
     ai_subtab_global_ai: "GLOBAL AI",
     ai_patrol_summary: "FACTION: {faction} · WAYPOINTS: {count}",
-    ai_btn_create_patrol: "[+] CREATE NEW PATROL",
+    ai_btn_create_patrol: "CREATE NEW PATROL",
     ai_global_desc: "GLOBAL PARAMETERS SELECTED. USE THE CONFIGURATION PANELS ON THE RIGHT TO TWEAK VALUES.",
 
     // Quest Graph
@@ -471,7 +471,7 @@ export const translations = {
 
     // AI Bots Editor New Keys
     ai_btn_save_patrol: "SAVE PATROL SETTINGS",
-    ai_btn_create_patrol: "[+] CREATE NEW PATROL",
+    ai_btn_create_patrol: "CREATE NEW PATROL",
     ai_global_limits: "// GLOBAL SPAWN & DESPAWN LIMITS",
     ai_label_enable_patrols: "Enable Patrols",
     ai_opt_enabled: "1 - ENABLED",
@@ -546,7 +546,7 @@ export const translations = {
     ai_patrols_none_detected: "NO PATROLS DETECTED. CLICK '+' ON THE LEFT PANEL TO CREATE A PATROL.",
     ai_bot_loadouts: "// BOT_LOADOUTS",
     ai_total_profiles: "TOTAL: {count} PROFILES",
-    ai_btn_create_loadout: "[+] CREATE LOADOUT",
+    ai_btn_create_loadout: "CREATE LOADOUT",
     ai_editing_loadout: "EDITING LOADOUT: ",
     ai_btn_save_loadout: "SAVE LOADOUT",
     ai_btn_clone_profile: "CLONE PROFILE",
@@ -572,7 +572,7 @@ export const translations = {
     ai_btn_goto_map: "GO TO INTERACTIVE MAP",
     ai_loot_tables: "// AI_LOOT_TABLES",
     ai_total_loot_profiles: "TOTAL: {count} PROFILES",
-    ai_btn_create_loot_profile: "[+] CREATE LOOT PROFILE",
+    ai_btn_create_loot_profile: "CREATE LOOT PROFILE",
     ai_editing_loot_profile: "EDITING PROFILE: ",
     ai_btn_save_loot_table: "SAVE LOOT TABLE",
     ai_btn_clone_loot_profile: "CLONE PROFILE",
@@ -1214,7 +1214,7 @@ export const translations = {
     ai_subtab_patrols: "ПАТРУЛИ",
     ai_subtab_global_ai: "ОБЩИЙ ИИ",
     ai_patrol_summary: "ФАКЦИЯ: {faction} · ТОЧЕК: {count}",
-    ai_btn_create_patrol: "[+] СОЗДАТЬ НОВЫЙ ПАТРУЛЬ",
+    ai_btn_create_patrol: "СОЗДАТЬ НОВЫЙ ПАТРУЛЬ",
     ai_global_desc: "ВЫБРАНЫ ГЛОБАЛЬНЫЕ НАСТРОЙКИ. ИСПОЛЬЗУЙТЕ ПАНЕЛИ СПРАВА ДЛЯ ИЗМЕНЕНИЯ ЗНАЧЕНИЙ.",
 
     // Quest Graph
@@ -1342,7 +1342,7 @@ export const translations = {
 
     // AI Bots Editor New Keys
     ai_btn_save_patrol: "СОХРАНИТЬ НАСТРОЙКИ ПАТРУЛЯ",
-    ai_btn_create_patrol: "[+] СОЗДАТЬ НОВЫЙ ПАТРУЛЬ",
+    ai_btn_create_patrol: "СОЗДАТЬ НОВЫЙ ПАТРУЛЬ",
     ai_global_limits: "// ГЛОБАЛЬНЫЕ ЛИМИТЫ СПАВНА И ДЕСПАВНА",
     ai_label_enable_patrols: "Включить патрули",
     ai_opt_enabled: "1 - ВКЛЮЧЕНО",
@@ -1417,7 +1417,7 @@ export const translations = {
     ai_patrols_none_detected: "ПАТРУЛЕЙ НЕ ОБНАРУЖЕНО. НАЖМИТЕ «+» НА ЛЕВОЙ ПАНЕЛИ, ЧТОБЫ СОЗДАТЬ ПАТРУЛЬ.",
     ai_bot_loadouts: "// НАБОРЫ_СНАРЯЖЕНИЯ",
     ai_total_profiles: "ВСЕГО: {count} ПРОФИЛЕЙ",
-    ai_btn_create_loadout: "[+] СОЗДАТЬ НАБОР СНАРЯЖЕНИЯ",
+    ai_btn_create_loadout: "СОЗДАТЬ НАБОР СНАРЯЖЕНИЯ",
     ai_editing_loadout: "РЕДАКТИРОВАНИЕ НАБОРА: ",
     ai_btn_save_loadout: "СОХРАНИТЬ НАБОР",
     ai_btn_clone_profile: "КЛОНИРОВАТЬ ПРОФИЛЬ",
@@ -1443,7 +1443,7 @@ export const translations = {
     ai_btn_goto_map: "ПЕРЕЙТИ НА КАРТУ",
     ai_loot_tables: "// ТАБЛИЦЫ_ВЫПАДЕНИЯ_ЛУТА",
     ai_total_loot_profiles: "ВСЕГО: {count} ПРОФИЛЕЙ",
-    ai_btn_create_loot_profile: "[+] СОЗДАТЬ ТАБЛИЦУ ЛУТА",
+    ai_btn_create_loot_profile: "СОЗДАТЬ ТАБЛИЦУ ЛУТА",
     ai_editing_loot_profile: "РЕДАКТИРОВАНИЕ ТАБЛИЦЫ: ",
     ai_btn_save_loot_table: "СОХРАНИТЬ ТАБЛИЦУ ЛУТА",
     ai_btn_clone_loot_profile: "КЛОНИРОВАТЬ ТАБЛИЦУ",

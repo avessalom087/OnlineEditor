@@ -45,6 +45,52 @@ function updateCoordsInString(oldStr, newX, newZ) {
   return parts.join(' | ');
 }
 
+function getBookmarkPosition(b, allEntities) {
+  if (b && b.linkedEntityId) {
+    let foundEnt = null;
+    for (const list of Object.values(allEntities)) {
+      if (Array.isArray(list)) {
+        foundEnt = list.find(e => e && e.id === b.linkedEntityId);
+        if (foundEnt) break;
+      }
+    }
+    if (foundEnt) {
+      return {
+        x: foundEnt.x + (b.offsetX || 0),
+        z: foundEnt.z + (b.offsetZ || 0),
+        entity: foundEnt
+      };
+    }
+  }
+  return { x: b ? b.x : 0, z: b ? b.z : 0, entity: null };
+}
+
+const getDeleteLabel = (type, ru) => {
+  switch (type) {
+    case 'patrol_waypoint':
+      return ru ? 'Удалить точку патруля' : 'Delete Waypoint';
+    case 'spawner_trigger':
+      return ru ? 'Удалить триггер' : 'Delete Trigger';
+    case 'spawner_spawn_point':
+      return ru ? 'Удалить точку спавна' : 'Delete Spawn Point';
+    case 'npc':
+      return ru ? 'Удалить NPC' : 'Delete NPC';
+    case 'safezone':
+    case 'safezone_cylinder':
+      return ru ? 'Удалить безопасную зону' : 'Delete Safezone';
+    case 'traderzone':
+      return ru ? 'Удалить торговца' : 'Delete Trader';
+    case 'airdrop':
+      return ru ? 'Удалить аирдроп' : 'Delete Airdrop';
+    case 'nogo_area':
+      return ru ? 'Удалить NoGo зону' : 'Delete NoGo Area';
+    case 'roaming_location':
+      return ru ? 'Удалить точку спавна зомби' : 'Delete Zombie Spawn Location';
+    default:
+      return ru ? 'Удалить объект' : 'Delete Entity';
+  }
+};
+
 export default function TacticalMap({ 
   configs, 
   onChangeField, 
@@ -217,6 +263,29 @@ export default function TacticalMap({
         const newPos = updateCoordsInString(oldPos, newX, newZ);
         onChangeField(filePath, [selectedEntity.triggerIdx, 'spawnPositions', selectedEntity.spawnIdx], newPos);
       }
+    } else if (selectedEntity.type === 'bookmark') {
+      setBookmarks(prev => prev.map(b => {
+        if (b.id === selectedEntity.id) {
+          if (b.linkedEntityId) {
+            let foundEnt = null;
+            for (const list of Object.values(entities)) {
+              if (Array.isArray(list)) {
+                foundEnt = list.find(e => e && e.id === b.linkedEntityId);
+                if (foundEnt) break;
+              }
+            }
+            if (foundEnt) {
+              return {
+                ...b,
+                offsetX: (coordName === 'x' ? numVal : selectedEntity.x) - foundEnt.x,
+                offsetZ: (coordName === 'z' ? numVal : selectedEntity.z) - foundEnt.z
+              };
+            }
+          }
+          return { ...b, [coordName]: numVal };
+        }
+        return b;
+      }));
     } else {
       const { xPath, zPath } = selectedEntity;
       const targetPath = coordName === 'x' ? xPath : zPath;
@@ -252,6 +321,20 @@ export default function TacticalMap({
 
   const handleUpdateSelectedField = (fieldName, val) => {
     const { filePath, arrayIndex, type } = selectedEntity;
+    
+    if (type === 'bookmark') {
+      setBookmarks(prev => prev.map(b => {
+        if (b.id === selectedEntity.id) {
+          const updated = { ...b };
+          if (fieldName === 'Name') updated.name = val;
+          if (fieldName === 'Color') updated.color = val;
+          return updated;
+        }
+        return b;
+      }));
+      setSelectedEntity(prev => prev ? { ...prev, name: val } : null);
+      return;
+    }
     
     if (type === 'airdrop') {
       onChangeField(filePath, ['DropLocation', fieldName], val);
@@ -1660,7 +1743,14 @@ export default function TacticalMap({
 
     // Draw selected entity highlight
     if (selectedEntity) {
-      const pos = gameToPixels(selectedEntity.x, selectedEntity.z);
+      let activeX = selectedEntity.x;
+      let activeZ = selectedEntity.z;
+      if (selectedEntity.type === 'bookmark') {
+        const activePos = getBookmarkPosition(selectedEntity, entities);
+        activeX = activePos.x;
+        activeZ = activePos.z;
+      }
+      const pos = gameToPixels(activeX, activeZ);
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 16, 0, 2 * Math.PI);
       ctx.strokeStyle = '#00ffff'; // Glowing neon cyan border
@@ -1729,7 +1819,8 @@ export default function TacticalMap({
     // Draw Bookmarks on Canvas
     if (bookmarks && bookmarks.length > 0) {
       bookmarks.forEach(b => {
-        const pos = gameToPixels(b.x, b.z);
+        const { x, z } = getBookmarkPosition(b, entities);
+        const pos = gameToPixels(x, z);
         ctx.save();
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
@@ -2000,6 +2091,22 @@ export default function TacticalMap({
       }
     }
 
+    // Check bookmarks last (lowest priority)
+    if (bookmarks && bookmarks.length > 0) {
+      for (const b of bookmarks) {
+        const { x, z } = getBookmarkPosition(b, entities);
+        const pos = gameToPixels(x, z);
+        if (Math.hypot(pos.x - mouseX, pos.y - mouseY) <= threshold) {
+          return {
+            ...b,
+            x,
+            z,
+            type: 'bookmark'
+          };
+        }
+      }
+    }
+
     return null;
   };
 
@@ -2096,6 +2203,9 @@ export default function TacticalMap({
         dragStartCoordsRef.current = { x: hit.x, z: hit.z };
         setDraggedEntity(hit);
         setSelectedEntity(hit);
+        if (hit.type === 'bookmark') {
+          setSidebarTab('bookmarks');
+        }
         return;
       } else {
         setSelectedEntity(null);
@@ -2199,6 +2309,35 @@ export default function TacticalMap({
     if (draggedEntity) {
       const newGameCoords = pixelsToGame(mouseX, mouseY);
       
+      if (draggedEntity.type === 'bookmark') {
+        setBookmarks(prev => prev.map(b => {
+          if (b.id === draggedEntity.id) {
+            if (b.linkedEntityId) {
+              let foundEnt = null;
+              for (const list of Object.values(entities)) {
+                if (Array.isArray(list)) {
+                  foundEnt = list.find(e => e && e.id === b.linkedEntityId);
+                  if (foundEnt) break;
+                }
+              }
+              if (foundEnt) {
+                return {
+                  ...b,
+                  offsetX: newGameCoords.x - foundEnt.x,
+                  offsetZ: newGameCoords.z - foundEnt.z
+                };
+              }
+            }
+            return { ...b, x: newGameCoords.x, z: newGameCoords.z };
+          }
+          return b;
+        }));
+        setDraggedEntity(prev => ({ ...prev, x: newGameCoords.x, z: newGameCoords.z }));
+        setHoveredEntity(prev => prev ? { ...prev, x: newGameCoords.x, z: newGameCoords.z } : null);
+        setSelectedEntity(prev => prev && prev.id === draggedEntity.id ? { ...prev, x: newGameCoords.x, z: newGameCoords.z } : prev);
+        return;
+      }
+
       setEntities(prev => {
         const updateCoords = (list) => 
           list.map(item => item.id === draggedEntity.id ? { ...item, x: newGameCoords.x, z: newGameCoords.z } : item);
@@ -2240,7 +2379,7 @@ export default function TacticalMap({
     canvas.style.cursor = isRulerActive ? 'crosshair' : isSafezoneDrawing ? 'crosshair' : hit ? 'move' : isPanning ? 'grabbing' : 'default';
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e) => {
     if (isSafezoneDrawing && safezoneDrawCenter) {
       const currentCenter = safezoneDrawCenter;
       const currentRadius = safezoneDrawRadius;
@@ -2313,7 +2452,34 @@ export default function TacticalMap({
       const start = dragStartCoordsRef.current;
       const hasMoved = start && (Math.abs(start.x - x) > 0.01 || Math.abs(start.z - z) > 0.01);
 
-      if (hasMoved) {
+      if (draggedEntity.type === 'bookmark') {
+        if (hasMoved && e && e.clientX !== undefined) {
+          const canvas = canvasRef.current;
+          const rect = canvas.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+          
+          // Find if there is an entity under the cursor (excluding bookmark itself)
+          const hit = getEntityAt(mouseX, mouseY);
+          if (hit && hit.type !== 'bookmark') {
+            setBookmarks(prev => prev.map(b => {
+              if (b.id === draggedEntity.id) {
+                return {
+                  ...b,
+                  linkedEntityId: hit.id,
+                  linkedEntityType: hit.type,
+                  offsetX: x - hit.x,
+                  offsetZ: z - hit.z,
+                  x: hit.x,
+                  z: hit.z
+                };
+              }
+              return b;
+            }));
+            toast.success(lang === 'ru' ? `Заметка привязана к объекту: ${hit.name || hit.type}` : `Note linked to object: ${hit.name || hit.type}`);
+          }
+        }
+      } else if (hasMoved) {
         if (draggedEntity.type === 'spawner_trigger') {
           const trigger = configs[filePath]?.content?.[draggedEntity.triggerIdx];
           if (trigger) {
@@ -2382,6 +2548,17 @@ export default function TacticalMap({
   const handleDeleteEntity = (entity) => {
     if (entity.type === 'quest_objective') {
       alert("Quest objectives must be managed and deleted inside the Quests Editor (Quests tab) to preserve quest tree flow and avoid orphans.");
+      return;
+    }
+
+    if (type === 'bookmark') {
+      if (!window.confirm(lang === 'ru' ? `Удалить закладку "${entity.name}"?` : `Delete bookmark "${entity.name}"?`)) {
+        return;
+      }
+      setBookmarks(prev => prev.filter(b => b.id !== entity.id));
+      toast.success(lang === 'ru' ? "Закладка удалена" : "Bookmark deleted");
+      setHoveredEntity(null);
+      setSelectedEntity(null);
       return;
     }
 
@@ -3680,14 +3857,60 @@ export default function TacticalMap({
                     📋 {ru ? 'Копировать координаты' : 'Copy Coordinates'}
                   </button>
 
-                  {/* Bookmark toggle */}
-                  {(() => {
-                    const isBookmarked = bookmarks.some(b => b.x === ent.x && b.z === ent.z);
+                  {/* Bookmark toggle or Unlink options */}
+                  {ent.type === 'bookmark' ? (
+                    <>
+                      {ent.linkedEntityId && (
+                        <button
+                          onClick={() => {
+                            setBookmarks(prev => prev.map(b => {
+                              if (b.id === ent.id) {
+                                const activePos = getBookmarkPosition(b, entities);
+                                return {
+                                  ...b,
+                                  linkedEntityId: null,
+                                  linkedEntityType: null,
+                                  offsetX: 0,
+                                  offsetZ: 0,
+                                  x: activePos.x,
+                                  z: activePos.z
+                                };
+                              }
+                              return b;
+                            }));
+                            toast.success(ru ? 'Закладка отвязана от объекта' : 'Bookmark unlinked from object');
+                            setContextMenu(null);
+                          }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          🔗 {ru ? 'Отвязать от объекта' : 'Unlink from object'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (confirm(ru ? `Удалить закладку "${ent.name}"?` : `Delete bookmark "${ent.name}"?`)) {
+                            setBookmarks(prev => prev.filter(b => b.id !== ent.id));
+                            toast.success(ru ? 'Закладка удалена' : 'Bookmark deleted');
+                            setSelectedEntity(null);
+                          }
+                          setContextMenu(null);
+                        }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.12)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        🗑 {ru ? 'Удалить закладку' : 'Delete Bookmark'}
+                      </button>
+                    </>
+                  ) : (() => {
+                    const isBookmarked = bookmarks.some(b => b.linkedEntityId === ent.id || (b.x === ent.x && b.z === ent.z));
                     return (
                       <button
                         onClick={() => {
                           if (isBookmarked) {
-                            setBookmarks(prev => prev.filter(b => !(b.x === ent.x && b.z === ent.z)));
+                            setBookmarks(prev => prev.filter(b => b.linkedEntityId !== ent.id && !(b.x === ent.x && b.z === ent.z)));
                             toast.success(ru ? `Удалено из избранного: ${ent.name}` : `Removed from bookmarks: ${ent.name}`);
                           } else {
                             const newB = {
@@ -3698,10 +3921,14 @@ export default function TacticalMap({
                               color: ent.type === 'safezone' ? '#2ecc71' : 
                                      ent.type === 'airdrop' ? '#ebd667' : 
                                      ent.type === 'traderzone' ? '#74b9ff' : 
-                                     ent.type === 'nogo_area' ? '#ff7675' : '#c084fc'
+                                     ent.type === 'nogo_area' ? '#ff7675' : '#c084fc',
+                              linkedEntityId: ent.id,
+                              linkedEntityType: ent.type,
+                              offsetX: 0,
+                              offsetZ: 0
                             };
                             setBookmarks(prev => [newB, ...prev]);
-                            toast.success(ru ? `Добавлено в избранное: ${ent.name}` : `Added to bookmarks: ${ent.name}`);
+                            toast.success(ru ? `Добавлено в избранное и привязано: ${ent.name}` : `Added to bookmarks and linked: ${ent.name}`);
                           }
                           setContextMenu(null);
                         }}
@@ -3734,43 +3961,43 @@ export default function TacticalMap({
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      📍 {ru ? 'Добавить точку спавна сюда' : 'Add spawn point here'}
+                      📍 {ru ? 'Добавить точку спавна' : 'Add Spawn Point'}
                     </button>
                   )}
 
-                  <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '4px 0' }} />
-
                   {/* Open in editor */}
-                  <button
-                    onClick={() => {
-                      if (ent.type === 'quest_objective') {
-                        if (ent.questId) { onSelectQuest(ent.questId); setActiveTab('quests'); }
-                        else alert(ru ? 'Объект квеста осиротан.' : 'Quest objective is orphaned.');
-                      } else if (ent.type === 'patrol_waypoint') {
-                        setActiveTab('aibots');
-                      } else if ((ent.type === 'spawner_trigger' || ent.type === 'spawner_spawn_point') && onNavigateToSpawner) {
-                        onNavigateToSpawner(ent.filePath, ent.triggerIdx);
-                      } else if (ent.filePath) {
-                        onOpenFile(ent.filePath);
-                      }
-                      setContextMenu(null);
-                    }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    📂 {ru ? 'ДОП. НАСТРОЙКИ' : 'OPEN SETTINGS'}
-                  </button>
+                  {ent.type !== 'bookmark' && (
+                    <button
+                      onClick={() => {
+                        if (ent.type === 'quest_objective') {
+                          if (ent.questId) { onSelectQuest(ent.questId); setActiveTab('quests'); }
+                          else alert(ru ? 'Объект квеста осиротан.' : 'Quest objective is orphaned.');
+                        } else if (ent.type === 'patrol_waypoint') {
+                          setActiveTab('aibots');
+                        } else if ((ent.type === 'spawner_trigger' || ent.type === 'spawner_spawn_point') && onNavigateToSpawner) {
+                          onNavigateToSpawner(ent.filePath, ent.triggerIdx);
+                        } else if (ent.filePath) {
+                          onOpenFile(ent.filePath);
+                        }
+                        setContextMenu(null);
+                      }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      📂 {ru ? 'ДОП. НАСТРОЙКИ' : 'OPEN SETTINGS'}
+                    </button>
+                  )}
 
                   {/* Delete entity */}
-                  {ent.type !== 'quest_objective' && (
+                  {ent.type !== 'quest_objective' && ent.type !== 'bookmark' && (
                     <button
                       onClick={() => { handleDeleteEntity(ent); setContextMenu(null); }}
                       style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.12)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      🗑 {ru ? 'Удалить объект' : 'Delete Entity'}
+                      🗑 {getDeleteLabel(ent.type, ru)}
                     </button>
                   )}
                 </>
@@ -4152,7 +4379,7 @@ export default function TacticalMap({
               </button>
             </div>
 
-            {['roaming_location', 'airdrop', 'safezone', 'safezone_cylinder'].includes(selectedEntity.type) ? (
+            {['roaming_location', 'airdrop', 'safezone', 'safezone_cylinder', 'bookmark'].includes(selectedEntity.type) ? (
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={{ fontSize: '9px' }}>
                   {selectedEntity.type === 'airdrop' && (t('map_airdrop_name') || "Airdrop Name")}

@@ -727,7 +727,11 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                     : (lang === 'ru' ? `ВСЕГО: ${traderPaths.length} ТОРГОВЦЕВ` : `TOTAL: ${traderPaths.length} TRADERS`)}
                 </div>
               </div>
-              {subTab === 'traders' && (
+
+            </div>
+
+            {subTab === 'traders' && (
+              <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
                 <button
                   className="btn btn-accent"
                   onClick={() => {
@@ -745,12 +749,12 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                     setWizardCatSearch('');
                     setShowTraderWizard(true);
                   }}
-                  style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 'bold', letterSpacing: '0.5px' }}
+                  style={{ width: '100%', padding: '7px 10px', fontSize: '10px', fontWeight: 'bold', letterSpacing: '0.8px', textAlign: 'center', justifyContent: 'center' }}
                 >
-                  {lang === 'ru' ? '+ СОЗДАТЬ ТОРГОВЦА' : '+ CREATE TRADER'}
+                  {lang === 'ru' ? 'СОЗДАТЬ ТОРГОВЦА' : 'CREATE TRADER'}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {(subTab === 'categories' ? categoryPaths : traderPaths).map(path => {

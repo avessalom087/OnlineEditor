@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
+import CoordinatesInput from './shared/CoordinatesInput';
 import { useTranslation } from '../utils/localization';
 
 const FACTIONS = ['West', 'East', 'Guards', 'Civilian', 'Passive', 'Aggressive', 'Shamans', 'Survivors'];
@@ -179,12 +180,50 @@ export default function AIBotsEditor({
   }
 
   const patrolContent = patrolFile.content;
-  const isPatrolDirty = JSON.stringify(patrolFile.content) !== JSON.stringify(patrolFile.originalContent);
+  const isPatrolDirty = patrolFile?.isDirty;
   const patrols = Array.isArray(patrolContent.Patrols) ? patrolContent.Patrols : [];
   const selectedPatrol = patrols[selectedPatrolIdx];
 
+  const currentDifficultyPreset = React.useMemo(() => {
+    if (!selectedPatrol) return "";
+    const presets = {
+      easy: { AccuracyMin: 0.15, AccuracyMax: 0.35, ThreatDistanceLimit: 100, NoiseInvestigationDistanceLimit: 100, DamageMultiplier: 0.5, DamageReceivedMultiplier: 1.5, HeadshotResistance: 0.0, Speed: 'WALK', UnderThreatSpeed: 'JOG', Faction: 'Civilian' },
+      medium: { AccuracyMin: 0.35, AccuracyMax: 0.65, ThreatDistanceLimit: 180, NoiseInvestigationDistanceLimit: 150, DamageMultiplier: 0.9, DamageReceivedMultiplier: 1.0, HeadshotResistance: 0.1, Speed: 'JOG', UnderThreatSpeed: 'SPRINT', Faction: 'Aggressive' },
+      hard: { AccuracyMin: 0.65, AccuracyMax: 0.85, ThreatDistanceLimit: 300, NoiseInvestigationDistanceLimit: 250, DamageMultiplier: 1.3, DamageReceivedMultiplier: 0.7, HeadshotResistance: 0.3, Speed: 'JOG', UnderThreatSpeed: 'SPRINT', Faction: 'West' },
+      sniper: { AccuracyMin: 0.85, AccuracyMax: 0.98, ThreatDistanceLimit: 500, NoiseInvestigationDistanceLimit: 300, DamageMultiplier: 1.8, DamageReceivedMultiplier: 1.0, HeadshotResistance: 0.2, Speed: 'WALK', UnderThreatSpeed: 'SPRINT', Faction: 'East', DefaultStance: 'PRONE' },
+      boss: { AccuracyMin: 0.80, AccuracyMax: 0.95, ThreatDistanceLimit: 400, NoiseInvestigationDistanceLimit: 300, DamageMultiplier: 2.2, DamageReceivedMultiplier: 0.3, HeadshotResistance: 0.7, Speed: 'JOG', UnderThreatSpeed: 'SPRINT', Faction: 'Guards' }
+    };
+    
+    for (const [presetName, values] of Object.entries(presets)) {
+      const match = Object.entries(values).every(([k, v]) => {
+        const patrolVal = selectedPatrol[k];
+        if (patrolVal === undefined) return false;
+        if (typeof v === 'number') {
+          return Math.abs(Number(patrolVal) - v) < 0.01;
+        }
+        return String(patrolVal).toLowerCase() === String(v).toLowerCase();
+      });
+      if (match) return presetName;
+    }
+    return "";
+  }, [selectedPatrol]);
+
   const handleUpdatePatrolVal = (key, value) => {
     onChangeField(patrolConfigPath, ['Patrols', selectedPatrolIdx, key], value);
+  };
+
+  const handleUpdatePatrolFields = (fieldsObj) => {
+    onChangeField(patrolConfigPath, [], (content) => {
+      if (!content || !Array.isArray(content.Patrols)) return content;
+      const updatedContent = JSON.parse(JSON.stringify(content));
+      const patrol = updatedContent.Patrols[selectedPatrolIdx];
+      if (patrol) {
+        Object.entries(fieldsObj).forEach(([k, v]) => {
+          patrol[k] = v;
+        });
+      }
+      return updatedContent;
+    });
   };
 
   const handleUpdateGeneralVal = (key, value) => {
@@ -353,7 +392,7 @@ export default function AIBotsEditor({
   // LOADOUTS ACTIONS
   // -------------------------------------------------------------
   const activeLoadoutConfig = selectedLoadoutPath ? configs[selectedLoadoutPath] : null;
-  const isLoadoutDirty = activeLoadoutConfig ? JSON.stringify(activeLoadoutConfig.content) !== JSON.stringify(activeLoadoutConfig.originalContent) : false;
+  const isLoadoutDirty = activeLoadoutConfig ? activeLoadoutConfig.isDirty : false;
 
   const handleCreateLoadout = () => {
     const name = prompt(t('ai_prompt_loadout_name'));
@@ -525,7 +564,7 @@ export default function AIBotsEditor({
   // -------------------------------------------------------------
   // ROAMING LOCATIONS ACTIONS & RENDERING
   // -------------------------------------------------------------
-  const isLocationFileDirty = locationFile ? JSON.stringify(locationFile.content) !== JSON.stringify(locationFile.originalContent) : false;
+  const isLocationFileDirty = locationFile ? locationFile.isDirty : false;
   const roamingLocationsList = locationFile?.success && Array.isArray(locationFile.content.RoamingLocations) 
     ? locationFile.content.RoamingLocations 
     : [];
@@ -784,14 +823,14 @@ export default function AIBotsEditor({
                 <button 
                   className={`btn ${activeSubTab === 'patrols' ? 'btn-active' : ''}`}
                   onClick={() => setActiveSubTab('patrols')}
-                  style={{ flex: 1, padding: '6px 8px', fontSize: '11px' }}
+                  style={{ flex: 1, padding: '6px 4px', fontSize: '11px', justifyContent: 'center', letterSpacing: '0.5px' }}
                 >
                   {t('ai_subtab_patrols')}
                 </button>
                 <button 
                   className={`btn ${activeSubTab === 'general' ? 'btn-active' : ''}`}
                   onClick={() => setActiveSubTab('general')}
-                  style={{ flex: 1, padding: '6px 8px', fontSize: '11px' }}
+                  style={{ flex: 1, padding: '6px 4px', fontSize: '11px', justifyContent: 'center', letterSpacing: '0.5px' }}
                 >
                   {t('ai_subtab_global')}
                 </button>
@@ -799,6 +838,11 @@ export default function AIBotsEditor({
 
               {activeSubTab === 'patrols' ? (
                 <>
+                  <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'center' }}>
+                    <button className="btn btn-accent" onClick={handleAddPatrol} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}>
+                      {t('ai_btn_create_patrol')}
+                    </button>
+                  </div>
                   <div style={{ 
                     padding: '8px 16px', 
                     background: 'var(--bg-primary)', 
@@ -873,11 +917,6 @@ export default function AIBotsEditor({
                         </div>
                       );
                     })}
-                  </div>
-                  <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
-                    <button className="btn btn-accent" onClick={handleAddPatrol} style={{ width: '100%', justifyContent: 'center' }}>
-                      {t('ai_btn_create_patrol')}
-                    </button>
                   </div>
                 </>
               ) : (
@@ -1059,7 +1098,7 @@ export default function AIBotsEditor({
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', marginBottom: '12px' }}>
                             <h4 style={{ margin: 0 }}>{t('ai_advanced_behaviors')}</h4>
                             <button 
-                              className={`btn ${JSON.stringify(aiSettingsFile.content) !== JSON.stringify(aiSettingsFile.originalContent) ? 'btn-accent' : ''}`}
+                              className={`btn ${aiSettingsFile?.isDirty ? 'btn-accent' : ''}`}
                               onClick={() => onSaveFile(aiSettingsPath)}
                             >
                               {t('ai_btn_save_behaviors')}
@@ -1758,7 +1797,7 @@ export default function AIBotsEditor({
                           <div className="form-group" style={{ gridColumn: 'span 2' }}>
                             <label style={{ color: '#ebd667', fontWeight: 'bold' }}>{lang === 'ru' ? "⭐ ЗАГРУЗЧИК ПРЕСЕТОВ СЛОЖНОСТИ (АВТОЗАПОЛНЕНИЕ)" : "⭐ DIFFICULTY PRESET LOADER (AUTO-FILL MULTIPLIERS)"}</label>
                             <select 
-                              defaultValue=""
+                              value={currentDifficultyPreset}
                               onChange={e => {
                                 const preset = e.target.value;
                                 if (!preset) return;
@@ -1771,16 +1810,23 @@ export default function AIBotsEditor({
                                 };
                                 const values = presets[preset];
                                 if (values) {
-                                  Object.entries(values).forEach(([k, v]) => {
-                                    handleUpdatePatrolVal(k, v);
-                                  });
+                                  handleUpdatePatrolFields(values);
                                   alert(lang === 'ru' 
                                     ? `Успешно загружен пресет сложности: ${preset.toUpperCase()}! Изменено 10 параметров боя, фракции, скорости и защиты.`
                                     : `Successfully loaded Difficulty Preset: ${preset.toUpperCase()}! Modified 10 combat, faction, speed, and defense parameters.`
                                   );
                                 }
                               }}
-                              style={{ border: '1px solid #ebd667', color: '#ebd667', background: 'rgba(235,214,103,0.05)', fontWeight: 'bold' }}
+                              style={{ 
+                                border: '1px solid var(--warning-color)', 
+                                color: 'var(--warning-color)', 
+                                backgroundColor: 'rgba(235,214,103,0.05)', 
+                                fontWeight: 'bold',
+                                backgroundRepeat: 'no-repeat',
+                                backgroundPosition: 'right 12px center',
+                                backgroundSize: '14px',
+                                paddingRight: '36px'
+                              }}
                             >
                               <option value="" style={{ color: 'var(--text-primary)' }}>{lang === 'ru' ? "-- Выберите пресет для загрузки параметров --" : "-- Select preset to load parameters --"}</option>
                               <option value="easy" style={{ color: 'var(--text-primary)' }}>{lang === 'ru' ? "Гражданский / Легко (Низкая точность, высокий получаемый урон)" : "Civilian / Easy (Low accuracy, high damage received)"}</option>
@@ -2049,14 +2095,17 @@ export default function AIBotsEditor({
                           ) : (
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                             {selectedPatrol.Waypoints.map((wp, wpIdx) => (
-                              <div key={wpIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-primary)', padding: '6px 10px', border: '1px solid var(--border-color)' }}>
-                                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', width: '20px' }}>#{wpIdx+1}</span>
-                                <input type="number" step="any" value={wp[0]} onChange={e => handleWaypointChange(wpIdx, 0, e.target.value)} style={{ padding: '3px', fontSize: '11px' }} placeholder="X" />
-                                <input type="number" step="any" value={wp[1]} onChange={e => handleWaypointChange(wpIdx, 1, e.target.value)} style={{ padding: '3px', fontSize: '11px' }} placeholder="Y" />
-                                <input type="number" step="any" value={wp[2]} onChange={e => handleWaypointChange(wpIdx, 2, e.target.value)} style={{ padding: '3px', fontSize: '11px' }} placeholder="Z" />
-                                <button className="btn btn-accent" onClick={() => onNavigateToMap(wp, ['Patrols', selectedPatrolIdx, 'Waypoints', wpIdx])} style={{ padding: '3px 6px', fontSize: '9px' }}>🗺</button>
-                                <button className="btn btn-danger" onClick={() => handleRemoveWaypoint(wpIdx)} style={{ padding: '3px 6px', fontSize: '10px' }}>×</button>
-                              </div>
+                              <CoordinatesInput
+                                key={wpIdx}
+                                layout="row"
+                                indexLabel={`#${wpIdx + 1}`}
+                                position={wp}
+                                step="any"
+                                onChange={(newPos, changedIdx, newVal) => handleWaypointChange(wpIdx, changedIdx, newVal)}
+                                onPickFromMap={() => onNavigateToMap(wp, ['Patrols', selectedPatrolIdx, 'Waypoints', wpIdx])}
+                                onDelete={() => handleRemoveWaypoint(wpIdx)}
+                                inputStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                              />
                             ))}
                           </div>
                         )}
@@ -2095,12 +2144,17 @@ export default function AIBotsEditor({
                   {t('ai_total_profiles', { count: loadoutPaths.length })}
                 </div>
               </div>
+              <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'center' }}>
+                <button className="btn btn-accent" onClick={handleCreateLoadout} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}>
+                  {t('ai_btn_create_loadout')}
+                </button>
+              </div>
 
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {loadoutPaths.map(path => {
                   const isSelected = path === selectedLoadoutPath;
                   const file = configs[path];
-                  const hasUnsaved = file && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
+                  const hasUnsaved = file?.isDirty;
                   const name = path.split('/').pop().replace('.json', '');
 
                   return (
@@ -2132,11 +2186,6 @@ export default function AIBotsEditor({
                     </div>
                   );
                 })}
-              </div>
-              <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
-                <button className="btn btn-accent" onClick={handleCreateLoadout} style={{ width: '100%', justifyContent: 'center' }}>
-                  {t('ai_btn_create_loadout')}
-                </button>
               </div>
             </div>
 
@@ -2398,12 +2447,17 @@ export default function AIBotsEditor({
                   {t('ai_total_profiles', { count: lootDropPaths.length })}
                 </div>
               </div>
+              <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'center' }}>
+                <button className="btn btn-accent" onClick={handleCreateLootDrop} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}>
+                  {t('ai_btn_create_loot_profile')}
+                </button>
+              </div>
 
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {lootDropPaths.map(path => {
                   const isSelected = path === selectedLootDropPath;
                   const file = configs[path];
-                  const hasUnsaved = file && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
+                  const hasUnsaved = file?.isDirty;
                   const name = path.split('/').pop().replace('.json', '');
 
                   return (
@@ -2436,11 +2490,6 @@ export default function AIBotsEditor({
                   );
                 })}
               </div>
-              <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
-                <button className="btn btn-accent" onClick={handleCreateLootDrop} style={{ width: '100%', justifyContent: 'center' }}>
-                  {t('ai_btn_create_loot_profile')}
-                </button>
-              </div>
             </div>
 
             {/* Loot Drop Main Editor Panel */}
@@ -2460,7 +2509,7 @@ export default function AIBotsEditor({
                       <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontWeight: 'bold' }}>
                         {selectedLootDropPath.split('/').pop()}
                       </span>
-                      {JSON.stringify(configs[selectedLootDropPath].content) !== JSON.stringify(configs[selectedLootDropPath].originalContent) && (
+                      {configs[selectedLootDropPath]?.isDirty && (
                         <span style={{ color: 'var(--warning-color)', fontSize: '11px', marginLeft: '8px' }}>{t('ai_unsaved')}</span>
                       )}
                     </div>

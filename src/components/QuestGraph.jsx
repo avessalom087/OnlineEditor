@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
+import FormCard from './shared/FormCard';
+import CoordinatesInput from './shared/CoordinatesInput';
 import { useTranslation } from '../utils/localization';
 
 // Topological sorting layer layout for quest nodes
@@ -142,8 +144,15 @@ export default function QuestGraph({
   // Canvas pan & zoom states
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  // Use refs for all transient pointer-event state to avoid stale-closure bugs
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const panOffsetRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+
+  // Sync pan/zoom refs whenever state changes
+  useEffect(() => { panOffsetRef.current = panOffset; }, [panOffset]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
   // Drag offsets for individual node positioning
   const [nodeOffsets, setNodeOffsets] = useState(() => {
@@ -158,8 +167,22 @@ export default function QuestGraph({
   useEffect(() => {
     localStorage.setItem('dayz_editor_quest_node_offsets', JSON.stringify(nodeOffsets));
   }, [nodeOffsets]);
-  const [draggedNode, setDraggedNode] = useState(null);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  // Refs for node dragging (avoid stale closures in document mousemove)
+  const draggedNodeRef = useRef(null);       // nodeId being dragged
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const hasDraggedRef = useRef(false);       // true once mouse moves >3px
+
+  // Refs for drag-selection rectangle
+  const isDragSelectingRef = useRef(false);
+  const dragSelectStartRef = useRef(null);   // { clientX, clientY }
+  // Visual rect state (triggers re-render only when rect visually changes)
+  const [dragSelectRect, setDragSelectRect] = useState(null); // { x, y, w, h } in container-local coords
+
+  // selectedQuestIds ref — lets handlers always read the freshest value
+  const selectedQuestIdsRef = useRef(new Set());
+
+  // Positioned nodes ref — updated after every render for use inside handlers
+  const positionedNodesRef = useRef([]);
 
   // Drag connection line state
   const [connectionDrag, setConnectionDrag] = useState(null);
@@ -216,12 +239,31 @@ export default function QuestGraph({
   const [prevQuests, setPrevQuests] = useState([]);
   const [prevSelectedQuestId, setPrevSelectedQuestId] = useState(null);
   const [selectedQuest, setSelectedQuest] = useState(null);
+  const [selectedQuestIds, setSelectedQuestIds] = useState(new Set());
+
+  // Helper: update both the state and the ref atomically
+  const applySelection = (newSet, activeNode) => {
+    selectedQuestIdsRef.current = newSet;
+    setSelectedQuestIds(new Set(newSet)); // new Set so React sees a change
+    setSelectedQuest(activeNode);
+    const activeId = activeNode ? activeNode.id : null;
+    setPrevSelectedQuestId(activeId);
+    if (onSelectQuest) onSelectQuest(activeId);
+  };
 
   if (selectedQuestId !== prevSelectedQuestId || quests !== prevQuests) {
     setPrevSelectedQuestId(selectedQuestId);
     setPrevQuests(quests);
     const found = quests.find(q => q.id === selectedQuestId) || null;
     setSelectedQuest(found);
+    if (selectedQuestId && !selectedQuestIdsRef.current.has(selectedQuestId)) {
+      const ns = new Set([selectedQuestId]);
+      selectedQuestIdsRef.current = ns;
+      setSelectedQuestIds(ns);
+    } else if (!selectedQuestId) {
+      selectedQuestIdsRef.current = new Set();
+      setSelectedQuestIds(new Set());
+    }
   }
 
   const [activeAccordion, setActiveAccordion] = useState('general'); // general, npc, flow, items, objectives
@@ -306,151 +348,255 @@ export default function QuestGraph({
     return null;
   }, [connectionDrag, positionedNodes]);
 
-  // Pan Canvas Handlers
+  // Pan Canvas Handlers (ref-based to avoid stale closures)
   const getSVGCoords = (e) => {
     if (!containerRef.current) return { x: 0, y: 0 };
     const rect = containerRef.current.getBoundingClientRect();
-    const clientX = e.clientX - rect.left;
-    const clientY = e.clientY - rect.top;
+    const po = panOffsetRef.current;
+    const z  = zoomRef.current;
     return {
-      x: (clientX - panOffset.x) / zoom,
-      y: (clientY - panOffset.y) / zoom
+      x: (e.clientX - rect.left - po.x) / z,
+      y: (e.clientY - rect.top  - po.y) / z,
     };
   };
 
-  const handleMouseDown = (e) => {
-    if (e.target.tagName === 'svg' || e.target.id === 'grid-bg') {
-      setIsPanning(true);
-      setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
-    }
-  };
+  // Keep positionedNodesRef current after every render
+  positionedNodesRef.current = positionedNodes;
 
-  const handleMouseMove = (e) => {
-    if (isPanning) {
-      setPanOffset({
-        x: e.clientX - panStart.x,
-        y: e.clientY - panStart.y
-      });
-      return;
-    }
-
-    if (draggedNode !== null) {
-      const dx = (e.clientX - dragStart.x) / zoom;
-      const dy = (e.clientY - dragStart.y) / zoom;
-
-      setNodeOffsets(prev => {
-        const currentNode = positionedNodes.find(n => n.id === draggedNode);
-        const currentX = currentNode ? currentNode.x : 0;
-        const currentY = currentNode ? currentNode.y : 0;
-        return {
-          ...prev,
-          [draggedNode]: {
-            x: currentX + dx,
-            y: currentY + dy
-          }
-        };
-      });
-
-      setDragStart({ x: e.clientX, y: e.clientY });
-      return;
-    }
-
-    if (connectionDrag !== null) {
-      const coords = getSVGCoords(e);
-      setConnectionDrag(prev => prev ? { ...prev, currentX: coords.x, currentY: coords.y } : null);
-      return;
-    }
-  };
-
-  const handleMouseUp = (e) => {
-    setIsPanning(false);
-    setDraggedNode(null);
-
-    if (connectionDrag !== null) {
-      const dropCoords = getSVGCoords(e);
-      let targetNode = null;
-
-      for (const node of positionedNodes) {
-        if (node.id === connectionDrag.fromNodeId) continue;
-        const portX = node.x;
-        const portY = node.y + node.height / 2;
-        const dist = Math.hypot(portX - dropCoords.x, portY - dropCoords.y);
-        if (dist <= 25) { // Collision threshold of 25px
-          targetNode = node;
-          break;
-        }
-      }
-
-      if (targetNode) {
-        freezeCurrentLayout();
-
-        // Node A = connectionDrag.fromNodeId, Node B = targetNode.id
-        // 1. Set Node A as prerequisite of Node B
-        const targetPre = targetNode.preQuestIDs || [];
-        if (!targetPre.includes(connectionDrag.fromNodeId)) {
-          onChangeField(targetNode.filePath, ['PreQuestIDs'], [...targetPre, connectionDrag.fromNodeId]);
-        }
-
-        // 2. Set Node B as follow-up of Node A
-        const sourceNode = positionedNodes.find(n => n.id === connectionDrag.fromNodeId);
-        if (sourceNode) {
-          onChangeField(sourceNode.filePath, ['FollowUpQuest'], targetNode.id);
-        }
-      }
-
-      setConnectionDrag(null);
-    }
-  };
-
-  // Dismiss context menu on Escape
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') setQuestCtxMenu(null);
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  // Global wheel Zoom listener with mouse centering and passive: false override
+  // ─── Document-level pointer events (mount-once, reads from refs) ──────────
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const handleWheelRaw = (e) => {
-      e.preventDefault();
-      const zoomFactor = 1.08;
-      
-      const rect = container.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      let newZoom = zoom;
-      if (e.deltaY < 0) {
-        newZoom = Math.min(zoom * zoomFactor, 3.0);
-      } else {
-        newZoom = Math.max(zoom / zoomFactor, 0.2);
+    const onContainerDown = (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        isPanningRef.current = true;
+        const po = panOffsetRef.current;
+        panStartRef.current = { x: e.clientX - po.x, y: e.clientY - po.y };
+        return;
       }
-
-      if (newZoom !== zoom) {
-        const newOffsetX = mouseX - (mouseX - panOffset.x) * (newZoom / zoom);
-        const newOffsetY = mouseY - (mouseY - panOffset.y) * (newZoom / zoom);
-        
-        setZoom(newZoom);
-        setPanOffset({ x: newOffsetX, y: newOffsetY });
+      if (e.button === 0) {
+        const tag = e.target.tagName;
+        const id  = e.target.id;
+        if (tag === 'svg' || id === 'grid-bg') {
+          isDragSelectingRef.current = true;
+          dragSelectStartRef.current = { clientX: e.clientX, clientY: e.clientY };
+          setDragSelectRect(null);
+          if (!e.ctrlKey) {
+            selectedQuestIdsRef.current = new Set();
+            setSelectedQuestIds(new Set());
+            setSelectedQuest(null);
+            setPrevSelectedQuestId(null);
+            if (onSelectQuest) onSelectQuest(null);
+          }
+        }
       }
     };
 
-    container.addEventListener('wheel', handleWheelRaw, { passive: false });
+    const onDocMove = (e) => {
+      if (isPanningRef.current) {
+        const ps = panStartRef.current;
+        const newOffset = { x: e.clientX - ps.x, y: e.clientY - ps.y };
+        panOffsetRef.current = newOffset;
+        setPanOffset(newOffset);
+        return;
+      }
+
+      if (isDragSelectingRef.current && dragSelectStartRef.current) {
+        const cRect = containerRef.current && containerRef.current.getBoundingClientRect();
+        if (!cRect) return;
+        const sx = dragSelectStartRef.current.clientX;
+        const sy = dragSelectStartRef.current.clientY;
+        setDragSelectRect({
+          x: Math.min(sx, e.clientX) - cRect.left,
+          y: Math.min(sy, e.clientY) - cRect.top,
+          w: Math.abs(e.clientX - sx),
+          h: Math.abs(e.clientY - sy),
+        });
+        return;
+      }
+
+      if (draggedNodeRef.current !== null) {
+        const rawDx = e.clientX - dragStartRef.current.x;
+        const rawDy = e.clientY - dragStartRef.current.y;
+        if (Math.hypot(rawDx, rawDy) > 2) hasDraggedRef.current = true;
+        const z = zoomRef.current;
+        const dragId = draggedNodeRef.current;
+        const selIds = selectedQuestIdsRef.current;
+        const nodesToDrag = selIds.has(dragId) ? Array.from(selIds) : [dragId];
+        const nodes = positionedNodesRef.current;
+        setNodeOffsets(prev => {
+          const updated = { ...prev };
+          nodesToDrag.forEach(id => {
+            const n = nodes.find(nd => nd.id === id);
+            const cx = n ? n.x : (prev[id] ? prev[id].x : 0);
+            const cy = n ? n.y : (prev[id] ? prev[id].y : 0);
+            updated[id] = { x: cx + rawDx / z, y: cy + rawDy / z };
+          });
+          return updated;
+        });
+        dragStartRef.current = { x: e.clientX, y: e.clientY };
+        return;
+      }
+
+      setConnectionDrag(prev => {
+        if (!prev) return null;
+        const po = panOffsetRef.current;
+        const z  = zoomRef.current;
+        const cRect = containerRef.current ? containerRef.current.getBoundingClientRect() : { left: 0, top: 0 };
+        const svgX = (e.clientX - cRect.left - po.x) / z;
+        const svgY = (e.clientY - cRect.top  - po.y) / z;
+        return { ...prev, currentX: svgX, currentY: svgY };
+      });
+    };
+
+    const onDocUp = (e) => {
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        return;
+      }
+
+      if (isDragSelectingRef.current) {
+        isDragSelectingRef.current = false;
+        setDragSelectRect(null);
+        const start = dragSelectStartRef.current;
+        dragSelectStartRef.current = null;
+        if (start) {
+          const dx = Math.abs(e.clientX - start.clientX);
+          const dy = Math.abs(e.clientY - start.clientY);
+          if (dx >= 4 || dy >= 4) {
+            const cRect = containerRef.current && containerRef.current.getBoundingClientRect();
+            if (cRect) {
+              const po = panOffsetRef.current;
+              const z  = zoomRef.current;
+              const x1 = Math.min(start.clientX, e.clientX);
+              const y1 = Math.min(start.clientY, e.clientY);
+              const x2 = Math.max(start.clientX, e.clientX);
+              const y2 = Math.max(start.clientY, e.clientY);
+              const nodes = positionedNodesRef.current;
+              const overlapping = nodes.filter(node => {
+                const nl = node.x * z + po.x + cRect.left;
+                const nt = node.y * z + po.y + cRect.top;
+                const nr = nl + node.width  * z;
+                const nb = nt + node.height * z;
+                return nl < x2 && nr > x1 && nt < y2 && nb > y1;
+              });
+              const prev = selectedQuestIdsRef.current;
+              const next = e.ctrlKey ? new Set(prev) : new Set();
+              overlapping.forEach(nd => next.add(nd.id));
+              selectedQuestIdsRef.current = next;
+              setSelectedQuestIds(new Set(next));
+              const activeNode = overlapping.length > 0
+                ? overlapping[overlapping.length - 1]
+                : (next.size > 0 ? nodes.find(nd => nd.id === Array.from(next)[0]) || null : null);
+              setSelectedQuest(activeNode);
+              const activeId = activeNode ? activeNode.id : null;
+              setPrevSelectedQuestId(activeId);
+              if (onSelectQuest) onSelectQuest(activeId);
+            }
+          }
+        }
+        return;
+      }
+
+      if (draggedNodeRef.current !== null) {
+        const wasDragged = hasDraggedRef.current;
+        const nodeId = draggedNodeRef.current;
+        draggedNodeRef.current = null;
+        hasDraggedRef.current  = false;
+        if (!wasDragged && !e.ctrlKey) {
+          const nodes = positionedNodesRef.current;
+          const activeNode = nodes.find(n => n.id === nodeId) || null;
+          const ns = new Set([nodeId]);
+          selectedQuestIdsRef.current = ns;
+          setSelectedQuestIds(new Set(ns));
+          setSelectedQuest(activeNode);
+          setPrevSelectedQuestId(nodeId);
+          if (onSelectQuest) onSelectQuest(nodeId);
+        }
+        return;
+      }
+
+      setConnectionDrag(prev => {
+        if (!prev) return null;
+        const po    = panOffsetRef.current;
+        const z     = zoomRef.current;
+        const cRect = containerRef.current ? containerRef.current.getBoundingClientRect() : { left: 0, top: 0 };
+        const dropX = (e.clientX - cRect.left - po.x) / z;
+        const dropY = (e.clientY - cRect.top  - po.y) / z;
+        const nodes = positionedNodesRef.current;
+        let targetNode = null;
+        for (const node of nodes) {
+          if (node.id === prev.fromNodeId) continue;
+          const portX = node.x;
+          const portY = node.y + node.height / 2;
+          if (Math.hypot(portX - dropX, portY - dropY) <= 25) {
+            targetNode = node;
+            break;
+          }
+        }
+        if (targetNode) {
+          setTimeout(() => {
+            setNodeOffsets(prevOff => {
+              const updated = { ...prevOff };
+              positionedNodesRef.current.forEach(n => {
+                if (!updated[n.id]) updated[n.id] = { x: n.x, y: n.y };
+              });
+              return updated;
+            });
+            const targetPre = targetNode.preQuestIDs || [];
+            if (!targetPre.includes(prev.fromNodeId)) {
+              onChangeField(targetNode.filePath, ['PreQuestIDs'], [...targetPre, prev.fromNodeId]);
+            }
+            const sourceNode = positionedNodesRef.current.find(n => n.id === prev.fromNodeId);
+            if (sourceNode) {
+              onChangeField(sourceNode.filePath, ['FollowUpQuest'], targetNode.id);
+            }
+          }, 0);
+        }
+        return null;
+      });
+    };
+
+    container.addEventListener('mousedown', onContainerDown);
+    document.addEventListener('mousemove', onDocMove);
+    document.addEventListener('mouseup',   onDocUp);
     return () => {
-      container.removeEventListener('wheel', handleWheelRaw);
+      container.removeEventListener('mousedown', onContainerDown);
+      document.removeEventListener('mousemove', onDocMove);
+      document.removeEventListener('mouseup',   onDocUp);
     };
-  }, [zoom, panOffset]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // ─── Lightweight node mousedown handler ──────────────────────────────────
   const handleNodeDragStart = (e, nodeId) => {
-    e.stopPropagation();
     if (e.button !== 0) return;
-    setDraggedNode(nodeId);
-    setDragStart({ x: e.clientX, y: e.clientY });
+    e.stopPropagation();
+
+    draggedNodeRef.current  = nodeId;
+    dragStartRef.current    = { x: e.clientX, y: e.clientY };
+    hasDraggedRef.current   = false;
+
+    const isCtrl = e.ctrlKey;
+    const prev   = selectedQuestIdsRef.current;
+    const next   = new Set(prev);
+    if (isCtrl) {
+      if (next.has(nodeId)) { next.delete(nodeId); } else { next.add(nodeId); }
+    } else {
+      if (!next.has(nodeId)) { next.clear(); next.add(nodeId); }
+    }
+    const nodes = positionedNodesRef.current;
+    const activeNode = next.has(nodeId)
+      ? (nodes.find(n => n.id === nodeId) || null)
+      : (next.size > 0 ? (nodes.find(n => n.id === Array.from(next)[0]) || null) : null);
+    selectedQuestIdsRef.current = next;
+    setSelectedQuestIds(new Set(next));
+    setSelectedQuest(activeNode);
+    const activeId = activeNode ? activeNode.id : null;
+    setPrevSelectedQuestId(activeId);
+    if (onSelectQuest) onSelectQuest(activeId);
   };
 
   const freezeCurrentLayout = () => {
@@ -464,6 +610,7 @@ export default function QuestGraph({
       return updated;
     });
   };
+
 
   // Smooth pan+zoom to center a quest node on screen
   const zoomToNode = (node) => {
@@ -815,41 +962,63 @@ export default function QuestGraph({
     }, 200);
   };
 
-  const handleDeleteQuest = () => {
-    if (!selectedQuest) return;
-    if (window.confirm(`Are you sure you want to delete "${selectedQuest.title}" (ID ${selectedQuest.id})?\nThis will physically remove it from disk.`)) {
+  const handleDeleteQuest = (singleQuestToDelete) => {
+    // If a specific quest node is passed (from RMB context menu on a non-selected node),
+    // delete only it; otherwise delete all currently selected quests.
+    const idsToDelete = (singleQuestToDelete && !selectedQuestIdsRef.current.has(singleQuestToDelete.id))
+      ? new Set([singleQuestToDelete.id])
+      : new Set(selectedQuestIdsRef.current);
+
+    if (idsToDelete.size === 0) return;
+
+    const questsToDelete = Array.from(idsToDelete)
+      .map(id => quests.find(q => q.id === id))
+      .filter(Boolean);
+
+    const names = questsToDelete.map(q => `"${q.title}" (ID ${q.id})`).join('\n');
+    const msg = idsToDelete.size === 1
+      ? `Are you sure you want to delete ${names}?\nThis will physically remove it from disk.`
+      : `Are you sure you want to delete ${idsToDelete.size} quests?\n${names}\n\nThis will physically remove them from disk.`;
+
+    if (window.confirm(msg)) {
       freezeCurrentLayout();
-      
+
       // 1. Unlink references in other quests
       quests.forEach(q => {
-        if (q.id === selectedQuest.id) return;
-        if (q.followUpQuest === selectedQuest.id) {
+        if (idsToDelete.has(q.id)) return;
+        if (idsToDelete.has(q.followUpQuest)) {
           onChangeField(q.filePath, ['FollowUpQuest'], -1);
         }
-        if (q.preQuestIDs.includes(selectedQuest.id)) {
-          onChangeField(q.filePath, ['PreQuestIDs'], q.preQuestIDs.filter(id => id !== selectedQuest.id));
+        const filteredPre = q.preQuestIDs.filter(id => !idsToDelete.has(id));
+        if (filteredPre.length !== q.preQuestIDs.length) {
+          onChangeField(q.filePath, ['PreQuestIDs'], filteredPre);
         }
       });
 
-      // 2. Unlink & Delete orphaned objectives
-      const questConfig = configs[selectedQuest.filePath]?.content;
-      if (questConfig && Array.isArray(questConfig.Objectives)) {
-        questConfig.Objectives.forEach(obj => {
-          // Check if other quests reference this objective
-          const isReferenced = quests.some(q => 
-            q.id !== selectedQuest.id && 
-            q.objectives.some(o => o.ID === obj.ID && o.ObjectiveType === obj.ObjectiveType)
-          );
-          if (!isReferenced) {
-            const objPath = getObjectiveFilePath(obj.ObjectiveType, obj.ID);
-            if (objPath) onDeleteFile(objPath);
-          }
-        });
-      }
+      // 2. Delete orphaned objectives, then the quest file itself
+      questsToDelete.forEach(q => {
+        const questConfig = configs[q.filePath]?.content;
+        if (questConfig && Array.isArray(questConfig.Objectives)) {
+          questConfig.Objectives.forEach(obj => {
+            const isReferenced = quests.some(q2 =>
+              !idsToDelete.has(q2.id) &&
+              q2.objectives.some(o => o.ID === obj.ID && o.ObjectiveType === obj.ObjectiveType)
+            );
+            if (!isReferenced) {
+              const objPath = getObjectiveFilePath(obj.ObjectiveType, obj.ID);
+              if (objPath) onDeleteFile(objPath);
+            }
+          });
+        }
+        onDeleteFile(q.filePath);
+      });
 
-      // 3. Delete the quest file
-      onDeleteFile(selectedQuest.filePath);
+      // Clear selection
+      selectedQuestIdsRef.current = new Set();
+      setSelectedQuestIds(new Set());
       setSelectedQuest(null);
+      setPrevSelectedQuestId(null);
+      if (onSelectQuest) onSelectQuest(null);
     }
   };
 
@@ -1023,9 +1192,7 @@ export default function QuestGraph({
           {/* Visual Canvas Workspace */}
           <div 
             ref={containerRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
+            onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }}
             onContextMenu={(e) => {
               e.preventDefault();
               const coords = getSVGCoords(e);
@@ -1038,7 +1205,7 @@ export default function QuestGraph({
               position: 'relative', 
               overflow: 'hidden', 
               background: '#040604',
-              cursor: isPanning ? 'grabbing' : 'default',
+              cursor: isPanningRef.current ? 'grabbing' : 'default',
               userSelect: 'none'
             }}
           >
@@ -1070,7 +1237,7 @@ export default function QuestGraph({
                   const cp2Y = endY;
 
                   const isHighlight = highlightSet.has(Number(preId)) && highlightSet.has(Number(node.id));
-                  const isSelectedLine = selectedQuest && (selectedQuest.id === node.id || selectedQuest.id === preId);
+                  const isSelectedLine = selectedQuestIds.has(node.id) || selectedQuestIds.has(preId);
                   const isParentMatch = sq ? (
                     String(parent.id).includes(sq) || parent.title.toLowerCase().includes(sq)
                   ) : true;
@@ -1149,7 +1316,7 @@ export default function QuestGraph({
                   const cp2Y = endY;
 
                   const isHighlight = highlightSet.has(Number(node.id)) && highlightSet.has(Number(node.followUpQuest));
-                  const isSelectedLine = selectedQuest && (selectedQuest.id === node.id || selectedQuest.id === node.followUpQuest);
+                  const isSelectedLine = selectedQuestIds.has(node.id) || selectedQuestIds.has(node.followUpQuest);
                   const isChildMatch = sq ? (
                     String(child.id).includes(sq) || child.title.toLowerCase().includes(sq)
                   ) : true;
@@ -1230,11 +1397,11 @@ export default function QuestGraph({
 
             {/* Draw Quest Cards */}
             {positionedNodes.map(node => {
-              const isSelected = selectedQuest?.id === node.id;
+              const isSelected = selectedQuestIds.has(node.id);
               const sq2 = searchQuery.trim().toLowerCase();
               const isMatch = !sq2 || String(node.id).includes(sq2) || node.title.toLowerCase().includes(sq2);
               const nodeOpacity = sq2 && !isMatch ? 0.1 : 1;
-              const hasUnsaved = JSON.stringify(configs[node.filePath]?.content) !== JSON.stringify(configs[node.filePath]?.originalContent);
+              const hasUnsaved = configs[node.filePath]?.isDirty;
 
               const questContent = configs[node.filePath]?.content;
               let headerColor = 'var(--accent-color)'; // Normal (Green)
@@ -1254,7 +1421,6 @@ export default function QuestGraph({
                   transform={`translate(${node.x}, ${node.y})`}
                   style={{ opacity: nodeOpacity, transition: 'opacity 0.2s', cursor: 'grab' }}
                   onMouseDown={(e) => handleNodeDragStart(e, node.id)}
-                  onClick={() => { setSelectedQuest(node); if (onSelectQuest) onSelectQuest(node.id); }}
                   onDoubleClick={() => { if (onOpenFile) onOpenFile(node.filePath); }}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -1340,6 +1506,19 @@ export default function QuestGraph({
               );
             })}
           </g>
+          {dragSelectRect && (
+            <rect
+              x={dragSelectRect.x}
+              y={dragSelectRect.y}
+              width={dragSelectRect.w}
+              height={dragSelectRect.h}
+              fill="rgba(178, 250, 158, 0.10)"
+              stroke="var(--accent-color)"
+              strokeWidth="1.5"
+              strokeDasharray="4,4"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
         </svg>
 
         {/* Floating Search HUD */}
@@ -1506,12 +1685,7 @@ export default function QuestGraph({
                     handleSeverAllConnections(n.id);
                   }, '#ff6b6b', `✂️ ${ru ? 'Разорвать все связи' : 'Sever All Connections'}`)}
 
-                  {BTN(() => {
-                    setSelectedQuest(n);
-                    if (onSelectQuest) onSelectQuest(n.id);
-                    setQuestCtxMenu(null);
-                    setTimeout(() => handleDeleteQuest(), 50);
-                  }, '#ff6b6b', `🗑 ${ru ? 'Удалить квест' : 'Delete Quest'}`)}
+                  {BTN(() => { if (!selectedQuestIdsRef.current.has(n.id)) { const ns = new Set([n.id]); selectedQuestIdsRef.current = ns; setSelectedQuestIds(new Set(ns)); setSelectedQuest(n); setPrevSelectedQuestId(n.id); if (onSelectQuest) onSelectQuest(n.id); } setQuestCtxMenu(null); setTimeout(() => handleDeleteQuest(n), 50); }, '#ff6b6b', ru ? (selectedQuestIds.has(n.id) && selectedQuestIds.size > 1 ? `\u0423\u0434\u0430\u043b\u0438\u0442\u044c ${selectedQuestIds.size} \u043a\u0432\u0435\u0441\u0442\u0430` : '\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043a\u0432\u0435\u0441\u0442') : (selectedQuestIds.has(n.id) && selectedQuestIds.size > 1 ? `Delete ${selectedQuestIds.size} Quests` : 'Delete Quest'))}
                 </>
               );
             })()}
@@ -2347,65 +2521,48 @@ export default function QuestGraph({
               {/* Position coordinates (Travel (3) / Target (2) / Action (10)) */}
               {editingObjective.objective.Position !== undefined && (
                 <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '2px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--text-glow)', fontWeight: 'bold' }}>{t('quest_label_coords')}</span>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button 
-                        className="btn btn-accent" 
-                        onClick={() => {
-                          const pos = editingObjective.objective.Position;
-                          onNavigateToMap(pos);
-                          setEditingObjective(null);
-                        }}
-                        style={{ padding: '2px 8px', fontSize: '9px' }}
-                        title={t('quest_locate_on_map')}
-                      >
-                        {t('quest_btn_plot_map')}
-                      </button>
-                      <button 
-                        className="btn btn-accent"
-                        onClick={() => {
-                          const originalTab = 'quests';
-                          const obj = editingObjective.objective;
-                          const path = editingObjective.filePath;
-                          setCoordinatePicker({
-                            returnTab: originalTab,
-                            callback: ({ x, z }) => {
-                              const newPos = [x, 0.0, z];
-                              const updated = { ...obj, Position: newPos };
-                              setEditingObjective({ objective: updated, filePath: path });
-                              onChangeField(path, ['Position'], newPos);
-                            }
-                          });
-                          setActiveTab('map');
-                          setEditingObjective(null);
-                        }}
-                        style={{ padding: '2px 8px', fontSize: '9px' }}
-                        title="Pick coordinates visually on Map"
-                      >
-                        {t('quest_label_pick_coords') || "🎯 Pick from Map"}
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                    {['X', 'Y', 'Z'].map((coord, idx) => (
-                      <div key={coord}>
-                        <label style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>{coord}</label>
-                        <input 
-                          type="number" 
-                          step="0.1"
-                          value={editingObjective.objective.Position[idx] ?? 0.0} 
-                          onChange={e => {
-                            const newPos = [...editingObjective.objective.Position];
-                            newPos[idx] = Number(e.target.value);
-                            const updated = { ...editingObjective.objective, Position: newPos };
-                            setEditingObjective({ ...editingObjective, objective: updated });
-                            onChangeField(editingObjective.filePath, ['Position', idx], Number(e.target.value));
-                          }} 
-                          style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '4px', textAlign: 'center' }}
-                        />
-                      </div>
-                    ))}
+                  <CoordinatesInput
+                    label={t('quest_label_coords')}
+                    position={editingObjective.objective.Position}
+                    onChange={(newPos, idx, val) => {
+                      const updated = { ...editingObjective.objective, Position: newPos };
+                      setEditingObjective({ ...editingObjective, objective: updated });
+                      onChangeField(editingObjective.filePath, ['Position', idx], val);
+                    }}
+                    onPickFromMap={() => {
+                      const originalTab = 'quests';
+                      const obj = editingObjective.objective;
+                      const path = editingObjective.filePath;
+                      setCoordinatePicker({
+                        returnTab: originalTab,
+                        callback: ({ x, z }) => {
+                          const newPos = [x, 0.0, z];
+                          const updated = { ...obj, Position: newPos };
+                          setEditingObjective({ objective: updated, filePath: path });
+                          onChangeField(path, ['Position'], newPos);
+                        }
+                      });
+                      setActiveTab('map');
+                      setEditingObjective(null);
+                    }}
+                    pickLabel={t('quest_label_pick_coords') || "🎯 Pick from Map"}
+                    step="0.1"
+                    inputStyle={{ border: '1px solid var(--border-color)' }}
+                  />
+                  <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button 
+                      type="button"
+                      className="btn btn-accent" 
+                      onClick={() => {
+                        const pos = editingObjective.objective.Position;
+                        onNavigateToMap(pos);
+                        setEditingObjective(null);
+                      }}
+                      style={{ padding: '2px 8px', fontSize: '9px' }}
+                      title={t('quest_locate_on_map')}
+                    >
+                      {t('quest_btn_plot_map')}
+                    </button>
                   </div>
                 </div>
               )}
@@ -3163,11 +3320,7 @@ function QuestNPCsManager({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
               {/* General Properties Card */}
-              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '14px', fontFamily: 'var(--font-mono)' }}>
-                  // GENERAL SETTINGS
-                </div>
-
+              <FormCard title="// GENERAL SETTINGS">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   {/* Name Input */}
                   <div>
@@ -3241,67 +3394,31 @@ function QuestNPCsManager({
                     </div>
                   </div>
                 </div>
-              </div>
+              </FormCard>
 
               {/* Position and Orientation Card */}
-              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px' }}>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
-                    // SPAWN POSITION & ORIENTATION
-                  </div>
-                  <button 
-                    className="btn btn-accent"
-                    onClick={() => {
-                      setCoordinatePicker({
-                        returnTab: 'quests',
-                        callback: ({ x, z }) => {
-                          const newPos = [x, 0.0, z];
-                          onChangeField(selectedNpc.filePath, ['Position'], newPos);
-                        }
-                      });
-                      setActiveTab('map');
-                    }}
-                    style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    {t('quest_label_pick_coords') || "🎯 Pick from Map"}
-                  </button>
-                </div>
-
-                {/* Coords X Y Z */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                  {['X', 'Y', 'Z'].map((coord, idx) => {
-                    const val = Array.isArray(selectedNpc.content.Position) ? (selectedNpc.content.Position[idx] ?? 0.0) : 0.0;
-                    return (
-                      <div key={coord}>
-                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
-                          POSITION {coord}
-                        </label>
-                        <input 
-                          type="number"
-                          step="0.0001"
-                          value={val}
-                          onChange={e => {
-                            const newPos = Array.isArray(selectedNpc.content.Position) ? [...selectedNpc.content.Position] : [0.0, 0.0, 0.0];
-                            newPos[idx] = Number(e.target.value);
-                            onChangeField(selectedNpc.filePath, ['Position'], newPos);
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            background: 'var(--bg-secondary)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '2px',
-                            color: 'var(--text-primary)',
-                            fontSize: '12px',
-                            fontFamily: 'var(--font-mono)',
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+              <FormCard title="// SPAWN POSITION & ORIENTATION">
+                <CoordinatesInput
+                  label="POSITION"
+                  position={selectedNpc.content.Position}
+                  onChange={(newPos, idx, val) => {
+                    onChangeField(selectedNpc.filePath, ['Position'], newPos);
+                  }}
+                  onPickFromMap={() => {
+                    setCoordinatePicker({
+                      returnTab: 'quests',
+                      callback: ({ x, z }) => {
+                        const newPos = [x, 0.0, z];
+                        onChangeField(selectedNpc.filePath, ['Position'], newPos);
+                      }
+                    });
+                    setActiveTab('map');
+                  }}
+                  pickLabel={t('quest_label_pick_coords') || "🎯 Pick from Map"}
+                  step="0.0001"
+                  style={{ marginBottom: '16px' }}
+                  inputStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: '12px' }}
+                />
 
                 {/* Orientation Yaw Pitch Roll */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
@@ -3337,14 +3454,10 @@ function QuestNPCsManager({
                     );
                   })}
                 </div>
-
-              </div>
+              </FormCard>
 
               {/* Dialogue & Loadout Card */}
-              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '14px', fontFamily: 'var(--font-mono)' }}>
-                  // DIALOGUE & VISUAL APPEARANCE
-                </div>
+              <FormCard title="// DIALOGUE & VISUAL APPEARANCE">
 
                 {/* Dialogue Text */}
                 <div style={{ marginBottom: '16px' }}>
@@ -3482,13 +3595,10 @@ function QuestNPCsManager({
                   </div>
                 </div>
 
-              </div>
+              </FormCard>
 
               {/* Emotes Configuration Card */}
-              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', marginBottom: '20px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-primary)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '14px', fontFamily: 'var(--font-mono)' }}>
-                  // EMOTE TRIGGERS
-                </div>
+              <FormCard title="// EMOTE TRIGGERS" style={{ marginBottom: '20px' }}>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   
@@ -3551,7 +3661,7 @@ function QuestNPCsManager({
                   })}
 
                 </div>
-              </div>
+              </FormCard>
 
             </div>
 

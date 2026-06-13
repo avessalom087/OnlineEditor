@@ -576,7 +576,7 @@ export default function ConfigForm({
     );
   }
 
-  const isDirty = JSON.stringify(config.content) !== JSON.stringify(config.originalContent);
+  const isDirty = config?.isDirty;
 
   const handleExportJson = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config.content, null, 4));
