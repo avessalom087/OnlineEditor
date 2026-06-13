@@ -467,13 +467,90 @@ export async function saveSettings(settings) {
   try {
     const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool', { create: true });
     const settingsHandle = await pzToolDirHandle.getFileHandle('settings.json', { create: true });
+    
+    let existing = {};
+    try {
+      const file = await settingsHandle.getFile();
+      const text = await file.text();
+      existing = JSON.parse(text);
+    } catch (e) {}
+
+    const merged = { ...existing, ...settings };
+
     const writable = await settingsHandle.createWritable();
-    await writable.write(JSON.stringify(settings, null, 4));
+    await writable.write(JSON.stringify(merged, null, 4));
     await writable.close();
     return true;
   } catch (e) {
     console.error('Failed to save settings:', e);
     return false;
+  }
+}
+
+/**
+ * Saves a custom map image file inside the .pz_tool directory.
+ * @param {File} file 
+ * @returns {Promise<boolean>}
+ */
+export async function saveCustomMap(file) {
+  if (!activeDirHandle) return false;
+  try {
+    const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool', { create: true });
+    const extension = file.name.split('.').pop() || 'png';
+    const fileName = `custom_map.${extension}`;
+    const settings = await getSettings() || {};
+    
+    // Check if the exact same custom map is already saved to avoid duplicate writes
+    if (settings.customMapPath === `.pz_tool/${fileName}`) {
+      try {
+        const existingHandle = await pzToolDirHandle.getFileHandle(fileName);
+        const existingFile = await existingHandle.getFile();
+        if (existingFile.size === file.size && existingFile.name === file.name) {
+          console.log("[MAP PERSIST] Map is identical, skipping redundant write.");
+          return true;
+        }
+      } catch (err) {}
+    }
+    
+    // Remove any previous custom map file if format changed
+    if (settings.customMapPath && settings.customMapPath !== `.pz_tool/${fileName}`) {
+      try {
+        const oldFile = settings.customMapPath.split('/').pop();
+        await pzToolDirHandle.removeEntry(oldFile);
+      } catch (err) {}
+    }
+    
+    const mapFileHandle = await pzToolDirHandle.getFileHandle(fileName, { create: true });
+    const writable = await mapFileHandle.createWritable();
+    await writable.write(file);
+    await writable.close();
+    
+    settings.customMapPath = `.pz_tool/${fileName}`;
+    await saveSettings(settings);
+    return true;
+  } catch (e) {
+    console.error('Failed to save custom map:', e);
+    return false;
+  }
+}
+
+/**
+ * Loads the custom map image file from the .pz_tool directory if registered in settings.
+ * @returns {Promise<File|null>}
+ */
+export async function loadCustomMap() {
+  if (!activeDirHandle) return null;
+  try {
+    const settings = await getSettings();
+    if (!settings || !settings.customMapPath) return null;
+    
+    const pzToolDirHandle = await activeDirHandle.getDirectoryHandle('.pz_tool');
+    const fileName = settings.customMapPath.split('/').pop();
+    const mapFileHandle = await pzToolDirHandle.getFileHandle(fileName);
+    return await mapFileHandle.getFile();
+  } catch (e) {
+    console.warn('Failed to load custom map from workspace:', e);
+    return null;
   }
 }
 

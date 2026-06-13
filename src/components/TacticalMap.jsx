@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './ToastManager';
 import { useTranslation } from '../utils/localization';
+import * as fileService from '../services/fileService';
 
 const MAP_PRESETS = [
   { name: '10km Grid (10000m)', size: 10000 },
@@ -189,6 +190,17 @@ export default function TacticalMap({
   const [isRotating, setIsRotating]       = useState(false);
   const [hoveredEntity, setHoveredEntity] = useState(null);
   const [selectedEntity, setSelectedEntity] = useState(null);
+  const [selectedEntityIds, setSelectedEntityIds] = useState(new Set());
+  const [dragSelectRect, setDragSelectRect] = useState(null); // { x, y, w, h } in container-local coords
+  const isDragSelectingRef = useRef(false);
+  const dragSelectStartRef = useRef(null); // { clientX, clientY }
+  const selectedEntityIdsRef = useRef(new Set());
+  const draggedEntitiesStartCoordsRef = useRef(new Map());
+
+  // Sync selectedEntityIdsRef with state
+  useEffect(() => {
+    selectedEntityIdsRef.current = selectedEntityIds;
+  }, [selectedEntityIds]);
   
   // Ruler measurement states
   const [isRulerActive, setIsRulerActive] = useState(false);
@@ -581,34 +593,84 @@ export default function TacticalMap({
     }
   };
 
-  const handleCustomMapUpload = (e) => {
+  const handleCustomMapUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.src = url;
-    img.onload = () => {
+    img.onload = async () => {
       setMapImage(img);
       setImageLoaded(true);
       toast.success(`Custom map loaded: ${file.name}`);
+
+      if (fileService.hasDirectoryAccess()) {
+        const success = await fileService.saveCustomMap(file);
+        if (success) {
+          toast.success(lang === 'ru' ? "Карта успешно сохранена в папку проекта!" : "Map successfully saved to the project folder!");
+        } else {
+          toast.warn(lang === 'ru' ? "Не удалось сохранить карту в проект." : "Failed to save the map to the project.");
+        }
+      }
     };
     img.onerror = () => {
       toast.error("Failed to load custom map image.");
     };
+    // Clear input to allow uploading the same file again
+    e.target.value = '';
   };
 
-  // Load the map image on mount
+  // Load the map image on mount or when configs change
   useEffect(() => {
-    const img = new Image();
-    img.src = 'map.png';
-    img.onload = () => {
-      setMapImage(img);
-      setImageLoaded(true);
+    let activeUrl = null;
+
+    const loadMap = async () => {
+      if (fileService.hasDirectoryAccess()) {
+        try {
+          const mapFile = await fileService.loadCustomMap();
+          if (mapFile) {
+            activeUrl = URL.createObjectURL(mapFile);
+            const img = new Image();
+            img.src = activeUrl;
+            img.onload = () => {
+              setMapImage(img);
+              setImageLoaded(true);
+            };
+            img.onerror = () => {
+              console.warn("Failed to load saved custom map image. Trying default map.png.");
+              loadDefaultMap();
+            };
+            return;
+          }
+        } catch (e) {
+          console.error("Error loading custom map:", e);
+        }
+      }
+      loadDefaultMap();
     };
-    img.onerror = () => {
-      console.warn("Failed to load map.png. Using blank grid background.");
+
+    const loadDefaultMap = () => {
+      const img = new Image();
+      img.src = 'map.png';
+      img.onload = () => {
+        setMapImage(img);
+        setImageLoaded(true);
+      };
+      img.onerror = () => {
+        console.warn("Failed to load map.png. Using blank grid background.");
+        setMapImage(null);
+        setImageLoaded(false);
+      };
     };
-  }, []);
+
+    loadMap();
+
+    return () => {
+      if (activeUrl) {
+        URL.revokeObjectURL(activeUrl);
+      }
+    };
+  }, [configs]);
 
   // Global keydown listeners for Escape (deselect/cancel draw) and Delete (delete selected entity)
   useEffect(() => {
@@ -628,8 +690,9 @@ export default function TacticalMap({
           toast.info('AI Patrol Draw Mode deactivated.');
         }
         setSelectedEntity(null);
+        setSelectedEntityIds(new Set());
       } else if (e.key === 'Delete' || e.key === 'Del') {
-        if (selectedEntity) {
+        if (selectedEntity || selectedEntityIdsRef.current.size > 0) {
           // Check if focus is in an input or select element to avoid deleting while typing
           const activeTag = document.activeElement?.tagName?.toLowerCase();
           if (activeTag === 'input' || activeTag === 'select' || activeTag === 'textarea') {
@@ -1205,23 +1268,27 @@ export default function TacticalMap({
         const pos = gameToPixels(sz.x, sz.z);
         const rad = (sz.radius / mapSize) * 1024 * scale;
 
+        ctx.save();
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
-        ctx.fillStyle = sz.type === 'safezone_cylinder' ? 'rgba(74, 154, 120, 0.15)' : 'rgba(74, 154, 74, 0.15)';
+        ctx.fillStyle = sz.type === 'safezone_cylinder' ? 'rgba(46, 204, 113, 0.12)' : 'rgba(46, 204, 113, 0.08)';
         ctx.fill();
         
-        ctx.strokeStyle = '#559655';
+        ctx.strokeStyle = '#2ecc71';
         ctx.lineWidth = 1.5;
         if (sz.type === 'safezone_cylinder') {
           ctx.setLineDash([6, 3, 2, 3]); // Dash-dot pattern
         }
         ctx.stroke();
-        ctx.setLineDash([]); // Reset dash
+        ctx.restore();
 
+        ctx.save();
         ctx.beginPath();
         ctx.moveTo(pos.x - 4, pos.y); ctx.lineTo(pos.x + 4, pos.y);
         ctx.moveTo(pos.x, pos.y - 4); ctx.lineTo(pos.x, pos.y + 4);
+        ctx.strokeStyle = '#2ecc71';
         ctx.stroke();
+        ctx.restore();
       });
     }
 
@@ -1255,22 +1322,25 @@ export default function TacticalMap({
         const pos = gameToPixels(nogo.x, nogo.z);
         const rad = (nogo.radius / mapSize) * 1024 * scale;
 
+        ctx.save();
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(204, 74, 74, 0.12)';
+        ctx.fillStyle = 'rgba(214, 48, 49, 0.12)';
         ctx.fill();
         
-        ctx.strokeStyle = '#cc4a4a';
+        ctx.strokeStyle = '#d63031';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([4, 4]); // Dashed line
         ctx.stroke();
-        ctx.setLineDash([]); // Reset
+        ctx.restore();
 
+        ctx.save();
         ctx.beginPath();
         ctx.moveTo(pos.x - 4, pos.y); ctx.lineTo(pos.x + 4, pos.y);
         ctx.moveTo(pos.x, pos.y - 4); ctx.lineTo(pos.x, pos.y + 4);
-        ctx.strokeStyle = '#cc4a4a';
+        ctx.strokeStyle = '#d63031';
         ctx.stroke();
+        ctx.restore();
       });
     }
 
@@ -1280,23 +1350,26 @@ export default function TacticalMap({
         const pos = gameToPixels(loc.x, loc.z);
         const rad = (loc.radius / mapSize) * 1024 * scale;
 
+        ctx.save();
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
-        ctx.fillStyle = loc.enabled ? 'rgba(255, 159, 67, 0.08)' : 'rgba(255, 159, 67, 0.02)';
+        ctx.fillStyle = loc.enabled ? 'rgba(225, 112, 85, 0.08)' : 'rgba(225, 112, 85, 0.02)';
         ctx.fill();
         
-        ctx.strokeStyle = loc.enabled ? '#ff9f43' : 'rgba(255, 159, 67, 0.4)';
+        ctx.strokeStyle = loc.enabled ? '#e17055' : 'rgba(225, 112, 85, 0.4)';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([8, 4]); // Long dashed pattern
         ctx.stroke();
-        ctx.setLineDash([]); // Reset
+        ctx.restore();
 
         // Center cross
+        ctx.save();
         ctx.beginPath();
         ctx.moveTo(pos.x - 4, pos.y); ctx.lineTo(pos.x + 4, pos.y);
         ctx.moveTo(pos.x, pos.y - 4); ctx.lineTo(pos.x, pos.y + 4);
-        ctx.strokeStyle = '#ff9f43';
+        ctx.strokeStyle = '#e17055';
         ctx.stroke();
+        ctx.restore();
       });
     }
 
@@ -1306,15 +1379,16 @@ export default function TacticalMap({
         const pos = gameToPixels(tz.x, tz.z);
         const rad = (tz.radius / mapSize) * 1024 * scale;
 
+        ctx.save();
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(68, 170, 204, 0.08)';
+        ctx.fillStyle = 'rgba(9, 132, 227, 0.08)';
         ctx.fill();
-        ctx.strokeStyle = '#44aacc';
+        ctx.strokeStyle = '#0984e3';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.restore();
       });
     }
 
@@ -1326,15 +1400,15 @@ export default function TacticalMap({
 
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(235, 214, 103, 0.12)';
+        ctx.fillStyle = 'rgba(241, 196, 15, 0.12)';
         ctx.fill();
-        ctx.strokeStyle = '#ebd667';
+        ctx.strokeStyle = '#f1c40f';
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 4, 0, 2 * Math.PI);
-        ctx.fillStyle = '#ebd667';
+        ctx.fillStyle = '#f1c40f';
         ctx.fill();
       });
     }
@@ -1355,10 +1429,10 @@ export default function TacticalMap({
         // Set faction coloring
         const firstFile = configs['expansion/settings/AIPatrolSettings.json'];
         const faction = (firstFile?.content?.Patrols[parseInt(pIdx)]?.Faction || 'West').toLowerCase();
-        let factionColor = '#808080';
-        if (faction === 'west') factionColor = '#4a9acc';
-        else if (faction === 'east') factionColor = '#cc4a4a';
-        else if (faction === 'guards') factionColor = '#ebd667';
+        let factionColor = '#b2bec3';
+        if (faction === 'west') factionColor = '#00cec9';
+        else if (faction === 'east') factionColor = '#e74c3c';
+        else if (faction === 'guards') factionColor = '#fd79a8';
 
         ctx.save();
         ctx.beginPath();
@@ -1459,7 +1533,7 @@ export default function TacticalMap({
         ctx.lineTo(pos.x - 6, pos.y + 6);
         ctx.lineTo(pos.x + 6, pos.y + 6);
         ctx.closePath();
-        ctx.fillStyle = '#a6f5a6';
+        ctx.fillStyle = '#a29bfe';
         ctx.fill();
         ctx.strokeStyle = '#070907';
         ctx.lineWidth = 1.5;
@@ -1467,7 +1541,7 @@ export default function TacticalMap({
 
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
-        ctx.strokeStyle = 'rgba(166, 245, 166, 0.4)';
+        ctx.strokeStyle = 'rgba(162, 155, 254, 0.4)';
         ctx.stroke();
       });
     }
@@ -1480,9 +1554,9 @@ export default function TacticalMap({
 
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(192, 132, 252, 0.06)';
+        ctx.fillStyle = 'rgba(232, 67, 147, 0.06)';
         ctx.fill();
-        ctx.strokeStyle = '#c084fc';
+        ctx.strokeStyle = '#e84393';
         ctx.lineWidth = 1.2;
         ctx.setLineDash([3, 3]);
         ctx.stroke();
@@ -1490,7 +1564,7 @@ export default function TacticalMap({
 
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = '#c084fc';
+        ctx.fillStyle = '#e84393';
         ctx.fill();
         ctx.strokeStyle = '#070907';
         ctx.lineWidth = 1;
@@ -1620,8 +1694,8 @@ export default function TacticalMap({
         entities.spawnerTriggers.forEach(trig => {
           const pos = gameToPixels(trig.x, trig.z);
           const color = trig.debugColor || 'blue';
-          let strokeColor = '#3498db';
-          let fillColor = 'rgba(52, 152, 219, 0.1)';
+          let strokeColor = '#ff3f34';
+          let fillColor = 'rgba(255, 63, 52, 0.08)';
           
           if (color === 'green') {
             strokeColor = '#2ecc71';
@@ -1632,6 +1706,9 @@ export default function TacticalMap({
           } else if (color === 'yellow') {
             strokeColor = '#f1c40f';
             fillColor = 'rgba(241, 196, 15, 0.1)';
+          } else if (color === 'blue') {
+            strokeColor = '#ff9f43';
+            fillColor = 'rgba(255, 159, 67, 0.08)';
           }
 
           ctx.save();
@@ -1711,14 +1788,14 @@ export default function TacticalMap({
             ctx.beginPath();
             ctx.moveTo(pos.x, pos.y);
             ctx.lineTo(pos.x + Math.sin(angleRad) * arrowLen, pos.y - Math.cos(angleRad) * arrowLen);
-            ctx.strokeStyle = '#ff7675';
+            ctx.strokeStyle = '#ff5e57';
             ctx.lineWidth = 1.5;
             ctx.stroke();
           }
 
           ctx.beginPath();
           ctx.arc(pos.x, pos.y, 4, 0, 2 * Math.PI);
-          ctx.fillStyle = '#ff7675';
+          ctx.fillStyle = '#ff5e57';
           ctx.fill();
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 1;
@@ -1731,7 +1808,7 @@ export default function TacticalMap({
             ctx.beginPath();
             ctx.moveTo(pos.x, pos.y);
             ctx.lineTo(parentPos.x, parentPos.y);
-            ctx.strokeStyle = 'rgba(255, 118, 117, 0.4)';
+            ctx.strokeStyle = 'rgba(255, 94, 87, 0.4)';
             ctx.lineWidth = 1;
             ctx.setLineDash([2, 2]);
             ctx.stroke();
@@ -1741,31 +1818,49 @@ export default function TacticalMap({
       }
     }
 
-    // Draw selected entity highlight
-    if (selectedEntity) {
-      let activeX = selectedEntity.x;
-      let activeZ = selectedEntity.z;
-      if (selectedEntity.type === 'bookmark') {
-        const activePos = getBookmarkPosition(selectedEntity, entities);
-        activeX = activePos.x;
-        activeZ = activePos.z;
+    // Draw selected entity highlight for all entities in selectedEntityIds
+    selectedEntityIds.forEach(id => {
+      let found = null;
+      for (const list of Object.values(entities)) {
+        if (Array.isArray(list)) {
+          found = list.find(e => e.id === id);
+          if (found) break;
+        }
       }
-      const pos = gameToPixels(activeX, activeZ);
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 16, 0, 2 * Math.PI);
-      ctx.strokeStyle = '#00ffff'; // Glowing neon cyan border
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([4, 2]); // Pulsing/dashed border
-      ctx.stroke();
-      ctx.setLineDash([]);
+      if (!found && bookmarks) {
+        found = bookmarks.find(b => b.id === id);
+        if (found) {
+          const activePos = getBookmarkPosition(found, entities);
+          found = { ...found, x: activePos.x, z: activePos.z, type: 'bookmark' };
+        }
+      }
       
-      // Outer glow circle
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 22, 0, 2 * Math.PI);
-      ctx.strokeStyle = 'rgba(0, 255, 255, 0.25)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      if (found) {
+        const pos = gameToPixels(found.x, found.z);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 16, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#00ffff'; // Glowing neon cyan border
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([4, 2]); // Pulsing/dashed border
+        ctx.stroke();
+        ctx.restore();
+        
+        ctx.save();
+        // Outer glow circle
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 22, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
 
+    // Render interactive handles ONLY for the active selectedEntity if it's selected
+    if (selectedEntity && selectedEntityIds.has(selectedEntity.id)) {
+      const pos = gameToPixels(selectedEntity.x, selectedEntity.z);
+      
       // Render drag-to-resize handle for circular areas
       if (selectedEntity.radius !== undefined) {
         const rad = (selectedEntity.radius / mapSize) * 1024 * scale;
@@ -1887,11 +1982,16 @@ export default function TacticalMap({
       ctx.lineTo(pos.x + 10, pos.y - 15);
       ctx.stroke();
 
-      ctx.fillStyle = hoveredEntity.type === 'airdrop' ? '#ebd667' : 
-                      hoveredEntity.type === 'npc' ? '#a6f5a6' : 
-                      hoveredEntity.type === 'quest_objective' ? '#c084fc' :
-                      hoveredEntity.type === 'spawner_trigger' ? '#ff7675' :
-                      hoveredEntity.type === 'spawner_spawn_point' ? '#ff7675' : '#95c095';
+      ctx.fillStyle = hoveredEntity.type === 'airdrop' ? '#f1c40f' : 
+                      hoveredEntity.type === 'safezone' || hoveredEntity.type === 'safezone_cylinder' ? '#2ecc71' : 
+                      hoveredEntity.type === 'traderzone' ? '#0984e3' : 
+                      hoveredEntity.type === 'npc' ? '#a29bfe' : 
+                      hoveredEntity.type === 'patrol_waypoint' ? '#00cec9' : 
+                      hoveredEntity.type === 'quest_objective' ? '#e84393' :
+                      hoveredEntity.type === 'nogo_area' ? '#d63031' :
+                      hoveredEntity.type === 'roaming_location' ? '#e17055' :
+                      hoveredEntity.type === 'spawner_trigger' ? '#ff3f34' :
+                      hoveredEntity.type === 'spawner_spawn_point' ? '#ff5e57' : '#95c095';
       ctx.fillText(label, pos.x + 18, pos.y - 32);
       ctx.fillStyle = 'var(--text-secondary)';
       ctx.fillText(subLabel, pos.x + 18, pos.y - 18);
@@ -1991,7 +2091,19 @@ export default function TacticalMap({
       ctx.textAlign = 'left'; // Restore
       ctx.textBaseline = 'alphabetic'; // Restore
     }
-  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius]);
+
+    // Draw drag selection rectangle
+    if (dragSelectRect) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.fillRect(dragSelectRect.x, dragSelectRect.y, dragSelectRect.w, dragSelectRect.h);
+      ctx.strokeRect(dragSelectRect.x, dragSelectRect.y, dragSelectRect.w, dragSelectRect.h);
+      ctx.restore();
+    }
+  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, selectedEntityIds, dragSelectRect, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius]);
 
 
 
@@ -2117,6 +2229,13 @@ export default function TacticalMap({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
+    if (e.button === 1) { // Middle click for panning
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+      return;
+    }
+
     if (coordinatePicker) {
       if (e.button === 0) { // Left click
         const gameCoords = pixelsToGame(mouseX, mouseY);
@@ -2185,7 +2304,7 @@ export default function TacticalMap({
 
     if (e.button === 0) { // Left-click
       // Check if user clicked on the selected circle's resize handle
-      if (selectedEntity && selectedEntity.radius !== undefined) {
+      if (selectedEntity && selectedEntity.radius !== undefined && selectedEntityIds.has(selectedEntity.id)) {
         const pos = gameToPixels(selectedEntity.x, selectedEntity.z);
         const rad = (selectedEntity.radius / mapSize) * 1024 * scale;
         const handleX = pos.x + rad;
@@ -2200,20 +2319,88 @@ export default function TacticalMap({
       const hit = getEntityAt(mouseX, mouseY);
       if (hit) {
         e.preventDefault();
-        dragStartCoordsRef.current = { x: hit.x, z: hit.z };
-        setDraggedEntity(hit);
-        setSelectedEntity(hit);
+        
+        let newIds = new Set(selectedEntityIds);
+        if (e.ctrlKey) {
+          if (newIds.has(hit.id)) {
+            newIds.delete(hit.id);
+            // Get last item from the Set
+            const arr = Array.from(newIds);
+            const lastId = arr[arr.length - 1];
+            if (lastId) {
+              // Find the entity
+              let found = null;
+              for (const list of Object.values(entities)) {
+                if (Array.isArray(list)) {
+                  found = list.find(item => item.id === lastId);
+                  if (found) break;
+                }
+              }
+              if (!found && bookmarks) {
+                found = bookmarks.find(b => b.id === lastId);
+                if (found) {
+                  const activePos = getBookmarkPosition(found, entities);
+                  found = { ...found, x: activePos.x, z: activePos.z, type: 'bookmark' };
+                }
+              }
+              setSelectedEntity(found);
+            } else {
+              setSelectedEntity(null);
+            }
+          } else {
+            newIds.add(hit.id);
+            setSelectedEntity(hit);
+          }
+        } else {
+          if (!newIds.has(hit.id)) {
+            newIds = new Set([hit.id]);
+          }
+          setSelectedEntity(hit);
+        }
+        
+        setSelectedEntityIds(newIds);
+        
         if (hit.type === 'bookmark') {
           setSidebarTab('bookmarks');
         }
+
+        // Store starting coordinates for all selected entities to support sync dragging
+        const startCoords = new Map();
+        newIds.forEach(id => {
+          let found = null;
+          for (const list of Object.values(entities)) {
+            if (Array.isArray(list)) {
+              found = list.find(item => item.id === id);
+              if (found) break;
+            }
+          }
+          if (!found && bookmarks) {
+            found = bookmarks.find(b => b.id === id);
+            if (found) {
+              const activePos = getBookmarkPosition(found, entities);
+              found = { ...found, x: activePos.x, z: activePos.z };
+            }
+          }
+          if (found) {
+            startCoords.set(id, { x: found.x, z: found.z });
+          }
+        });
+        draggedEntitiesStartCoordsRef.current = startCoords;
+        
+        dragStartCoordsRef.current = { x: hit.x, z: hit.z };
+        setDraggedEntity(hit);
         return;
       } else {
-        setSelectedEntity(null);
+        // Click on empty space: start drag selection
+        isDragSelectingRef.current = true;
+        dragSelectStartRef.current = { clientX: e.clientX, clientY: e.clientY };
+        setDragSelectRect(null);
+        if (!e.ctrlKey) {
+          setSelectedEntity(null);
+          setSelectedEntityIds(new Set());
+        }
       }
     }
-
-    setIsPanning(true);
-    setPanStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
   };
 
 
@@ -2223,6 +2410,19 @@ export default function TacticalMap({
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
+
+    if (isDragSelectingRef.current && dragSelectStartRef.current) {
+      const cRect = containerRef.current.getBoundingClientRect();
+      const sx = dragSelectStartRef.current.clientX;
+      const sy = dragSelectStartRef.current.clientY;
+      setDragSelectRect({
+        x: Math.min(sx, e.clientX) - cRect.left,
+        y: Math.min(sy, e.clientY) - cRect.top,
+        w: Math.abs(e.clientX - sx),
+        h: Math.abs(e.clientY - sy),
+      });
+      return;
+    }
 
     if (isResizingRadius && selectedEntity) {
       const pos = gameToPixels(selectedEntity.x, selectedEntity.z);
@@ -2308,61 +2508,106 @@ export default function TacticalMap({
 
     if (draggedEntity) {
       const newGameCoords = pixelsToGame(mouseX, mouseY);
-      
-      if (draggedEntity.type === 'bookmark') {
+      const start = dragStartCoordsRef.current;
+      if (start) {
+        const dx = newGameCoords.x - start.x;
+        const dz = newGameCoords.z - start.z;
+        
+        // Multi-dragging: shift bookmarks
         setBookmarks(prev => prev.map(b => {
-          if (b.id === draggedEntity.id) {
-            if (b.linkedEntityId) {
-              let foundEnt = null;
-              for (const list of Object.values(entities)) {
-                if (Array.isArray(list)) {
-                  foundEnt = list.find(e => e && e.id === b.linkedEntityId);
-                  if (foundEnt) break;
+          if (selectedEntityIds.has(b.id)) {
+            const initial = draggedEntitiesStartCoordsRef.current.get(b.id);
+            if (initial) {
+              const nextX = initial.x + dx;
+              const nextZ = initial.z + dz;
+              
+              if (b.linkedEntityId) {
+                let foundEnt = null;
+                for (const list of Object.values(entities)) {
+                  if (Array.isArray(list)) {
+                    foundEnt = list.find(e => e && e.id === b.linkedEntityId);
+                    if (foundEnt) break;
+                  }
+                }
+                if (foundEnt) {
+                  if (selectedEntityIds.has(foundEnt.id)) {
+                    return b; 
+                  } else {
+                    return {
+                      ...b,
+                      offsetX: nextX - foundEnt.x,
+                      offsetZ: nextZ - foundEnt.z
+                    };
+                  }
                 }
               }
-              if (foundEnt) {
-                return {
-                  ...b,
-                  offsetX: newGameCoords.x - foundEnt.x,
-                  offsetZ: newGameCoords.z - foundEnt.z
-                };
-              }
+              return { ...b, x: nextX, z: nextZ };
             }
-            return { ...b, x: newGameCoords.x, z: newGameCoords.z };
           }
           return b;
         }));
-        setDraggedEntity(prev => ({ ...prev, x: newGameCoords.x, z: newGameCoords.z }));
-        setHoveredEntity(prev => prev ? { ...prev, x: newGameCoords.x, z: newGameCoords.z } : null);
-        setSelectedEntity(prev => prev && prev.id === draggedEntity.id ? { ...prev, x: newGameCoords.x, z: newGameCoords.z } : prev);
-        return;
+
+        // Shift entities
+        setEntities(prev => {
+          const updateCoords = (list) =>
+            list.map(item => {
+              if (selectedEntityIds.has(item.id)) {
+                const initial = draggedEntitiesStartCoordsRef.current.get(item.id);
+                if (initial) {
+                  return { ...item, x: initial.x + dx, z: initial.z + dz };
+                }
+              }
+              return item;
+            });
+          
+          const updatePatrols = (list) =>
+            list.map(wp => {
+              if (selectedEntityIds.has(wp.id)) {
+                const initial = draggedEntitiesStartCoordsRef.current.get(wp.id);
+                if (initial) {
+                  return { ...wp, x: initial.x + dx, z: initial.z + dz };
+                }
+              }
+              return wp;
+            });
+
+          return {
+            ...prev,
+            airdrops: updateCoords(prev.airdrops),
+            npcs: updateCoords(prev.npcs),
+            safezones: updateCoords(prev.safezones),
+            traderzones: updateCoords(prev.traderzones),
+            patrols: updatePatrols(prev.patrols),
+            questObjectives: updateCoords(prev.questObjectives),
+            nogoareas: updateCoords(prev.nogoareas),
+            roamingLocations: updateCoords(prev.roamingLocations),
+            spawnerTriggers: updateCoords(prev.spawnerTriggers),
+            spawnerSpawnPoints: updateCoords(prev.spawnerSpawnPoints)
+          };
+        });
+
+        // Shift selectedEntity visual representation
+        setSelectedEntity(prev => {
+          if (prev && selectedEntityIds.has(prev.id)) {
+            const initial = draggedEntitiesStartCoordsRef.current.get(prev.id);
+            if (initial) {
+              return { ...prev, x: initial.x + dx, z: initial.z + dz };
+            }
+          }
+          return prev;
+        });
+
+        // Set hovered entity position if it matches dragged
+        setHoveredEntity(prev => {
+          if (prev && selectedEntityIds.has(prev.id)) {
+            const initial = draggedEntitiesStartCoordsRef.current.get(prev.id);
+            if (initial) {
+              return { ...prev, x: initial.x + dx, z: initial.z + dz };
+            }
+          }
+          return prev;
+        });
       }
-
-      setEntities(prev => {
-        const updateCoords = (list) => 
-          list.map(item => item.id === draggedEntity.id ? { ...item, x: newGameCoords.x, z: newGameCoords.z } : item);
-        
-        const updatePatrols = (list) =>
-          list.map(wp => wp.id === draggedEntity.id ? { ...wp, x: newGameCoords.x, z: newGameCoords.z } : wp);
-
-        return {
-          ...prev,
-          airdrops: updateCoords(prev.airdrops),
-          npcs: updateCoords(prev.npcs),
-          safezones: updateCoords(prev.safezones),
-          traderzones: updateCoords(prev.traderzones),
-          patrols: updatePatrols(prev.patrols),
-          questObjectives: updateCoords(prev.questObjectives),
-          nogoareas: updateCoords(prev.nogoareas),
-          roamingLocations: updateCoords(prev.roamingLocations),
-          spawnerTriggers: updateCoords(prev.spawnerTriggers),
-          spawnerSpawnPoints: updateCoords(prev.spawnerSpawnPoints)
-        };
-      });
-
-      setDraggedEntity(prev => ({ ...prev, x: newGameCoords.x, z: newGameCoords.z }));
-      setHoveredEntity(prev => prev ? { ...prev, x: newGameCoords.x, z: newGameCoords.z } : null);
-      setSelectedEntity(prev => prev && prev.id === draggedEntity.id ? { ...prev, x: newGameCoords.x, z: newGameCoords.z } : prev);
       return;
     }
 
@@ -2398,6 +2643,72 @@ export default function TacticalMap({
       setIsMeasuring(false);
       if (rulerPoints && Math.hypot(rulerPoints.start.x - rulerPoints.end.x, rulerPoints.start.y - rulerPoints.end.y) < 2) {
         setRulerPoints(null);
+      }
+      return;
+    }
+
+    if (isDragSelectingRef.current) {
+      isDragSelectingRef.current = false;
+      setDragSelectRect(null);
+      const start = dragSelectStartRef.current;
+      dragSelectStartRef.current = null;
+      if (start) {
+        const dx = Math.abs(e.clientX - start.clientX);
+        const dy = Math.abs(e.clientY - start.clientY);
+        if (dx >= 4 || dy >= 4) {
+          const cRect = containerRef.current.getBoundingClientRect();
+          const x1 = Math.min(start.clientX, e.clientX) - cRect.left;
+          const y1 = Math.min(start.clientY, e.clientY) - cRect.top;
+          const x2 = Math.max(start.clientX, e.clientX) - cRect.left;
+          const y2 = Math.max(start.clientY, e.clientY) - cRect.top;
+          
+          const overlapping = [];
+          // Scan visible entities
+          for (const [key, list] of Object.entries(entities)) {
+            if (!Array.isArray(list) || !layers[key]) continue;
+            list.forEach(item => {
+              const pos = gameToPixels(item.x, item.z);
+              if (pos.x >= x1 && pos.x <= x2 && pos.y >= y1 && pos.y <= y2) {
+                overlapping.push(item);
+              }
+            });
+          }
+          // Scan bookmarks
+          if (bookmarks) {
+            bookmarks.forEach(b => {
+              const { x, z } = getBookmarkPosition(b, entities);
+              const pos = gameToPixels(x, z);
+              if (pos.x >= x1 && pos.x <= x2 && pos.y >= y1 && pos.y <= y2) {
+                overlapping.push({ ...b, x, z, type: 'bookmark' });
+              }
+            });
+          }
+          
+          const nextIds = e.ctrlKey ? new Set(selectedEntityIds) : new Set();
+          overlapping.forEach(item => nextIds.add(item.id));
+          setSelectedEntityIds(nextIds);
+          
+          const activeEntity = overlapping.length > 0
+            ? overlapping[overlapping.length - 1]
+            : (nextIds.size > 0 ? (
+                (() => {
+                  const targetId = Array.from(nextIds)[0];
+                  for (const list of Object.values(entities)) {
+                    if (Array.isArray(list)) {
+                      const found = list.find(item => item.id === targetId);
+                      if (found) return found;
+                    }
+                  }
+                  const b = bookmarks.find(item => item.id === targetId);
+                  if (b) {
+                    const activePos = getBookmarkPosition(b, entities);
+                    return { ...b, x: activePos.x, z: activePos.z, type: 'bookmark' };
+                  }
+                  return null;
+                })()
+              ) : null);
+          setSelectedEntity(activeEntity);
+        }
       }
       return;
     }
@@ -2447,60 +2758,76 @@ export default function TacticalMap({
       }
       return;
     }
-    if (draggedEntity) {
-      const { filePath, xPath, zPath, x, z } = draggedEntity;
-      const start = dragStartCoordsRef.current;
-      const hasMoved = start && (Math.abs(start.x - x) > 0.01 || Math.abs(start.z - z) > 0.01);
 
-      if (draggedEntity.type === 'bookmark') {
-        if (hasMoved && e && e.clientX !== undefined) {
-          const canvas = canvasRef.current;
-          const rect = canvas.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
-          
-          // Find if there is an entity under the cursor (excluding bookmark itself)
-          const hit = getEntityAt(mouseX, mouseY);
-          if (hit && hit.type !== 'bookmark') {
-            setBookmarks(prev => prev.map(b => {
-              if (b.id === draggedEntity.id) {
-                return {
-                  ...b,
-                  linkedEntityId: hit.id,
-                  linkedEntityType: hit.type,
-                  offsetX: x - hit.x,
-                  offsetZ: z - hit.z,
-                  x: hit.x,
-                  z: hit.z
-                };
+    if (draggedEntity) {
+      selectedEntityIds.forEach(id => {
+        let item = null;
+        for (const list of Object.values(entities)) {
+          if (Array.isArray(list)) {
+            item = list.find(i => i.id === id);
+            if (item) break;
+          }
+        }
+        
+        if (item) {
+          const start = draggedEntitiesStartCoordsRef.current.get(id);
+          const hasMoved = start && (Math.abs(start.x - item.x) > 0.01 || Math.abs(start.z - item.z) > 0.01);
+          if (hasMoved) {
+            if (item.type === 'spawner_trigger') {
+              const trigger = configs[item.filePath]?.content?.[item.triggerIdx];
+              if (trigger) {
+                const oldPos = trigger.triggerPosition || "0.0 0.0 0.0";
+                const newPos = updateCoordsInString(oldPos, item.x, item.z);
+                onChangeField(item.filePath, [item.triggerIdx, 'triggerPosition'], newPos);
               }
-              return b;
-            }));
-            toast.success(lang === 'ru' ? `Заметка привязана к объекту: ${hit.name || hit.type}` : `Note linked to object: ${hit.name || hit.type}`);
+            } else if (item.type === 'spawner_spawn_point') {
+              const trigger = configs[item.filePath]?.content?.[item.triggerIdx];
+              if (trigger && Array.isArray(trigger.spawnPositions)) {
+                const oldPos = trigger.spawnPositions[item.spawnIdx] || "0.0 0.0 0.0";
+                const newPos = updateCoordsInString(oldPos, item.x, item.z);
+                onChangeField(item.filePath, [item.triggerIdx, 'spawnPositions', item.spawnIdx], newPos);
+              }
+            } else if (item.filePath && item.xPath && item.zPath) {
+              onChangeField(item.filePath, item.xPath, item.x);
+              onChangeField(item.filePath, item.zPath, item.z);
+            }
+          }
+        } else if (bookmarks) {
+          const b = bookmarks.find(x => x.id === id);
+          if (b) {
+            const start = draggedEntitiesStartCoordsRef.current.get(id);
+            const activePos = getBookmarkPosition(b, entities);
+            const hasMoved = start && (Math.abs(start.x - activePos.x) > 0.01 || Math.abs(start.z - activePos.z) > 0.01);
+            if (hasMoved && e && e.clientX !== undefined) {
+              const canvas = canvasRef.current;
+              const rect = canvas.getBoundingClientRect();
+              const mouseX = e.clientX - rect.left;
+              const mouseY = e.clientY - rect.top;
+              const hit = getEntityAt(mouseX, mouseY);
+              if (hit && hit.type !== 'bookmark') {
+                setBookmarks(prev => prev.map(item => {
+                  if (item.id === b.id) {
+                    return {
+                      ...item,
+                      linkedEntityId: hit.id,
+                      linkedEntityType: hit.type,
+                      offsetX: activePos.x - hit.x,
+                      offsetZ: activePos.z - hit.z,
+                      x: hit.x,
+                      z: hit.z
+                    };
+                  }
+                  return item;
+                }));
+                toast.success(lang === 'ru' ? `Заметка привязана к объекту: ${hit.name || hit.type}` : `Note linked to object: ${hit.name || hit.type}`);
+              }
+            }
           }
         }
-      } else if (hasMoved) {
-        if (draggedEntity.type === 'spawner_trigger') {
-          const trigger = configs[filePath]?.content?.[draggedEntity.triggerIdx];
-          if (trigger) {
-            const oldPos = trigger.triggerPosition || "0.0 0.0 0.0";
-            const newPos = updateCoordsInString(oldPos, x, z);
-            onChangeField(filePath, [draggedEntity.triggerIdx, 'triggerPosition'], newPos);
-          }
-        } else if (draggedEntity.type === 'spawner_spawn_point') {
-          const trigger = configs[filePath]?.content?.[draggedEntity.triggerIdx];
-          if (trigger && Array.isArray(trigger.spawnPositions)) {
-            const oldPos = trigger.spawnPositions[draggedEntity.spawnIdx] || "0.0 0.0 0.0";
-            const newPos = updateCoordsInString(oldPos, x, z);
-            onChangeField(filePath, [draggedEntity.triggerIdx, 'spawnPositions', draggedEntity.spawnIdx], newPos);
-          }
-        } else if (filePath && xPath && zPath) {
-          onChangeField(filePath, xPath, x);
-          onChangeField(filePath, zPath, z);
-        }
-      }
+      });
       setDraggedEntity(null);
       dragStartCoordsRef.current = null;
+      draggedEntitiesStartCoordsRef.current.clear();
     }
     setIsPanning(false);
   };
@@ -2546,72 +2873,103 @@ export default function TacticalMap({
 
   // Visual Deletion handler
   const handleDeleteEntity = (entity) => {
-    if (entity.type === 'quest_objective') {
+    if (!entity && selectedEntityIds.size === 0) return;
+    
+    // Determine the list of entity IDs to delete
+    const idsToDelete = selectedEntityIds.size > 0 ? new Set(selectedEntityIds) : new Set([entity.id]);
+    
+    // Check if any quest objectives are in deletion set
+    let hasQuestObjectives = false;
+    const listToDelete = [];
+    idsToDelete.forEach(id => {
+      let found = null;
+      for (const list of Object.values(entities)) {
+        if (Array.isArray(list)) {
+          found = list.find(e => e.id === id);
+          if (found) break;
+        }
+      }
+      if (!found && bookmarks) {
+        found = bookmarks.find(b => b.id === id);
+        if (found) {
+          found = { ...found, type: 'bookmark' };
+        }
+      }
+      if (found) {
+        if (found.type === 'quest_objective') {
+          hasQuestObjectives = true;
+        } else {
+          listToDelete.push(found);
+        }
+      }
+    });
+
+    if (hasQuestObjectives) {
       alert("Quest objectives must be managed and deleted inside the Quests Editor (Quests tab) to preserve quest tree flow and avoid orphans.");
+    }
+    
+    if (listToDelete.length === 0) return;
+
+    const ru = lang === 'ru';
+    const names = listToDelete.map(ent => `"${ent.name || ent.type}" (${ent.type.toUpperCase()})`).join('\n');
+    const confirmMsg = listToDelete.length === 1
+      ? (listToDelete[0].type === 'bookmark'
+          ? (ru ? `Удалить закладку "${listToDelete[0].name}"?` : `Delete bookmark "${listToDelete[0].name}"?`)
+          : (ru ? `Удалить этот ${listToDelete[0].type.toUpperCase()}?\n"${listToDelete[0].name || ''}"` : `Delete this ${listToDelete[0].type.toUpperCase()}?\n"${listToDelete[0].name || ''}"`))
+      : (ru ? `Удалить выделенные объекты (${listToDelete.length})?\n${names}` : `Delete ${listToDelete.length} selected entities?\n${names}`);
+      
+    if (!window.confirm(confirmMsg)) {
       return;
     }
 
-    if (type === 'bookmark') {
-      if (!window.confirm(lang === 'ru' ? `Удалить закладку "${entity.name}"?` : `Delete bookmark "${entity.name}"?`)) {
-        return;
+    listToDelete.forEach(ent => {
+      const { filePath, type, arrayIndex, patrolIdx, wpIdx } = ent;
+
+      if (type === 'bookmark') {
+        setBookmarks(prev => prev.filter(b => b.id !== ent.id));
+      } else if (type === 'spawner_trigger') {
+        onChangeField(filePath, [ent.triggerIdx], null);
+      } else if (type === 'spawner_spawn_point') {
+        const trigger = configs[filePath]?.content?.[ent.triggerIdx];
+        if (trigger && Array.isArray(trigger.spawnPositions)) {
+          const updated = [...trigger.spawnPositions];
+          updated.splice(ent.spawnIdx, 1);
+          onChangeField(filePath, [ent.triggerIdx, 'spawnPositions'], updated);
+        }
+      } else if (type === 'safezone') {
+        const file = configs[filePath];
+        const newZones = [...file.content.CircleZones];
+        newZones.splice(arrayIndex, 1);
+        onChangeField(filePath, ['CircleZones'], newZones);
+      } else if (type === 'safezone_cylinder') {
+        const file = configs[filePath];
+        const newZones = [...file.content.CylinderZones];
+        newZones.splice(arrayIndex, 1);
+        onChangeField(filePath, ['CylinderZones'], newZones);
+      } else if (type === 'nogo_area') {
+        const file = configs[filePath];
+        const newAreas = [...file.content.NoGoAreas];
+        newAreas.splice(arrayIndex, 1);
+        onChangeField(filePath, ['NoGoAreas'], newAreas);
+      } else if (type === 'patrol_waypoint') {
+        const file = configs[filePath];
+        const newWaypoints = [...file.content.Patrols[patrolIdx].Waypoints];
+        newWaypoints.splice(wpIdx, 1);
+        onChangeField(filePath, ['Patrols', patrolIdx, 'Waypoints'], newWaypoints);
+      } else if (type === 'roaming_location') {
+        const file = configs[filePath];
+        const newLocs = [...file.content.RoamingLocations];
+        newLocs.splice(arrayIndex, 1);
+        onChangeField(filePath, ['RoamingLocations'], newLocs);
+      } else {
+        onDeleteFile(filePath);
       }
-      setBookmarks(prev => prev.filter(b => b.id !== entity.id));
-      toast.success(lang === 'ru' ? "Закладка удалена" : "Bookmark deleted");
-      setHoveredEntity(null);
-      setSelectedEntity(null);
-      return;
-    }
+    });
 
-    if (!window.confirm(`Delete this ${entity.type.toUpperCase()}? \n"${entity.name}"`)) {
-      return;
-    }
-
-    const { filePath, type, arrayIndex, patrolIdx, wpIdx } = entity;
-
-    // Embedded entity deletions (Inside settings arrays)
-    if (type === 'spawner_trigger') {
-      onChangeField(filePath, [entity.triggerIdx], null);
-      toast.success("Spawner trigger deleted.");
-    } else if (type === 'spawner_spawn_point') {
-      const trigger = configs[filePath]?.content?.[entity.triggerIdx];
-      if (trigger && Array.isArray(trigger.spawnPositions)) {
-        const updated = [...trigger.spawnPositions];
-        updated.splice(entity.spawnIdx, 1);
-        onChangeField(filePath, [entity.triggerIdx, 'spawnPositions'], updated);
-        toast.success("Spawn point deleted.");
-      }
-    } else if (type === 'safezone') {
-      const file = configs[filePath];
-      const newZones = [...file.content.CircleZones];
-      newZones.splice(arrayIndex, 1);
-      onChangeField(filePath, ['CircleZones'], newZones);
-    } else if (type === 'safezone_cylinder') {
-      const file = configs[filePath];
-      const newZones = [...file.content.CylinderZones];
-      newZones.splice(arrayIndex, 1);
-      onChangeField(filePath, ['CylinderZones'], newZones);
-    } else if (type === 'nogo_area') {
-      const file = configs[filePath];
-      const newAreas = [...file.content.NoGoAreas];
-      newAreas.splice(arrayIndex, 1);
-      onChangeField(filePath, ['NoGoAreas'], newAreas);
-    } else if (type === 'patrol_waypoint') {
-      const file = configs[filePath];
-      const newWaypoints = [...file.content.Patrols[patrolIdx].Waypoints];
-      newWaypoints.splice(wpIdx, 1);
-      onChangeField(filePath, ['Patrols', patrolIdx, 'Waypoints'], newWaypoints);
-    } else if (type === 'roaming_location') {
-      const file = configs[filePath];
-      const newLocs = [...file.content.RoamingLocations];
-      newLocs.splice(arrayIndex, 1);
-      onChangeField(filePath, ['RoamingLocations'], newLocs);
-    } else {
-      // Standalone entity deletions (Physical file deletes)
-      onDeleteFile(filePath);
-    }
-
+    toast.success(ru ? "Объекты удалены" : "Entities deleted");
     setHoveredEntity(null);
     setSelectedEntity(null);
+    setSelectedEntityIds(new Set());
   };
 
   const handleDeleteWaypoint = (patrolIdx, wpIdx) => {
@@ -3099,9 +3457,9 @@ export default function TacticalMap({
                       fontSize: '10px',
                       fontWeight: 'bold',
                       justifyContent: 'center',
-                      borderColor: isDrawModeActive ? '#ebd667' : 'var(--border-color)',
-                      background: isDrawModeActive ? 'rgba(235, 214, 103, 0.15)' : 'transparent',
-                      color: isDrawModeActive ? '#ebd667' : 'var(--text-primary)'
+                      borderColor: isDrawModeActive ? '#00cec9' : 'var(--border-color)',
+                      background: isDrawModeActive ? 'rgba(0, 206, 201, 0.15)' : 'transparent',
+                      color: isDrawModeActive ? '#00cec9' : 'var(--text-primary)'
                     }}
                   >
                     {isDrawModeActive ? '✍️ ' + t('map_draw_wp_active') : '✍️ ' + t('map_draw_wp')}
@@ -3284,13 +3642,14 @@ export default function TacticalMap({
               ) : (
                 allListItems.map((item, idx) => {
                   let labelColor = 'var(--text-primary)';
-                  if (item.type === 'airdrop') labelColor = '#ebd667';
-                  else if (item.type === 'safezone' || item.type === 'safezone_cylinder') labelColor = '#559655';
-                  else if (item.type === 'traderzone') labelColor = '#44aacc';
-                  else if (item.type === 'npc') labelColor = '#a6f5a6';
-                  else if (item.type === 'quest_objective') labelColor = '#c084fc';
-                  else if (item.type === 'roaming_location') labelColor = '#ff9f43';
-                  else if (item.type === 'nogo_area') labelColor = '#cc4a4a';
+                  if (item.type === 'airdrop') labelColor = '#f1c40f';
+                  else if (item.type === 'safezone' || item.type === 'safezone_cylinder') labelColor = '#2ecc71';
+                  else if (item.type === 'traderzone') labelColor = '#0984e3';
+                  else if (item.type === 'npc') labelColor = '#a29bfe';
+                  else if (item.type === 'patrol_waypoint') labelColor = '#00cec9';
+                  else if (item.type === 'quest_objective') labelColor = '#e84393';
+                  else if (item.type === 'roaming_location') labelColor = '#e17055';
+                  else if (item.type === 'nogo_area') labelColor = '#d63031';
 
                   const isBookmarked = bookmarks.some(b => b.x === item.x && b.z === item.z);
 
@@ -3336,10 +3695,14 @@ export default function TacticalMap({
                                 name: item.name || item.type,
                                 x: item.x,
                                 z: item.z,
-                                color: item.type === 'safezone' ? '#2ecc71' : 
-                                       item.type === 'airdrop' ? '#ebd667' : 
-                                       item.type === 'traderzone' ? '#74b9ff' : 
-                                       item.type === 'nogo_area' ? '#ff7675' : '#c084fc'
+                                color: item.type === 'safezone' || item.type === 'safezone_cylinder' ? '#2ecc71' : 
+                                       item.type === 'airdrop' ? '#f1c40f' : 
+                                       item.type === 'traderzone' ? '#0984e3' : 
+                                       item.type === 'npc' ? '#a29bfe' : 
+                                       item.type === 'patrol_waypoint' ? '#00cec9' : 
+                                       item.type === 'quest_objective' ? '#e84393' : 
+                                       item.type === 'nogo_area' ? '#d63031' : 
+                                       item.type === 'roaming_location' ? '#e17055' : '#c084fc'
                               };
                               setBookmarks(prev => [newB, ...prev]);
                               toast.success(lang === 'ru' ? `Добавлено в избранное: ${item.name}` : `Added to bookmarks: ${item.name}`);
@@ -3594,7 +3957,13 @@ export default function TacticalMap({
         ref={containerRef}
         className="map-canvas-container"
         style={{ flex: 1, position: 'relative' }}
-        onClick={() => contextMenu && setContextMenu(null)}
+        onClick={(e) => {
+          // If clicked inside the context menu, don't close it
+          if (contextMenu && e.target.closest && e.target.closest('.rt-context-menu')) {
+            return;
+          }
+          if (contextMenu) setContextMenu(null);
+        }}
       >
         <canvas
           ref={canvasRef}
@@ -3606,6 +3975,12 @@ export default function TacticalMap({
           onDoubleClick={handleDoubleClick}
           onContextMenu={e => {
             e.preventDefault();
+            if (hoveredEntity) {
+              if (!selectedEntityIds.has(hoveredEntity.id)) {
+                setSelectedEntityIds(new Set([hoveredEntity.id]));
+                setSelectedEntity(hoveredEntity);
+              }
+            }
             setContextMenu({ x: mouseCoords.x, z: mouseCoords.z, px: e.clientX, py: e.clientY, entity: hoveredEntity || null });
           }}
           style={{ display: 'block', width: '100%', height: '100%', cursor: isPanning ? 'grabbing' : 'default' }}
@@ -3704,15 +4079,15 @@ export default function TacticalMap({
             {t('map_hud_entities') || 'ENTITIES:'}
           </div>
           {[
-            { label: 'AIR', key: 'airdrops', color: '#ebd667' },
-            { label: 'SAFE', key: 'safezones', color: '#559655' },
-            { label: 'P2P', key: 'traders', color: '#44aacc' },
-            { label: 'NPC', key: 'npcs', color: '#a6f5a6' },
-            { label: 'AI', key: 'patrols', color: 'var(--text-primary)' },
-            { label: 'QUEST', key: 'questObjectives', color: '#c084fc' },
-            { label: 'NOGO', key: 'nogoareas', color: '#cc4a4a' },
-            { label: 'ROAMING', key: 'roamingLocations', color: '#ff9f43' },
-            { label: 'MPG', key: 'spawner', color: '#ff7675' }
+            { label: 'AIR', key: 'airdrops', color: '#f1c40f' },
+            { label: 'SAFE', key: 'safezones', color: '#2ecc71' },
+            { label: 'P2P', key: 'traders', color: '#0984e3' },
+            { label: 'NPC', key: 'npcs', color: '#a29bfe' },
+            { label: 'AI', key: 'patrols', color: '#00cec9' },
+            { label: 'QUEST', key: 'questObjectives', color: '#e84393' },
+            { label: 'NOGO', key: 'nogoareas', color: '#d63031' },
+            { label: 'ROAMING', key: 'roamingLocations', color: '#e17055' },
+            { label: 'MPG', key: 'spawner', color: '#ff3f34' }
           ].map(l => {
             let count = 0;
             if (l.key === 'patrols') {
@@ -3788,7 +4163,7 @@ export default function TacticalMap({
 
         {/* Right-Click Context Menu */}
         {contextMenu && (
-          <div
+          <div className="rt-context-menu"
             onMouseDown={e => e.stopPropagation()}
             onClick={e => e.stopPropagation()}
             style={{
@@ -3816,7 +4191,30 @@ export default function TacticalMap({
             </div>
 
             {/* === ENTITY CONTEXT === */}
-            {contextMenu.entity && (() => {
+            {/* === MULTI-ENTITY CONTEXT === */}
+            {selectedEntityIds.size > 1 ? (() => {
+              const ru = lang === 'ru';
+              return (
+                <>
+                  <div style={{ padding: '6px 12px 2px', fontSize: '11px', color: 'var(--text-glow)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                    {ru ? `Выделено объектов: ${selectedEntityIds.size}` : `Selected Entities: ${selectedEntityIds.size}`}
+                  </div>
+                  <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '4px 0' }} />
+                  
+                  <button
+                    onClick={() => {
+                      handleDeleteEntity(selectedEntity);
+                      setContextMenu(null);
+                    }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.12)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    🗑 {ru ? `Удалить выделенные (${selectedEntityIds.size})` : `Delete Selected (${selectedEntityIds.size})`}
+                  </button>
+                </>
+              );
+            })() : (contextMenu.entity && (() => {
               const ent = contextMenu.entity;
               const ru = lang === 'ru';
               return (
@@ -3918,10 +4316,14 @@ export default function TacticalMap({
                               name: ent.name || ent.type,
                               x: ent.x,
                               z: ent.z,
-                              color: ent.type === 'safezone' ? '#2ecc71' : 
-                                     ent.type === 'airdrop' ? '#ebd667' : 
-                                     ent.type === 'traderzone' ? '#74b9ff' : 
-                                     ent.type === 'nogo_area' ? '#ff7675' : '#c084fc',
+                              color: ent.type === 'safezone' || ent.type === 'safezone_cylinder' ? '#2ecc71' : 
+                                     ent.type === 'airdrop' ? '#f1c40f' : 
+                                     ent.type === 'traderzone' ? '#0984e3' : 
+                                     ent.type === 'npc' ? '#a29bfe' : 
+                                     ent.type === 'patrol_waypoint' ? '#00cec9' : 
+                                     ent.type === 'quest_objective' ? '#e84393' : 
+                                     ent.type === 'nogo_area' ? '#d63031' : 
+                                     ent.type === 'roaming_location' ? '#e17055' : '#c084fc',
                               linkedEntityId: ent.id,
                               linkedEntityType: ent.type,
                               offsetX: 0,
@@ -4002,7 +4404,7 @@ export default function TacticalMap({
                   )}
                 </>
               );
-            })()}
+            })())}
 
             {/* === MAP CONTEXT (no entity) === */}
             {!contextMenu.entity && (() => {
@@ -4138,6 +4540,92 @@ export default function TacticalMap({
                   </button>
 
                   <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '2px 0' }} />
+
+                  {/* === CREATE BOOKMARK === */}
+                  {contextMenu.showBookmark ? (
+                    <div style={{ padding: '8px 12px' }}>
+                      <div style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '0.08em', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
+                        {ru ? '// НОВАЯ ЗАКЛАДКА' : '// NEW BOOKMARK'}
+                      </div>
+                      <input
+                        autoFocus
+                        value={contextMenu.bkmNameInput || ''}
+                        onChange={e => setContextMenu(prev => ({ ...prev, bkmNameInput: e.target.value }))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && contextMenu.bkmNameInput?.trim()) {
+                            const newB = {
+                              id: Date.now(),
+                              name: contextMenu.bkmNameInput.trim(),
+                              x: contextMenu.x,
+                              z: contextMenu.z,
+                              color: contextMenu.bkmColorInput || '#74b9ff',
+                            };
+                            setBookmarks(prev => [newB, ...prev]);
+                            toast.success(ru ? `Закладка "${newB.name}" создана` : `Bookmark "${newB.name}" created`);
+                            setContextMenu(null);
+                          }
+                          if (e.key === 'Escape') setContextMenu(null);
+                        }}
+                        placeholder={ru ? 'Название закладки…' : 'Bookmark name…'}
+                        style={{ width: '100%', padding: '5px 7px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '2px', color: 'var(--text-glow)', fontSize: '11px', fontFamily: 'var(--font-mono)', boxSizing: 'border-box', marginBottom: '6px' }}
+                      />
+                      {/* Color swatches */}
+                      <div style={{ display: 'flex', gap: '5px', marginBottom: '7px', flexWrap: 'wrap' }}>
+                        {['#74b9ff','#ff7675','#2ecc71','#ebd667','#c084fc','#fd79a8','#fab1a0','#00cec9','#e17055','#ffffff'].map(col => (
+                          <div
+                            key={col}
+                            onClick={() => setContextMenu(prev => ({ ...prev, bkmColorInput: col }))}
+                            title={col}
+                            style={{
+                              width: '18px', height: '18px', borderRadius: '50%', cursor: 'pointer',
+                              background: col,
+                              border: (contextMenu.bkmColorInput || '#74b9ff') === col ? '2px solid #fff' : '2px solid transparent',
+                              flexShrink: 0,
+                              transition: 'transform 0.1s',
+                              transform: (contextMenu.bkmColorInput || '#74b9ff') === col ? 'scale(1.25)' : 'scale(1)',
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <button
+                          className="btn btn-accent"
+                          disabled={!contextMenu.bkmNameInput?.trim()}
+                          onClick={() => {
+                            if (!contextMenu.bkmNameInput?.trim()) return;
+                            const newB = {
+                              id: Date.now(),
+                              name: contextMenu.bkmNameInput.trim(),
+                              x: contextMenu.x,
+                              z: contextMenu.z,
+                              color: contextMenu.bkmColorInput || '#74b9ff',
+                            };
+                            setBookmarks(prev => [newB, ...prev]);
+                            toast.success(ru ? `Закладка "${newB.name}" создана` : `Bookmark "${newB.name}" created`);
+                            setContextMenu(null);
+                          }}
+                          style={{ flex: 1, justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}
+                        >
+                          {ru ? '⭐ СОЗДАТЬ' : '⭐ CREATE'}
+                        </button>
+                        <button
+                          onClick={() => setContextMenu(prev => ({ ...prev, showBookmark: false, bkmNameInput: '' }))}
+                          style={{ padding: '5px 8px', background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '2px', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '10px', fontFamily: 'var(--font-mono)' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setContextMenu(prev => ({ ...prev, showBookmark: true, bkmNameInput: '', bkmColorInput: '#74b9ff' }))}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      ⭐ {ru ? 'Создать закладку' : 'Create Bookmark'}
+                    </button>
+                  )}
 
                   {/* Add Waypoint */}
                   {patrols.length > 0 && (
@@ -4332,9 +4820,10 @@ export default function TacticalMap({
                               style={{ width: '70px', padding: '4px 6px', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '2px', color: 'var(--text-glow)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}
                             />
                             <button
+                              className="btn btn-accent"
                               onClick={handleQuickSpawn}
                               disabled={!contextMenu.spawnName?.trim() || (contextMenu.spawnType === 'spawner_trigger' && !contextMenu.spawnFile)}
-                              style={{ flex: 1, padding: '4px 8px', background: (contextMenu.spawnName?.trim() && (contextMenu.spawnType !== 'spawner_trigger' || contextMenu.spawnFile)) ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '2px', color: (contextMenu.spawnName?.trim() && (contextMenu.spawnType !== 'spawner_trigger' || contextMenu.spawnFile)) ? '#000' : 'var(--text-secondary)', cursor: (contextMenu.spawnName?.trim() && (contextMenu.spawnType !== 'spawner_trigger' || contextMenu.spawnFile)) ? 'pointer' : 'default', fontSize: '10px', fontFamily: 'var(--font-mono)', fontWeight: 700 }}
+                              style={{ flex: 1, justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}
                             >
                               {ru ? 'СОЗДАТЬ' : 'CREATE'}
                             </button>
