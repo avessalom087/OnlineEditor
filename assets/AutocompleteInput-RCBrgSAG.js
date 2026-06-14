@@ -1,4 +1,4 @@
-import{j as d}from"./index-BShqWMvp.js";import{a as f}from"./vendor-react-D7rv8Q1m.js";const E=`
+import{j as d}from"./index-CrhDo1Bd.js";import{a as f}from"./vendor-react-D7rv8Q1m.js";const E=`
   let items = [];
   self.onmessage = function(e) {
     const { type, payload } = e.data;
