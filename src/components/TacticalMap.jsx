@@ -4162,10 +4162,8 @@ export default function TacticalMap({
               >
                 <span>{l.label}</span>
                 <strong style={{ 
-                  background: isVisible ? 'rgba(0,0,0,0.3)' : 'transparent',
-                  padding: '0px 3px', 
-                  borderRadius: '1px',
-                  marginLeft: '2px'
+                  marginLeft: '4px',
+                  fontWeight: 'bold'
                 }}>{count}</strong>
               </div>
             );

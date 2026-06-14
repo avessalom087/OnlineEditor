@@ -310,11 +310,86 @@ const renderResponsiveButtonText = (text) => {
   return <span>{text}</span>;
 };
 
+// ─── Password Lock Screen Component ──────────────────────────────────────────
+function PasswordLockScreen({ onAuthenticate }) {
+  const { t } = useTranslation();
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (loading) return;
+    setLoading(true);
+    setError(false);
+
+    try {
+      const msgBuffer = new TextEncoder().encode(password);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // Default password "PZ2033" SHA-256 hash:
+      // 7286226dc6dcd6e936650cc1d7c2059f9f91d224485ab288079a297e41302509
+      // To change this password, replace the hash string below with your new SHA-256 hash
+      const targetHash = '7286226dc6dcd6e936650cc1d7c2059f9f91d224485ab288079a297e41302509';
+
+      if (hashHex === targetHash) {
+        onAuthenticate();
+      } else {
+        setError(true);
+        setPassword('');
+      }
+    } catch (err) {
+      console.error('Crypto error:', err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="lock-screen-wrapper">
+      <div className="lock-screen-card">
+        <div className="lock-screen-icon">🔒</div>
+        <h2>{t('auth_title')}</h2>
+        <p>{t('auth_subtitle')}</p>
+        
+        <form onSubmit={handleSubmit}>
+          <input
+            type="password"
+            className={`lock-screen-input ${error ? 'error' : ''}`}
+            placeholder={t('auth_placeholder')}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+            autoFocus
+          />
+          {error && <div className="lock-screen-error-msg">{t('auth_error')}</div>}
+          <button type="submit" className="btn btn-accent lock-screen-btn" disabled={loading}>
+            {loading ? '...' : t('auth_btn')}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── AppContent (all logic lives here) ───────────────────────────────────────
 
 function AppContent() {
   const toast = useToast();
   const { t, lang, setLang } = useTranslation();
+
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('dayz_editor_authenticated') === 'true';
+  });
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('dayz_editor_authenticated');
+    setIsAuthenticated(false);
+  }, []);
+
 
   // Version control & localStorage schema migration
   const APP_VERSION = '1.2.0';
@@ -1025,6 +1100,18 @@ function AppContent() {
   const errorSettings = errorFilesArr.filter(p => p.includes('settings')).length;
   const errorSpawner  = errorFilesArr.filter(p => p.toLowerCase().startsWith('mpg_spawner/')).length;
 
+  // ── Password Auth Gate ────────────────────────────────────────────────────
+  if (!isAuthenticated) {
+    return (
+      <PasswordLockScreen
+        onAuthenticate={() => {
+          localStorage.setItem('dayz_editor_authenticated', 'true');
+          setIsAuthenticated(true);
+        }}
+      />
+    );
+  }
+
   // ── Welcome Screen ────────────────────────────────────────────────────────
   if (!hasAccess && !loading) {
     return (
@@ -1033,6 +1120,7 @@ function AppContent() {
         folderName={folderName}
         onRestoreAccess={handleRestoreAccess}
         onSelectFolder={handleSelectFolder}
+        onLogout={handleLogout}
       />
     );
   }
@@ -1084,9 +1172,14 @@ function AppContent() {
                 <span className="btn-text-responsive">{t('header_disconnect')}</span>
                 <span className="btn-icon-responsive">✖</span>
               </button>
+              <button onClick={handleLogout} className="header-status-btn" title={t('auth_logout')} style={{ marginLeft: '6px' }}>
+                <span className="btn-text-responsive">{t('auth_logout')}</span>
+                <span className="btn-icon-responsive">🔑</span>
+              </button>
             </div>
           )}
         </div>
+
 
         {/* Navigation tabs */}
         <nav className="header-nav-tabs">

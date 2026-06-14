@@ -4,6 +4,13 @@ export const translations = {
   en: {
     // Welcome Screen
     welcome_title: "PROJECT ZERO TOOL",
+    auth_title: "ACCESS RESTRICTED",
+    auth_subtitle: "Please enter the security password to access the Project Zero Tool.",
+    auth_placeholder: "Enter password...",
+    auth_btn: "AUTHENTICATE",
+    auth_error: "Invalid password. Access denied.",
+    auth_logout: "LOG OUT",
+
     welcome_subtitle: "Fully client-side configuration tool for DayZ Expansion. Directly modify, validate, and manage server configs and maps locally inside your browser.",
     welcome_restore_btn: "📂 RESTORE ACCESS TO: {folder}",
     welcome_open_btn: "📂 OPEN SERVER CONFIG DIRECTORY",
@@ -1017,6 +1024,13 @@ export const translations = {
   ru: {
     // Welcome Screen
     welcome_title: "PROJECT ZERO TOOL",
+    auth_title: "ДОСТУП ОГРАНИЧЕН",
+    auth_subtitle: "Пожалуйста, введите пароль безопасности для доступа к Project Zero Tool.",
+    auth_placeholder: "Введите пароль...",
+    auth_btn: "ВОЙТИ",
+    auth_error: "Неверный пароль. Доступ заблокирован.",
+    auth_logout: "ВЫЙТИ",
+
     welcome_subtitle: "Полностью клиентский инструмент настройки DayZ Expansion. Редактируйте, проверяйте и управляйте конфигурациями серверов и картами локально в вашем браузере.",
     welcome_restore_btn: "📂 ВОССТАНОВИТЬ ДОСТУП К: {folder}",
     welcome_open_btn: "📂 ОТКРЫТЬ ЛОКАЛЬНУЮ ПАПКУ С МОДАМИ",

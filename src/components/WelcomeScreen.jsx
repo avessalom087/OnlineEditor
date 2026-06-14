@@ -7,7 +7,7 @@ import { useTranslation } from '../utils/localization';
  * Shown when the user hasn't selected a folder yet (hasAccess === false).
  * Receives callbacks from AppContent — contains zero business logic.
  */
-export default function WelcomeScreen({ savedHandle, folderName, onRestoreAccess, onSelectFolder }) {
+export default function WelcomeScreen({ savedHandle, folderName, onRestoreAccess, onSelectFolder, onLogout }) {
   const { t, lang, setLang } = useTranslation();
   const isSupported = typeof window.showDirectoryPicker === 'function';
 
@@ -23,6 +23,24 @@ export default function WelcomeScreen({ savedHandle, folderName, onRestoreAccess
       position: 'relative',
       overflow: 'hidden',
     }}>
+      {onLogout && (
+        <button
+          className="btn"
+          onClick={onLogout}
+          style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            padding: '6px 12px',
+            fontSize: '11px',
+            zIndex: 10,
+            fontFamily: 'var(--font-mono)'
+          }}
+        >
+          {t('auth_logout')}
+        </button>
+      )}
+
       {/* Futuristic grid pattern background */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
