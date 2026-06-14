@@ -1,8 +1,9 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import FormCard from './shared/FormCard';
 import CoordinatesInput from './shared/CoordinatesInput';
 import { useTranslation } from '../utils/localization';
+import HelpIcon from './HelpIcon';
 
 // Topological sorting layer layout for quest nodes
 function layoutQuests(quests, nodeOffsets) {
@@ -1965,11 +1966,11 @@ export default function QuestGraph({
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
                     {[
                       { label: t('quest_chk_active'), key: 'Active' },
-                      { label: t('quest_chk_repeatable'), key: 'Repeatable' },
-                      { label: t('quest_chk_autocomplete'), key: 'Autocomplete' },
-                      { label: t('quest_chk_cancel_death'), key: 'CancelQuestOnPlayerDeath' },
-                      { label: t('quest_chk_group'), key: 'IsGroupQuest' },
-                      { label: t('quest_chk_achievement'), key: 'IsAchievement' }
+                      { label: t('quest_chk_repeatable'), key: 'Repeatable', tipKey: 'tip_quest_repeatable' },
+                      { label: t('quest_chk_autocomplete'), key: 'Autocomplete', tipKey: 'tip_quest_autocomplete' },
+                      { label: t('quest_chk_cancel_death'), key: 'CancelQuestOnPlayerDeath', tipKey: 'tip_quest_cancel_death' },
+                      { label: t('quest_chk_group'), key: 'IsGroupQuest', tipKey: 'tip_quest_group' },
+                      { label: t('quest_chk_achievement'), key: 'IsAchievement', tipKey: 'tip_quest_achievement' }
                     ].map(f => (
                       <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
                         <input 
@@ -1977,7 +1978,10 @@ export default function QuestGraph({
                           checked={activeQuestConfig[f.key] === 1 || activeQuestConfig[f.key] === true}
                           onChange={e => onChangeField(selectedQuest.filePath, [f.key], e.target.checked ? 1 : 0)}
                         />
-                        {f.label}
+                        <span className="label-with-help">
+                          {f.label}
+                          {f.tipKey && <HelpIcon tipKey={f.tipKey} />}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -2063,7 +2067,9 @@ export default function QuestGraph({
                   
                   {/* PreQuestIDs list */}
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_prerequisites')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      <span className="label-with-help">{t('quest_prerequisites')}<HelpIcon tipKey="tip_quest_prequests" /></span>
+                    </label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '6px' }}>
                       {(activeQuestConfig.PreQuestIDs || []).map(preId => {
                         const title = quests.find(q => q.id === preId)?.title || `Quest ID ${preId}`;
@@ -2094,7 +2100,9 @@ export default function QuestGraph({
 
                   {/* Follow-up quest */}
                   <div>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_followup')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      <span className="label-with-help">{t('quest_followup')}<HelpIcon tipKey="tip_quest_followup" /></span>
+                    </label>
                     <select
                       value={activeQuestConfig.FollowUpQuest ?? -1}
                       onChange={e => handleSetFollowup(Number(e.target.value))}
@@ -2125,7 +2133,9 @@ export default function QuestGraph({
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_rep_req')}</label>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        <span className="label-with-help">{t('quest_label_rep_req')}<HelpIcon tipKey="tip_quest_reputation" /></span>
+                      </label>
                       <input 
                         type="number" 
                         value={activeQuestConfig.ReputationRequirement ?? -1} 
@@ -3296,7 +3306,7 @@ function QuestNPCsManager({
             </div>
           </div>
         ) : (
-          <div style={{ padding: '24px', maxWidth: '800px' }}>
+          <div style={{ padding: '24px', maxWidth: '1200px' }}>
             
             {/* Form Title */}
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '16px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -3,6 +3,7 @@ import AutocompleteInput from './shared/AutocompleteInput';
 import { useToast } from './ToastManager';
 import { translateStrKey } from '../utils/strKeys';
 import { useTranslation } from '../utils/localization';
+import HelpIcon from './HelpIcon';
 import { AutocompleteWorkerWrapper } from '../utils/autocompleteWorker';
 
 
@@ -52,7 +53,7 @@ function EditableCell({ value, originalValue, type = 'text', onChange, style = {
 
 // ─── SortableHeader ───────────────────────────────────────────────────────────
 
-function SortableHeader({ field, label, sortField, sortDir, onSort, style = {} }) {
+function SortableHeader({ field, label, sortField, sortDir, onSort, style = {}, tipKey }) {
   const isActive = sortField === field;
   return (
     <th
@@ -60,7 +61,10 @@ function SortableHeader({ field, label, sortField, sortDir, onSort, style = {} }
       onClick={() => onSort(field)}
       style={{ ...style }}
     >
-      {label}
+      <span className="label-with-help">
+        {label}
+        {tipKey && <HelpIcon tipKey={tipKey} />}
+      </span>
       {' '}
       <span style={{ opacity: isActive ? 1 : 0.3, fontSize: '10px', color: isActive ? 'var(--text-glow)' : 'var(--text-secondary)' }}>
         {isActive ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
@@ -1285,11 +1289,11 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                             </th>
                             {/* B2: Sortable headers */}
                             <SortableHeader field="ClassName"          label={t('econ_th_classname')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '24%' }} />
-                            <SortableHeader field="MinPriceThreshold"  label={t('econ_th_minprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
-                            <SortableHeader field="MaxPriceThreshold"  label={t('econ_th_maxprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} />
-                            <SortableHeader field="MinStockThreshold"  label={t('econ_th_minstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} />
-                            <SortableHeader field="MaxStockThreshold"  label={t('econ_th_maxstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} />
-                            <SortableHeader field="SellPricePercent"   label={t('econ_th_sellpct')}     sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} />
+                            <SortableHeader field="MinPriceThreshold"  label={t('econ_th_minprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} tipKey="tip_econ_min_price" />
+                            <SortableHeader field="MaxPriceThreshold"  label={t('econ_th_maxprice')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '10%', textAlign: 'center' }} tipKey="tip_econ_max_price" />
+                            <SortableHeader field="MinStockThreshold"  label={t('econ_th_minstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} tipKey="tip_econ_min_stock" />
+                            <SortableHeader field="MaxStockThreshold"  label={t('econ_th_maxstock')}  sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} tipKey="tip_econ_max_stock" />
+                            <SortableHeader field="SellPricePercent"   label={t('econ_th_sellpct')}     sortField={sortField} sortDir={sortDir} onSort={handleSort} style={{ width: '9%', textAlign: 'center' }} tipKey="tip_econ_sell_pct" />
                             <th style={{ width: '15%', textAlign: 'center' }}>{lang === 'ru' ? 'Обвесы' : 'Attachments'}</th>
                             <th style={{ width: '10%', textAlign: 'center' }}>{t('econ_th_actions')}</th>
                           </tr>
@@ -1801,7 +1805,9 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_minprice')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                      <span className="label-with-help">{t('econ_th_minprice')}<HelpIcon tipKey="tip_econ_min_price" /></span>
+                    </label>
                     <input 
                       type="number" 
                       value={defaultMinPrice} 
@@ -1810,7 +1816,9 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_maxprice')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                      <span className="label-with-help">{t('econ_th_maxprice')}<HelpIcon tipKey="tip_econ_max_price" /></span>
+                    </label>
                     <input 
                       type="number" 
                       value={defaultMaxPrice} 
@@ -1819,7 +1827,9 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_sellpct')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                      <span className="label-with-help">{t('econ_th_sellpct')}<HelpIcon tipKey="tip_econ_sell_pct" /></span>
+                    </label>
                     <input 
                       type="number" 
                       value={defaultSellPercent} 
@@ -1828,7 +1838,9 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_minstock')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                      <span className="label-with-help">{t('econ_th_minstock')}<HelpIcon tipKey="tip_econ_min_stock" /></span>
+                    </label>
                     <input 
                       type="number" 
                       value={defaultMinStock} 
@@ -1837,7 +1849,9 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{t('econ_th_maxstock')}</label>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                      <span className="label-with-help">{t('econ_th_maxstock')}<HelpIcon tipKey="tip_econ_max_stock" /></span>
+                    </label>
                     <input 
                       type="number" 
                       value={defaultMaxStock} 

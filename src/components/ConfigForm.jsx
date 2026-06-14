@@ -1,5 +1,23 @@
 import React, { useState } from 'react';
 import { useTranslation } from '../utils/localization';
+import HelpIcon from './HelpIcon';
+
+const KEY_TO_TIP_KEY_OVERRIDE = {
+  ShowPlayerPosition: 'tip_set_show_player_pos',
+  EnableGPS: 'tip_set_gps_hud',
+  GPSHUD: 'tip_set_gps_hud',
+  VehicleKeys: 'tip_set_vehicle_key',
+  VehicleDamage: 'tip_set_vehicle_damage',
+  RoughLanding: 'tip_set_rough_landing',
+};
+
+function getTipKey(keyName) {
+  if (KEY_TO_TIP_KEY_OVERRIDE[keyName]) {
+    return KEY_TO_TIP_KEY_OVERRIDE[keyName];
+  }
+  const snake = keyName.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+  return `tip_set_${snake}`;
+}
 
 // Common enums used in DayZ Expansion configuration
 const STATIC_ENUMS = {
@@ -95,7 +113,7 @@ function Accordion({ title, children, isDirty, onReset, isList = false, onRemove
 }
 
 // Checkbox Component
-function CustomCheckbox({ checked, onChange, label, isDirty }) {
+function CustomCheckbox({ checked, onChange, label, isDirty, tipKey }) {
   return (
     <div 
       className="checkbox-container" 
@@ -108,7 +126,10 @@ function CustomCheckbox({ checked, onChange, label, isDirty }) {
         fontFamily: 'var(--font-mono)',
         fontSize: '13px'
       }} className={isDirty ? 'field-dirty-label' : ''}>
-        {label}
+        <span className="label-with-help">
+          {label}
+          {tipKey && <HelpIcon tipKey={tipKey} />}
+        </span>
       </span>
     </div>
   );
@@ -170,6 +191,7 @@ function RenderFormNode({
           onChange={(newVal) => onChange(path, newVal)} 
           label={displayLabel}
           isDirty={isDirty}
+          tipKey={getTipKey(keyName)}
         />
       </div>
     );
@@ -178,11 +200,15 @@ function RenderFormNode({
   // 2. Vector3 check
   if (isVector3(value)) {
     const origVec = isVector3(originalValue) ? originalValue : [0, 0, 0];
+    const tipKey = getTipKey(keyName);
     return (
       <div className="form-group" style={{ borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
           <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0 }}>
-            {displayLabel} {t ? "(3D VECTOR)" : "(3D VECTOR)"}
+            <span className="label-with-help">
+              {displayLabel} {t ? "(3D VECTOR)" : "(3D VECTOR)"}
+              <HelpIcon tipKey={tipKey} />
+            </span>
           </label>
           <div style={{ display: 'flex', gap: '8px' }}>
             {onNavigateToMap && (
@@ -274,11 +300,15 @@ function RenderFormNode({
       onChange(path, newList);
     };
 
+    const tipKey = getTipKey(keyName);
     return (
       <div style={{ marginBottom: '16px', borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '1px' }}>
-            {displayLabel} (ARRAY · {value.length} {t ? t('econ_all_items') : "ITEMS"})
+            <span className="label-with-help">
+              {displayLabel} (ARRAY · {value.length} {t ? t('econ_all_items') : "ITEMS"})
+              <HelpIcon tipKey={tipKey} />
+            </span>
           </label>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button 
@@ -473,11 +503,15 @@ function RenderFormNode({
 
   const isTextarea = typeof value === 'string' && (value.length > 50 || keyName.toLowerCase().includes('text') || keyName.toLowerCase().includes('desc'));
 
+  const tipKey = getTipKey(keyName);
   return (
     <div className="form-group">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
         <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0 }}>
-          {displayLabel}
+          <span className="label-with-help">
+            {displayLabel}
+            <HelpIcon tipKey={tipKey} />
+          </span>
         </label>
         {isDirty && (
           <button 
@@ -678,7 +712,7 @@ export default function ConfigForm({
 
       {/* Form Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <div style={{ maxWidth: '1250px', margin: '0 auto' }}>
           {Object.keys(config.content).map(key => (
             <RenderFormNode
               key={key}

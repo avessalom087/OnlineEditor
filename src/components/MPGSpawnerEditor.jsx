@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import FormCard from './shared/FormCard';
+import HelpIcon from './HelpIcon';
 import { useTranslation } from '../utils/localization';
+
 
 // Helper to parse pipe-delimited spawn list entry
 function parseSpawnListEntry(str) {
@@ -1246,12 +1248,12 @@ export default function MPGSpawnerEditor({
               
               {/* SUBTAB 1: CORE / GEOMETRY */}
               {activeSubTab === 'core' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '800px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1200px' }}>
                   
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                     <div>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        {t('spawner_point_id')}
+                        <span className="label-with-help">{t('spawner_point_id')}<HelpIcon tipKey="tip_mpg_point_id" /></span>
                       </label>
                       <input
                         type="number"
@@ -1298,7 +1300,7 @@ export default function MPGSpawnerEditor({
 
                    <div>
                     <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      {t('spawner_trigger_position')} (X Z Y | rotY rotX rotZ)
+                      <span className="label-with-help">{t('spawner_trigger_position')} (X Z Y | rotY rotX rotZ)<HelpIcon tipKey="tip_mpg_position" /></span>
                     </label>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <input
@@ -1392,7 +1394,7 @@ export default function MPGSpawnerEditor({
                       <div className={`checkbox-custom ${selectedTrigger.isDisabled === 1 ? 'checked' : ''}`}
                         onClick={() => handleUpdateTriggerField('isDisabled', selectedTrigger.isDisabled === 1 ? 0 : 1)} />
                       <span style={{ fontSize: '12px', color: 'var(--text-primary)' }}>
-                        {t('spawner_is_disabled')}
+                        <span className="label-with-help">{t('spawner_is_disabled')}<HelpIcon tipKey="tip_mpg_is_disabled" /></span>
                       </span>
                     </label>
 
@@ -1400,7 +1402,7 @@ export default function MPGSpawnerEditor({
                       <div className={`checkbox-custom ${selectedTrigger.isDebugEnabled === 1 ? 'checked' : ''}`}
                         onClick={() => handleUpdateTriggerField('isDebugEnabled', selectedTrigger.isDebugEnabled === 1 ? 0 : 1)} />
                       <span style={{ fontSize: '12px', color: 'var(--text-primary)' }}>
-                        {t('spawner_is_debug_enabled')}
+                        <span className="label-with-help">{t('spawner_is_debug_enabled')}<HelpIcon tipKey="tip_mpg_is_debug" /></span>
                       </span>
                     </label>
 
@@ -1408,7 +1410,7 @@ export default function MPGSpawnerEditor({
                       <div className={`checkbox-custom ${selectedTrigger.showVisualisation === 1 ? 'checked' : ''}`}
                         onClick={() => handleUpdateTriggerField('showVisualisation', selectedTrigger.showVisualisation === 1 ? 0 : 1)} />
                       <span style={{ fontSize: '12px', color: 'var(--text-primary)' }}>
-                        {t('spawner_show_visualisation')} (Требуется мод @MPG_spawn_zone)
+                        <span className="label-with-help">{t('spawner_show_visualisation')} (Требуется мод @MPG_spawn_zone)<HelpIcon tipKey="tip_mpg_show_vis" /></span>
                       </span>
                     </label>
                   </FormCard>
@@ -1427,7 +1429,7 @@ export default function MPGSpawnerEditor({
                     !selectedTrigger.notificationTextWin));
 
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '800px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1200px' }}>
                     
                     {/* Notification Mute / Unmute Banner & Button */}
                     <div style={{
@@ -1468,7 +1470,7 @@ export default function MPGSpawnerEditor({
                     <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
                       <div>
                         <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                          {t('spawner_notification_title')}
+                          <span className="label-with-help">{t('spawner_notification_title')}<HelpIcon tipKey="tip_mpg_notif_enter" /></span>
                         </label>
                         <input
                           type="text"
@@ -1478,7 +1480,7 @@ export default function MPGSpawnerEditor({
                       </div>
                       <div>
                         <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                          {t('spawner_notification_time')}
+                          <span className="label-with-help">{t('spawner_notification_time')}<HelpIcon tipKey="tip_mpg_notif_time" /></span>
                         </label>
                         <input
                           type="number"
@@ -1490,7 +1492,7 @@ export default function MPGSpawnerEditor({
 
                     <div>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        {t('spawner_notification_icon')}
+                        <span className="label-with-help">{t('spawner_notification_icon')}<HelpIcon tipKey="tip_mpg_notif_icon" /></span>
                       </label>
                       <input
                         type="text"
@@ -1502,7 +1504,7 @@ export default function MPGSpawnerEditor({
 
                     <div>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        {t('spawner_notification_text_enter')}
+                        <span className="label-with-help">{t('spawner_notification_text_enter')}<HelpIcon tipKey="tip_mpg_notif_enter" /></span>
                       </label>
                       <input
                         type="text"
@@ -1513,7 +1515,7 @@ export default function MPGSpawnerEditor({
 
                     <div>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                        {t('spawner_notification_text_exit')}
+                        <span className="label-with-help">{t('spawner_notification_text_exit')}<HelpIcon tipKey="tip_mpg_notif_exit" /></span>
                       </label>
                       <input
                         type="text"
@@ -1524,7 +1526,7 @@ export default function MPGSpawnerEditor({
 
                     <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', background: 'var(--bg-secondary)' }}>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
-                        {t('spawner_notification_text_spawn')}
+                        <span className="label-with-help">{t('spawner_notification_text_spawn')}<HelpIcon tipKey="tip_mpg_notif_spawn" /></span>
                       </label>
                       <input
                         type="text"
@@ -1588,7 +1590,7 @@ export default function MPGSpawnerEditor({
 
               {/* SUBTAB 3: TIMINGS & BEHAVIOR */}
               {activeSubTab === 'behavior' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '800px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1200px' }}>
                   
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                     <div>
@@ -1682,7 +1684,7 @@ export default function MPGSpawnerEditor({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   
                   {/* Spawn parameters row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', maxWidth: '900px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', maxWidth: '1200px' }}>
                     <div>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{t('spawner_spawn_min')}</label>
                       <input
@@ -1733,7 +1735,7 @@ export default function MPGSpawnerEditor({
                   </div>
 
                   {/* Spawn Positions (independent scrolling container) */}
-                  <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', background: 'var(--bg-secondary)', maxWidth: '900px' }}>
+                  <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', background: 'var(--bg-secondary)', maxWidth: '1200px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
                       <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-glow)' }}>
                         📍 {lang === 'ru' ? 'Координаты точек спавна существ:' : 'Spawn positions coordinates:'}
@@ -1889,7 +1891,7 @@ export default function MPGSpawnerEditor({
                   </div>
 
                   {/* Entities list to spawn (independent scrolling container) */}
-                  <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', background: 'var(--bg-secondary)', maxWidth: '900px' }}>
+                  <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', background: 'var(--bg-secondary)', maxWidth: '1200px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                       <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-glow)' }}>
                         🦁 {t('spawner_spawn_list')}
@@ -2374,7 +2376,7 @@ export default function MPGSpawnerEditor({
 
               {/* SUBTAB 5: LINKS & CLEANUP */}
               {activeSubTab === 'links' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '800px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1200px' }}>
                   
                   {/* Event triggers activation IDs inputs */}
                   <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', background: 'var(--bg-secondary)' }}>
@@ -2507,7 +2509,7 @@ export default function MPGSpawnerEditor({
 
               {/* SUBTAB 6: MAPPING */}
               {activeSubTab === 'mapping' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '800px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1200px' }}>
                   
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-glow)' }}>
