@@ -10,6 +10,8 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
   const [errorLine, setErrorLine] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   
+  const [scrollTop, setScrollTop] = useState(0);
+  
   const textareaRef = useRef(null);
   const gutterRef = useRef(null);
   const validationTimerRef = useRef(null);
@@ -32,6 +34,8 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
         setErrorMsg(null);
         setErrorLine(null);
         setIsDirty(false);
+        setScrollTop(0);
+        if (textareaRef.current) textareaRef.current.scrollTop = 0;
       } catch (e) {
         console.error(e);
       }
@@ -40,11 +44,13 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
       setErrorMsg(null);
       setErrorLine(null);
       setIsDirty(false);
+      setScrollTop(0);
     }
   }, [filePath, config]);
 
   // Sync scroll between textarea and line number gutter
   const handleScroll = (e) => {
+    setScrollTop(e.target.scrollTop);
     if (gutterRef.current) {
       gutterRef.current.scrollTop = e.target.scrollTop;
     }
@@ -223,7 +229,24 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
       </div>
 
       {/* Editor Body */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative', background: 'var(--bg-primary)' }}>
+        {errorLine && (
+          <div 
+            style={{
+              position: 'absolute',
+              left: '45px',
+              right: 0,
+              top: `${12 + (errorLine - 1) * 20}px`,
+              height: '20px',
+              background: 'rgba(255, 77, 77, 0.1)',
+              borderLeft: '3px solid #ff4d4d',
+              boxShadow: 'inset 0 0 10px rgba(255, 77, 77, 0.05)',
+              pointerEvents: 'none',
+              transform: `translateY(-${scrollTop}px)`,
+              zIndex: 0,
+            }}
+          />
+        )}
         
         {/* Line Numbers Gutter */}
         <div 
@@ -240,7 +263,8 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
             padding: '12px 8px 12px 0',
             overflowY: 'hidden',
             userSelect: 'none',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
+            zIndex: 2
           }}
         >
           {lineNumbers.map(n => {
@@ -249,8 +273,8 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
               <div 
                 key={n} 
                 style={{ 
-                  color: isErrorLine ? 'var(--danger-color)' : 'var(--text-dark)',
-                  textShadow: isErrorLine ? '0 0 6px rgba(235, 77, 75, 0.6)' : 'none',
+                  color: isErrorLine ? '#ff4d4d' : 'var(--text-dark)',
+                  textShadow: isErrorLine ? '0 0 6px rgba(255, 77, 77, 0.6)' : 'none',
                   fontWeight: isErrorLine ? 'bold' : 'normal',
                   paddingRight: '4px'
                 }}
@@ -270,7 +294,7 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
           spellCheck={false}
           style={{
             flex: 1,
-            background: 'var(--bg-primary)',
+            background: 'transparent',
             color: 'var(--text-primary)',
             fontFamily: 'var(--font-mono)',
             fontSize: '13px',
@@ -282,7 +306,8 @@ export default function RawJsonEditor({ filePath, config, onChangeField, onSaveF
             overflowY: 'auto',
             whiteSpace: 'pre',
             wordWrap: 'normal',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
+            zIndex: 1
           }}
         />
       </div>

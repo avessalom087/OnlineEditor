@@ -197,10 +197,11 @@ function FileTreeNode({ node, level, selectedPath, onSelectFile, dirtyFiles }) {
   );
 }
 
-export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirtyFiles, backups = [], onRestoreBackup }) {
-  const { t } = useTranslation();
+export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirtyFiles, backups = [], onRestoreBackup, onImportFile }) {
+  const { t, lang } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [backupsCollapsed, setBackupsCollapsed] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
 
   const paths = Object.keys(configs);
   const tree = buildTree(paths, configs, searchQuery);
@@ -215,8 +216,64 @@ export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirty
     return a.localeCompare(b);
   });
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (!onImportFile) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.name.toLowerCase().endsWith('.json')) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            onImportFile(file.name, event.target.result);
+          };
+          reader.readAsText(file);
+        }
+      }
+    }
+  };
+
   return (
-    <aside className="sidebar">
+    <aside 
+      className="sidebar"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      style={{ position: 'relative' }}
+    >
+      {isDragging && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(20, 35, 20, 0.9)',
+          border: '2px dashed var(--text-primary)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          color: 'var(--text-glow)',
+          pointerEvents: 'none',
+          animation: 'pulseGlow 1.5s infinite alternate'
+        }}>
+          <span style={{ fontSize: '32px', marginBottom: '12px' }}>📥</span>
+          <span style={{ fontFamily: 'var(--font-heading)', fontSize: '13px', letterSpacing: '2px', textAlign: 'center', padding: '0 20px', fontWeight: 'bold' }}>
+            {lang === 'ru' ? 'ОТПУСТИТЕ JSON ДЛЯ ИМПОРТА' : 'DROP JSON FILE TO IMPORT'}
+          </span>
+        </div>
+      )}
       {/* Search HUD */}
       <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
         <div style={{ 

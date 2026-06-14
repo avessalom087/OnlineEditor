@@ -249,26 +249,51 @@ function TabLoadingSpinner() {
 }
 
 // ─── TabBtn — defined outside AppContent so React doesn't recreate it each render
-const TabBtn = ({ id, label, badge, activeTab, setActiveTab }) => (
-  <button
-    className={`nav-tab ${activeTab === id ? 'active' : ''}`}
-    onClick={() => setActiveTab(id)}
-    style={{ position: 'relative' }}
-  >
-    {label}
-    {badge > 0 && (
-      <span style={{
-        position: 'absolute', top: '4px', right: '4px',
-        fontSize: '9px', fontFamily: 'var(--font-mono)',
-        color: 'var(--warning-color)', background: 'rgba(235,214,103,0.15)',
-        border: '1px solid rgba(235,214,103,0.3)', borderRadius: '8px',
-        padding: '0 4px', lineHeight: '14px', fontWeight: 'bold',
-      }}>
-        {badge}
-      </span>
-    )}
-  </button>
-);
+const TabBtn = ({ id, label, badge, errorCount, activeTab, setActiveTab }) => {
+  const hasBadge = badge > 0;
+  const hasErrors = errorCount > 0;
+  
+  // Calculate right offsets depending on which badges are displayed
+  let badgeRight = '4px';
+  if (hasErrors) {
+    badgeRight = '32px';
+  }
+
+  return (
+    <button
+      className={`nav-tab ${activeTab === id ? 'active' : ''}`}
+      onClick={() => setActiveTab(id)}
+      style={{ position: 'relative', paddingRight: (hasBadge && hasErrors) ? '54px' : (hasBadge || hasErrors) ? '32px' : '16px' }}
+    >
+      {label}
+      {hasBadge && (
+        <span style={{
+          position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: badgeRight,
+          fontSize: '9px', fontFamily: 'var(--font-mono)',
+          color: 'var(--warning-color)', background: 'rgba(235,214,103,0.15)',
+          border: '1px solid rgba(235,214,103,0.3)', borderRadius: '8px',
+          padding: '0 5px', lineHeight: '14px', fontWeight: 'bold',
+          transition: 'all 0.2s',
+        }}>
+          {badge}
+        </span>
+      )}
+      {hasErrors && (
+        <span style={{
+          position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: '4px',
+          fontSize: '9px', fontFamily: 'var(--font-mono)',
+          color: '#ff4d4d', background: 'rgba(255,77,77,0.15)',
+          border: '1px solid rgba(255,77,77,0.3)', borderRadius: '8px',
+          padding: '0 5px', lineHeight: '14px', fontWeight: 'bold',
+          boxShadow: '0 0 6px rgba(255,77,77,0.2)',
+          transition: 'all 0.2s',
+        }}>
+          ⚠ {errorCount}
+        </span>
+      )}
+    </button>
+  );
+};
 
 // Helper to parse button text and wrap label part in responsive class
 const renderResponsiveButtonText = (text) => {
@@ -806,6 +831,56 @@ function AppContent() {
       .catch(err => toast.error(t('toast_create_failed', { error: err.message })));
   };
 
+  const handleImportFile = (fileName, contentText) => {
+    try {
+      const parsed = JSON.parse(contentText);
+      let folder = 'imported';
+      const nameLower = fileName.toLowerCase();
+      if (nameLower.includes('quest_') || nameLower.includes('npc_') || nameLower.includes('objective_')) {
+        folder = 'ExpansionMod/Quests/Imported';
+      } else if (nameLower.includes('settings')) {
+        folder = 'ExpansionMod/Settings';
+      } else if (nameLower.includes('spawner') || nameLower.includes('point_')) {
+        folder = 'MPG_Spawner/Points';
+      } else if (nameLower.includes('market') || nameLower.includes('traders')) {
+        folder = 'ExpansionMod/Market';
+      }
+
+      const filePath = `${folder}/${fileName}`;
+
+      setConfigs(prev => ({
+        ...prev,
+        [filePath]: {
+          success: true,
+          content: parsed,
+          originalContent: parsed,
+          isDirty: true,
+          sizeBytes: contentText.length,
+          isImported: true
+        }
+      }));
+      setSelectedFilePath(filePath);
+      setActiveTab('raw_editor');
+      toast.success(t('toast_file_imported', { file: fileName }) || `Imported ${fileName} to memory!`);
+    } catch (err) {
+      const filePath = `imported/${fileName}`;
+      setConfigs(prev => ({
+        ...prev,
+        [filePath]: {
+          success: false,
+          error: err.message,
+          originalContent: null,
+          isDirty: true,
+          sizeBytes: contentText.length,
+          isImported: true
+        }
+      }));
+      setSelectedFilePath(filePath);
+      setActiveTab('raw_editor');
+      toast.error((lang === 'ru' ? 'Ошибка синтаксиса в импортируемом файле: ' : 'Syntax error in imported file: ') + err.message);
+    }
+  };
+
   const handleDeleteFile = (filePath) => {
     fileService.deleteFile(filePath)
       .then(() => {
@@ -942,6 +1017,14 @@ function AppContent() {
   const dirtySettings = dirtyFilesArr.filter(p => p.includes('settings')).length;
   const dirtySpawner  = dirtyFilesArr.filter(p => p.toLowerCase().startsWith('mpg_spawner/')).length;
 
+  // ─── Count tab-specific syntax errors (files failing to parse) ───────────
+  const errorFilesArr = Object.keys(configs).filter(p => !configs[p].success);
+  const errorEconomy  = errorFilesArr.filter(p => p.startsWith('expansionmod/market/') || p.startsWith('expansionmod/traders/')).length;
+  const errorQuests   = errorFilesArr.filter(p => p.startsWith('expansionmod/quests/')).length;
+  const errorAiBots   = errorFilesArr.filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
+  const errorSettings = errorFilesArr.filter(p => p.includes('settings')).length;
+  const errorSpawner  = errorFilesArr.filter(p => p.toLowerCase().startsWith('mpg_spawner/')).length;
+
   // ── Welcome Screen ────────────────────────────────────────────────────────
   if (!hasAccess && !loading) {
     return (
@@ -1007,14 +1090,14 @@ function AppContent() {
 
         {/* Navigation tabs */}
         <nav className="header-nav-tabs">
-          <TabBtn id="dashboard"  label={t('tab_dashboard')}                activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy}   activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests}    activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots}    activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings}  activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="map"        label={t('tab_map')}                       activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="spawner"    label={t('tab_spawner')}    badge={dirtySpawner}   activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="raw_editor" label={t('tab_raw_editor')}               activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="dashboard"  label={t('tab_dashboard')}                               activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy}   errorCount={errorEconomy}  activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests}    errorCount={errorQuests}   activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots}    errorCount={errorAiBots}   activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings}  errorCount={errorSettings} activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="map"        label={t('tab_map')}                                     activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="spawner"    label={t('tab_spawner')}    badge={dirtySpawner}   errorCount={errorSpawner}  activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="raw_editor" label={t('tab_raw_editor')}                               activeTab={activeTab} setActiveTab={setActiveTab} />
         </nav>
 
         {/* Actions row */}
@@ -1067,6 +1150,7 @@ function AppContent() {
                 dirtyFiles={dirtyFiles}
                 backups={backups}
                 onRestoreBackup={handleRestoreBackup}
+                onImportFile={handleImportFile}
               />
             )}
 

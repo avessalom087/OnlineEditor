@@ -3171,13 +3171,22 @@ function QuestNPCsManager({
         flexShrink: 0
       }}>
         {/* Header/Search Area */}
-        <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)' }}>
-          <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-glow)', letterSpacing: '1px', marginBottom: '8px', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
+        <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-glow)', letterSpacing: '1px', textTransform: 'uppercase', fontFamily: 'var(--font-heading)' }}>
             {t('quest_npc_manager_title') || "QUEST NPCS CONFIGURATION"}
           </div>
-          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: '12px' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
             {t('quest_npc_total', { count: npcs.length }) || `TOTAL: ${npcs.length} NPCS ON DISK`}
           </div>
+          
+          <button 
+            className="btn btn-accent"
+            onClick={handleCreateNpc}
+            style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold', margin: '4px 0' }}
+          >
+            <span>{t('quest_npc_btn_create') || "CREATE NEW NPC"}</span>
+          </button>
+
           <input 
             type="text"
             placeholder={lang === 'ru' ? 'Поиск NPC...' : 'Search NPCs...'}
@@ -3270,16 +3279,7 @@ function QuestNPCsManager({
           )}
         </div>
 
-        {/* Create NPC Button */}
-        <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-          <button 
-            className="btn btn-accent"
-            onClick={handleCreateNpc}
-            style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
-          >
-            <span>{t('quest_npc_btn_create') || "[+] CREATE NEW NPC"}</span>
-          </button>
-        </div>
+
 
       </div>
 

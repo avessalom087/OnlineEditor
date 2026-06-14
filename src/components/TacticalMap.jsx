@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './ToastManager';
 import { useTranslation } from '../utils/localization';
 import * as fileService from '../services/fileService';
+import * as idb from '../utils/indexedDB';
 
 const MAP_PRESETS = [
   { name: '10km Grid (10000m)', size: 10000 },
@@ -602,7 +603,15 @@ export default function TacticalMap({
     img.onload = async () => {
       setMapImage(img);
       setImageLoaded(true);
+      setIsCustomPreset(true); // Automatically select Custom/Loaded Map preset
       toast.success(`Custom map loaded: ${file.name}`);
+
+      // Save to IndexedDB for offline/refresh persistence
+      try {
+        await idb.saveCustomMapBlob(file);
+      } catch (err) {
+        console.error("Failed to save custom map to IndexedDB:", err);
+      }
 
       if (fileService.hasDirectoryAccess()) {
         const success = await fileService.saveCustomMap(file);
@@ -620,15 +629,43 @@ export default function TacticalMap({
     e.target.value = '';
   };
 
-  // Load the map image on mount or when configs change
+  // Load the map image on mount or when configs or preset changes
   useEffect(() => {
     let activeUrl = null;
 
     const loadMap = async () => {
+      if (isCustomPreset) {
+        try {
+          const cachedBlob = await idb.getCustomMapBlob();
+          if (cachedBlob) {
+            activeUrl = URL.createObjectURL(cachedBlob);
+            const img = new Image();
+            img.src = activeUrl;
+            img.onload = () => {
+              setMapImage(img);
+              setImageLoaded(true);
+            };
+            img.onerror = () => {
+              console.warn("Failed to load map image from IndexedDB. Trying disk...");
+              loadFromDisk();
+            };
+            return;
+          }
+        } catch (err) {
+          console.error("Error loading map from IndexedDB:", err);
+        }
+        loadFromDisk();
+      } else {
+        loadDefaultMap();
+      }
+    };
+
+    const loadFromDisk = async () => {
       if (fileService.hasDirectoryAccess()) {
         try {
           const mapFile = await fileService.loadCustomMap();
           if (mapFile) {
+            idb.saveCustomMapBlob(mapFile).catch(e => console.error(e));
             activeUrl = URL.createObjectURL(mapFile);
             const img = new Image();
             img.src = activeUrl;
@@ -637,13 +674,12 @@ export default function TacticalMap({
               setImageLoaded(true);
             };
             img.onerror = () => {
-              console.warn("Failed to load saved custom map image. Trying default map.png.");
               loadDefaultMap();
             };
             return;
           }
         } catch (e) {
-          console.error("Error loading custom map:", e);
+          console.error("Error loading custom map from disk:", e);
         }
       }
       loadDefaultMap();
@@ -670,7 +706,7 @@ export default function TacticalMap({
         URL.revokeObjectURL(activeUrl);
       }
     };
-  }, [configs]);
+  }, [isCustomPreset]);
 
   // Global keydown listeners for Escape (deselect/cancel draw) and Delete (delete selected entity)
   useEffect(() => {

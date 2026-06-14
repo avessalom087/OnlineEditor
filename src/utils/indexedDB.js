@@ -192,3 +192,28 @@ export function clearDraft() {
     console.error('IndexedDB clearDraft error:', err);
   });
 }
+
+// ── Custom Map Blob ───────────────────────────────────────────────────────────
+const KEY_CUSTOM_MAP = 'customMapBlob';
+
+/**
+ * Saves the custom map image blob to IndexedDB.
+ * @param {Blob|File} blob
+ * @returns {Promise<void>}
+ */
+export function saveCustomMapBlob(blob) {
+  return dbPut(KEY_CUSTOM_MAP, blob).catch(err => {
+    console.error('IndexedDB saveCustomMapBlob error:', err);
+  });
+}
+
+/**
+ * Retrieves the saved custom map image blob from IndexedDB.
+ * @returns {Promise<Blob|null>}
+ */
+export function getCustomMapBlob() {
+  return dbGet(KEY_CUSTOM_MAP).catch(err => {
+    console.error('IndexedDB getCustomMapBlob error:', err);
+    return null;
+  });
+}

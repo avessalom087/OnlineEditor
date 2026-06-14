@@ -42,14 +42,20 @@ body, html {
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-  background: var(--bg-primary);
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 2px;
-  border: 1px solid var(--bg-secondary);
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.3s ease;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
@@ -160,9 +166,9 @@ input[type="text"]:focus,
 input[type="number"]:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--text-primary);
-  box-shadow: var(--shadow-glow);
-  background-color: rgba(0,0,0,0.2);
+  border-color: var(--text-glow);
+  box-shadow: 0 0 10px rgba(178, 250, 158, 0.25);
+  background-color: rgba(0, 0, 0, 0.35);
 }
 
 select:focus {
@@ -185,7 +191,7 @@ select:focus {
   padding: 8px 16px;
   cursor: pointer;
   border-radius: 2px;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -195,7 +201,8 @@ select:focus {
 .btn:hover {
   background: var(--border-color);
   color: var(--text-glow);
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 0 12px rgba(149, 192, 149, 0.25);
+  transform: translateY(-1px);
 }
 
 .btn:disabled {
@@ -1221,5 +1228,13 @@ select:focus {
   display: inline-flex;
   align-items: center;
   gap: 0;
+}
+
+.search-highlight {
+  background: rgba(178, 250, 158, 0.22);
+  color: var(--text-glow);
+  text-shadow: 0 0 5px rgba(178, 250, 158, 0.5);
+  border-radius: 2px;
+  padding: 0 2px;
 }
 

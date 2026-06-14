@@ -42,6 +42,22 @@ function isVector3(arr) {
   return Array.isArray(arr) && arr.length === 3 && arr.every(v => typeof v === 'number');
 }
 
+// Helper to highlight match query in label texts
+function highlightMatch(text, query) {
+  if (!query) return text;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+  return (
+    <>
+      {parts.map((part, i) => 
+        part.toLowerCase() === query.toLowerCase()
+          ? <mark key={i} className="search-highlight">{part}</mark>
+          : part
+      )}
+    </>
+  );
+}
+
 // Collapsible Group Wrapper
 function Accordion({ title, children, isDirty, onReset, isList = false, onRemove, t, extraAction, forceOpen }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -113,12 +129,13 @@ function Accordion({ title, children, isDirty, onReset, isList = false, onRemove
 }
 
 // Checkbox Component
-function CustomCheckbox({ checked, onChange, label, isDirty, tipKey }) {
+function CustomCheckbox({ checked, onChange, label, isDirty, tipKey, searchQuery }) {
   return (
     <div 
       className="checkbox-container" 
       onClick={() => onChange(!checked)}
       style={{ margin: '8px 0' }}
+      data-tipkey={tipKey}
     >
       <div className={`checkbox-custom ${checked ? 'checked' : ''}`} />
       <span style={{ 
@@ -127,7 +144,7 @@ function CustomCheckbox({ checked, onChange, label, isDirty, tipKey }) {
         fontSize: '13px'
       }} className={isDirty ? 'field-dirty-label' : ''}>
         <span className="label-with-help">
-          {label}
+          {highlightMatch(label, searchQuery)}
           {tipKey && <HelpIcon tipKey={tipKey} />}
         </span>
       </span>
@@ -192,6 +209,7 @@ function RenderFormNode({
           label={displayLabel}
           isDirty={isDirty}
           tipKey={getTipKey(keyName)}
+          searchQuery={searchQuery}
         />
       </div>
     );
@@ -202,11 +220,11 @@ function RenderFormNode({
     const origVec = isVector3(originalValue) ? originalValue : [0, 0, 0];
     const tipKey = getTipKey(keyName);
     return (
-      <div className="form-group" style={{ borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
+      <div className="form-group" data-tipkey={tipKey} style={{ borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
           <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0 }}>
             <span className="label-with-help">
-              {displayLabel} {t ? "(3D VECTOR)" : "(3D VECTOR)"}
+              {highlightMatch(displayLabel, searchQuery)} {t ? "(3D VECTOR)" : "(3D VECTOR)"}
               <HelpIcon tipKey={tipKey} />
             </span>
           </label>
@@ -302,11 +320,11 @@ function RenderFormNode({
 
     const tipKey = getTipKey(keyName);
     return (
-      <div style={{ marginBottom: '16px', borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
+      <div data-tipkey={tipKey} style={{ marginBottom: '16px', borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '1px' }}>
             <span className="label-with-help">
-              {displayLabel} (ARRAY · {value.length} {t ? t('econ_all_items') : "ITEMS"})
+              {highlightMatch(displayLabel, searchQuery)} (ARRAY · {value.length} {t ? t('econ_all_items') : "ITEMS"})
               <HelpIcon tipKey={tipKey} />
             </span>
           </label>
@@ -448,7 +466,7 @@ function RenderFormNode({
 
     return (
       <Accordion 
-        title={displayLabel} 
+        title={highlightMatch(displayLabel, searchQuery)} 
         isDirty={isDirty}
         onReset={() => onResetKey(path)}
         t={t}
@@ -505,11 +523,11 @@ function RenderFormNode({
 
   const tipKey = getTipKey(keyName);
   return (
-    <div className="form-group">
+    <div className="form-group" data-tipkey={tipKey}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
         <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0 }}>
           <span className="label-with-help">
-            {displayLabel}
+            {highlightMatch(displayLabel, searchQuery)}
             <HelpIcon tipKey={tipKey} />
           </span>
         </label>
@@ -556,7 +574,7 @@ function RenderFormNode({
             if (typeof value === 'number' && Number.isNaN(val)) {
               val = value; // Fallback to current value to avoid corrupting JSON with NaN
             }
-            onChange(path, val);
+          onChange(path, val);
           }}
           className={isDirty ? 'field-dirty' : ''}
         />
@@ -578,25 +596,26 @@ export default function ConfigForm({
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
 
-  if (!config) {
+  if (!filePath || !config) {
     return (
-      <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: 'var(--text-secondary)' }}>
-        <span style={{ fontSize: '32px', marginBottom: '12px' }}>◀</span>
-        <span style={{ fontFamily: 'var(--font-heading)', fontSize: '18px', fontWeight: '700', letterSpacing: '2px' }}>{t('config_select_config')}</span>
+      <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+        <span>Select a configuration file to edit</span>
       </div>
     );
   }
 
   if (!config.success) {
     return (
-      <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '40px', color: 'var(--danger-color)' }}>
-        <span style={{ fontSize: '48px', marginBottom: '16px' }}>⚠</span>
-        <h2 style={{ fontFamily: 'var(--font-heading)', fontWeight: '700', letterSpacing: '2px', margin: '0 0 12px 0' }}>{t('config_parsing_error')}</h2>
-        <div style={{ 
-          fontFamily: 'var(--font-mono)', 
-          background: 'rgba(235, 103, 103, 0.05)', 
-          border: '1px solid var(--danger-color)', 
-          padding: '16px',
+      <div style={{ display: 'flex', flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px' }}>
+        <span style={{ fontSize: '32px', marginBottom: '16px' }}>⚠</span>
+        <h3 style={{ color: 'var(--danger-color)', fontFamily: 'var(--font-heading)', letterSpacing: '1px' }}>FAILED TO PARSE CONFIGURATION</h3>
+        <p style={{ fontSize: '13px', margin: '8px 0 24px 0', opacity: 0.8 }}>This file contains invalid JSON syntax and cannot be edited visually.</p>
+        <div style={{
+          background: 'var(--bg-secondary)', 
+          border: '1px solid var(--border-color)', 
+          padding: '16px', 
+          color: 'var(--danger-color)',
+          fontFamily: 'var(--font-mono)',
           borderRadius: '4px',
           maxWidth: '600px',
           fontSize: '12px',
