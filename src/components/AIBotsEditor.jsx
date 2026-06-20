@@ -3,11 +3,12 @@ import AutocompleteInput from './shared/AutocompleteInput';
 import CoordinatesInput from './shared/CoordinatesInput';
 import HelpIcon from './HelpIcon';
 import { useTranslation } from '../utils/localization';
+import { getExpansionModPrefix } from '../utils/pathUtils';
 
 
-const FACTIONS = ['West', 'East', 'Guards', 'Civilian', 'Passive', 'Aggressive', 'Shamans', 'Survivors'];
-const BEHAVIOURS = ['ROAMING_LOCAL', 'HALT', 'ROAMING_SELF', 'PATROL_ROAMING', 'LOOP_OR_ALTERNATE', 'ROAMING_UNLIMITED'];
-const SPEEDS = ['WALK', 'JOG', 'SPRINT'];
+const FACTIONS = ['West', 'East', 'Guards', 'Civilian', 'Passive', 'Aggressive', 'Shamans', 'Survivors', 'Raiders', 'Mercenaries', 'Zombies', 'PassiveZombies'];
+const BEHAVIOURS = ['HALT', 'LOOP_OR_ALTERNATE', 'HALT_OR_LOOP', 'WANDER', 'PATROL', 'ROAMING_LOCAL', 'ROAMING_SELF', 'PATROL_ROAMING', 'ROAMING_UNLIMITED'];
+const SPEEDS = ['WALK', 'JOG', 'RUN', 'SPRINT'];
 const STANCES = ['STANDING', 'CROUCHED', 'PRONE', 'RELAXED'];
 const CLOTHING_SLOTS = ['Body', 'Legs', 'Feet', 'Vest', 'Headgear', 'Gloves', 'Backpack', 'Mask', 'Eyewear', 'Shoulder', 'Melee'];
 const LOCATION_TYPES = ['Village', 'City', 'Military', 'Industrial', 'Custom'];
@@ -103,10 +104,10 @@ export default function AIBotsEditor({
 
     Object.keys(configs).forEach(filePath => {
       const lower = filePath.toLowerCase();
-      if (lower.startsWith('expansionmod/loadouts/') && filePath.endsWith('.json')) {
+      if ((lower.includes('/loadouts/') || lower.startsWith('loadouts/')) && filePath.endsWith('.json')) {
         loadouts.push(filePath.split('/').pop().replace('.json', ''));
       }
-      if (lower.startsWith('expansionmod/ai/lootdrops/') && filePath.endsWith('.json')) {
+      if ((lower.includes('/ai/lootdrops/') || lower.startsWith('ai/lootdrops/')) && filePath.endsWith('.json')) {
         lootDrops.push(filePath.split('/').pop().replace('.json', ''));
       }
       
@@ -134,7 +135,7 @@ export default function AIBotsEditor({
 
   // Set default loadout selection on load
   const loadoutPaths = Object.keys(configs).filter(p => 
-    p.toLowerCase().startsWith('expansionmod/loadouts/') && configs[p].success
+    (p.toLowerCase().includes('/loadouts/') || p.toLowerCase().startsWith('loadouts/')) && configs[p].success
   );
   loadoutPaths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
 
@@ -151,7 +152,7 @@ export default function AIBotsEditor({
 
   // Set default loot drop selection on load
   const lootDropPaths = Object.keys(configs).filter(p => 
-    p.toLowerCase().startsWith('expansionmod/ai/lootdrops/') && configs[p].success
+    (p.toLowerCase().includes('/ai/lootdrops/') || p.toLowerCase().startsWith('ai/lootdrops/')) && configs[p].success
   );
   lootDropPaths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
 
@@ -402,7 +403,8 @@ export default function AIBotsEditor({
     const cleanName = name.trim().replace(/\s+/g, '_');
     if (!cleanName) return;
     
-    const filePath = `ExpansionMod/Loadouts/${cleanName}.json`;
+    const prefix = getExpansionModPrefix(configs);
+    const filePath = `${prefix}Loadouts/${cleanName}.json`;
     if (configs[filePath]) {
       alert(t('ai_alert_loadout_exists'));
       return;
@@ -439,7 +441,8 @@ export default function AIBotsEditor({
     const cleanName = name.trim().replace(/\s+/g, '_');
     if (!cleanName) return;
 
-    const newPath = `ExpansionMod/Loadouts/${cleanName}.json`;
+    const prefix = getExpansionModPrefix(configs);
+    const newPath = `${prefix}Loadouts/${cleanName}.json`;
     if (configs[newPath]) {
       alert(t('ai_alert_loadout_exists'));
       return;
@@ -624,7 +627,8 @@ export default function AIBotsEditor({
     const name = window.prompt(t('ai_prompt_loot_name'));
     if (!name || !name.trim()) return;
     const cleanName = name.trim().replace(/\s+/g, '_');
-    const path = `ExpansionMod/AI/LootDrops/${cleanName}.json`;
+    const prefix = getExpansionModPrefix(configs);
+    const path = `${prefix}AI/LootDrops/${cleanName}.json`;
     if (configs[path]) {
       alert(t('ai_alert_loot_exists'));
       return;
@@ -693,7 +697,8 @@ export default function AIBotsEditor({
     const cleanName = name.trim().replace(/\s+/g, '_');
     if (!cleanName) return;
 
-    const newPath = `ExpansionMod/AI/LootDrops/${cleanName}.json`;
+    const prefix = getExpansionModPrefix(configs);
+    const newPath = `${prefix}AI/LootDrops/${cleanName}.json`;
     if (configs[newPath]) {
       alert(t('ai_alert_loot_exists'));
       return;
@@ -972,23 +977,48 @@ export default function AIBotsEditor({
                             </select>
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_spawn_min')}</label>
+                            <label>
+                              <span className="label-with-help">
+                                {t('ai_label_spawn_min')}
+                                <HelpIcon tipKey="tip_patrol_min_dist" />
+                              </span>
+                            </label>
                             <input type="number" value={patrolContent.MinDistRadius ?? 400} onChange={e => handleUpdateGeneralVal('MinDistRadius', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_spawn_max')}</label>
+                            <label>
+                              <span className="label-with-help">
+                                {t('ai_label_spawn_max')}
+                                <HelpIcon tipKey="tip_patrol_max_dist" />
+                              </span>
+                            </label>
                             <input type="number" value={patrolContent.MaxDistRadius ?? 1000} onChange={e => handleUpdateGeneralVal('MaxDistRadius', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_despawn_radius')}</label>
+                            <label>
+                              <span className="label-with-help">
+                                {t('ai_label_despawn_radius')}
+                                <HelpIcon tipKey="tip_patrol_despawn_radius" />
+                              </span>
+                            </label>
                             <input type="number" value={patrolContent.DespawnRadius ?? 1100} onChange={e => handleUpdateGeneralVal('DespawnRadius', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_despawn_timeout')}</label>
+                            <label>
+                              <span className="label-with-help">
+                                {t('ai_label_despawn_timeout')}
+                                <HelpIcon tipKey="tip_patrol_despawn_time" />
+                              </span>
+                            </label>
                             <input type="number" value={patrolContent.DespawnTime ?? 600} onChange={e => handleUpdateGeneralVal('DespawnTime', Number(e.target.value))} />
                           </div>
                           <div className="form-group">
-                            <label>{t('ai_label_respawn_cooldown')}</label>
+                            <label>
+                              <span className="label-with-help">
+                                {t('ai_label_respawn_cooldown')}
+                                <HelpIcon tipKey="tip_patrol_respawn_time" />
+                              </span>
+                            </label>
                             <input type="number" value={patrolContent.RespawnTime ?? 600} onChange={e => handleUpdateGeneralVal('RespawnTime', Number(e.target.value))} />
                           </div>
                         </div>

@@ -19,8 +19,9 @@ export default function SettingsEditor({
   const settingsPaths = Object.keys(configs).filter(p => {
     const lower = p.toLowerCase();
     return (
-      (lower.startsWith('expansion/settings/') || lower.startsWith('expansionmod/settings/')) &&
-      lower.endsWith('.json')
+      (lower.includes('settings/') || lower.startsWith('settings/')) &&
+      lower.endsWith('.json') &&
+      !lower.includes('pz_tool')
     );
   });
 
@@ -103,7 +104,7 @@ export default function SettingsEditor({
                     {name}
                   </span>
                   <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>
-                    {path.startsWith('expansion/') ? 'expansion/' : 'ExpansionMod/'}
+                    {path.toLowerCase().includes('expansion/') ? 'expansion/' : 'ExpansionMod/'}
                   </span>
                 </div>
                 {hasUnsaved && <span className="badge-dirty" />}

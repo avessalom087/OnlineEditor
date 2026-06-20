@@ -200,7 +200,7 @@ export function validateConfig(content, schema, filePath, allQuestsIds = new Set
   }
 
   // 6. Cross-reference validations (broken quest links, cycles, orphans, objectives)
-  const isQuestFile = filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_');
+  const isQuestFile = filePath.toLowerCase().includes('quests/quests/quest_');
   if (isQuestFile && content && typeof content === 'object') {
     // Check FollowUpQuest link
     if (content.FollowUpQuest && content.FollowUpQuest > 0) {
@@ -235,7 +235,7 @@ export function validateConfig(content, schema, filePath, allQuestsIds = new Set
     if (content.ID !== undefined && configs && Object.keys(configs).length > 0) {
       const questPrereqs = {};
       Object.values(configs).forEach(f => {
-        if (f && f.success && f.content && f.filePath && f.filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_')) {
+        if (f && f.success && f.content && f.filePath && f.filePath.toLowerCase().includes('quests/quests/quest_')) {
           if (f.content.ID !== undefined) {
             questPrereqs[f.content.ID] = Array.isArray(f.content.PreQuestIDs) ? f.content.PreQuestIDs : [];
           }
@@ -330,8 +330,8 @@ export function validateConfig(content, schema, filePath, allQuestsIds = new Set
               fixable: false
             });
           } else {
-            const targetPath = `expansionmod/quests/objectives/${info.folder.toLowerCase()}/objective_${info.prefix.toLowerCase()}_${objId}.json`;
-            const exists = Object.keys(configs).some(k => k.toLowerCase() === targetPath);
+            const suffix = `quests/objectives/${info.folder.toLowerCase()}/objective_${info.prefix.toLowerCase()}_${objId}.json`;
+            const exists = Object.keys(configs).some(k => k.toLowerCase().endsWith(suffix));
             if (!exists) {
               errors.push({
                 path: ['Objectives', idx],
@@ -348,7 +348,7 @@ export function validateConfig(content, schema, filePath, allQuestsIds = new Set
   }
 
   // 7. Cross-reference validations for Traders (obsolete categories and items)
-  const isTraderFile = filePath.toLowerCase().startsWith('expansionmod/traders/');
+  const isTraderFile = filePath.toLowerCase().includes('traders/');
   if (isTraderFile && content && typeof content === 'object') {
     // Check Categories
     if (Array.isArray(content.Categories)) {

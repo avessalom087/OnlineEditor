@@ -371,10 +371,28 @@ select:focus {
   border: 1px solid var(--border-color);
 }
 
+.nav-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  width: 80%;
+  height: 2px;
+  background: var(--text-glow);
+  transform: scaleX(0);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 8px var(--text-glow);
+}
+
+.nav-tab.active::after {
+  transform: scaleX(1);
+}
+
 .nav-tab:hover {
   color: var(--text-primary);
   background: rgba(149, 192, 149, 0.04);
   border-color: rgba(149, 192, 149, 0.15);
+  transform: translateY(-1px);
 }
 
 .nav-tab.active {
@@ -431,6 +449,9 @@ select:focus {
 }
 
 .table-tactical th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   background: var(--bg-secondary);
   color: var(--text-secondary);
   font-family: var(--font-heading);
@@ -1357,5 +1378,198 @@ select:focus {
   cursor: pointer;
   text-align: center;
 }
+
+/* Custom Toggle Switch */
+.toggle-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.toggle-switch {
+  width: 40px;
+  height: 22px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  border-radius: 11px;
+  position: relative;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.toggle-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-container:hover .toggle-switch {
+  border-color: var(--text-primary);
+  box-shadow: var(--shadow-glow);
+}
+
+.toggle-container:hover .toggle-thumb {
+  background: var(--text-primary);
+}
+
+.toggle-switch.checked {
+  background: rgba(178, 250, 158, 0.1);
+  border-color: var(--text-glow);
+  box-shadow: 0 0 10px rgba(178, 250, 158, 0.2);
+}
+
+.toggle-switch.checked .toggle-thumb {
+  left: 21px;
+  background: var(--text-glow);
+  box-shadow: 0 0 6px var(--text-glow);
+}
+
+/* Custom Styled Range Sliders */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) var(--range-percent, 0%), var(--bg-primary) var(--range-percent, 0%), var(--bg-primary) 100%);
+  border: 1px solid var(--border-color);
+  height: 8px;
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input[type="range"]:hover,
+input[type="range"]:focus {
+  border-color: var(--text-glow);
+  box-shadow: 0 0 8px rgba(178, 250, 158, 0.25);
+}
+
+/* Webkit browser thumb & track styling */
+input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+  border: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-glow);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(178, 250, 158, 0.4);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: -5px; /* Adjusting alignment within track */
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  background: #ffffff;
+  box-shadow: 0 0 12px rgba(178, 250, 158, 0.8);
+}
+
+/* Firefox browser thumb & track styling */
+input[type="range"]::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-glow);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(178, 250, 158, 0.4);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.25);
+  background: #ffffff;
+  box-shadow: 0 0 12px rgba(178, 250, 158, 0.8);
+}
+
+/* ==============================
+   Quest Editor Scale Enhancements
+============================== */
+.quest-editor-container {
+  font-size: 13px;
+}
+
+.quest-editor-sidebar,
+.quest-npc-form-editor {
+  font-size: 13px;
+}
+
+/* Adjust labels to be larger and more readable */
+.quest-editor-sidebar label,
+.quest-npc-form-editor label,
+.quest-editor-sidebar .form-group label,
+.quest-npc-form-editor .form-group label {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+  margin-bottom: 5px !important;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.05);
+}
+
+/* Inputs, textareas, and selects spacing & sizing */
+.quest-editor-sidebar input,
+.quest-npc-form-editor input,
+.quest-editor-sidebar textarea,
+.quest-npc-form-editor textarea,
+.quest-editor-sidebar select,
+.quest-npc-form-editor select {
+  font-size: 13px !important;
+  padding: 6px 10px !important;
+}
+
+/* Autocomplete search terms */
+.quest-editor-sidebar .autocomplete-suggestions,
+.quest-npc-form-editor .autocomplete-suggestions {
+  font-size: 12px !important;
+}
+
+/* Buttons sizing inside Quest editor */
+.quest-editor-sidebar .btn,
+.quest-npc-form-editor .btn {
+  font-size: 12px !important;
+  padding: 6px 12px !important;
+}
+
+/* Make accordion headers look slightly larger and more pronounced */
+.quest-editor-sidebar div[style*="fontSize: '12px'"],
+.quest-npc-form-editor div[style*="fontSize: '12px'"] {
+  font-size: 14px !important;
+}
+
+/* Quest Node Hover Glow Effects */
+.quest-node rect {
+  transition: fill 0.2s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.quest-node:hover rect {
+  stroke: var(--text-glow) !important;
+  filter: drop-shadow(0 0 8px rgba(178, 250, 158, 0.45)) !important;
+  fill: rgba(20, 28, 20, 0.95) !important;
+}
+
+.quest-node.selected rect {
+  stroke: var(--text-glow) !important;
+  filter: drop-shadow(0 0 10px rgba(178, 250, 158, 0.55)) !important;
+}
+
+
+
 
 

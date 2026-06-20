@@ -8,6 +8,7 @@ import { validateConfig } from './utils/diagnostics';
 import * as fileService from './services/fileService';
 import * as idb from './utils/indexedDB';
 import { useTranslation } from './utils/localization';
+import { getExpansionModPrefix, getExpansionPrefix, getMpgSpawnerPrefix } from './utils/pathUtils';
 
 // ─── Custom hooks ─────────────────────────────────────────────────────────────
 import { useUndoRedo } from './hooks/useUndoRedo';
@@ -911,14 +912,18 @@ function AppContent() {
       const parsed = JSON.parse(contentText);
       let folder = 'imported';
       const nameLower = fileName.toLowerCase();
+      const expansionModPrefix = getExpansionModPrefix(configs);
+      const expansionPrefix = getExpansionPrefix(configs);
+      const mpgSpawnerPrefix = getMpgSpawnerPrefix(configs);
+
       if (nameLower.includes('quest_') || nameLower.includes('npc_') || nameLower.includes('objective_')) {
-        folder = 'ExpansionMod/Quests/Imported';
+        folder = `${expansionModPrefix}Quests/Imported`;
       } else if (nameLower.includes('settings')) {
-        folder = 'ExpansionMod/Settings';
+        folder = `${expansionPrefix || expansionModPrefix}Settings`;
       } else if (nameLower.includes('spawner') || nameLower.includes('point_')) {
-        folder = 'MPG_Spawner/Points';
+        folder = `${mpgSpawnerPrefix}Points`;
       } else if (nameLower.includes('market') || nameLower.includes('traders')) {
-        folder = 'ExpansionMod/Market';
+        folder = `${expansionModPrefix}Market`;
       }
 
       const filePath = `${folder}/${fileName}`;
@@ -1012,9 +1017,9 @@ function AppContent() {
     Object.keys(configs).forEach(p => {
       const file = configs[p];
       if (file.success && file.content) {
-        if (p.toLowerCase().startsWith('expansionmod/quests/quests/quest_') && file.content.ID !== undefined)
+        if (p.toLowerCase().includes('quests/quests/quest_') && file.content.ID !== undefined)
           questIds.add(file.content.ID);
-        if (p.toLowerCase().startsWith('expansionmod/market/')) {
+        if (p.toLowerCase().includes('market/')) {
           marketCategories.add(p.split('/').pop().replace('.json', '').toLowerCase());
           if (Array.isArray(file.content.Items))
             file.content.Items.forEach(i => { if (i.ClassName) marketItems.add(i.ClassName.toLowerCase()); });
@@ -1086,19 +1091,19 @@ function AppContent() {
 
   // ─── Count tab-specific dirty files ──────────────────────────────────────
   const dirtyFilesArr = [...dirtyFiles];
-  const dirtyEconomy  = dirtyFilesArr.filter(p => p.startsWith('expansionmod/market/') || p.startsWith('expansionmod/traders/')).length;
-  const dirtyQuests   = dirtyFilesArr.filter(p => p.startsWith('expansionmod/quests/')).length;
+  const dirtyEconomy  = dirtyFilesArr.filter(p => p.toLowerCase().includes('market/') || p.toLowerCase().includes('traders/')).length;
+  const dirtyQuests   = dirtyFilesArr.filter(p => p.toLowerCase().includes('quests/')).length;
   const dirtyAiBots   = dirtyFilesArr.filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
   const dirtySettings = dirtyFilesArr.filter(p => p.includes('settings')).length;
-  const dirtySpawner  = dirtyFilesArr.filter(p => p.toLowerCase().startsWith('mpg_spawner/')).length;
+  const dirtySpawner  = dirtyFilesArr.filter(p => p.toLowerCase().includes('mpg_spawner/') || p.toLowerCase().includes('points/')).length;
 
   // ─── Count tab-specific syntax errors (files failing to parse) ───────────
   const errorFilesArr = Object.keys(configs).filter(p => !configs[p].success);
-  const errorEconomy  = errorFilesArr.filter(p => p.startsWith('expansionmod/market/') || p.startsWith('expansionmod/traders/')).length;
-  const errorQuests   = errorFilesArr.filter(p => p.startsWith('expansionmod/quests/')).length;
+  const errorEconomy  = errorFilesArr.filter(p => p.toLowerCase().includes('market/') || p.toLowerCase().includes('traders/')).length;
+  const errorQuests   = errorFilesArr.filter(p => p.toLowerCase().includes('quests/')).length;
   const errorAiBots   = errorFilesArr.filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
   const errorSettings = errorFilesArr.filter(p => p.includes('settings')).length;
-  const errorSpawner  = errorFilesArr.filter(p => p.toLowerCase().startsWith('mpg_spawner/')).length;
+  const errorSpawner  = errorFilesArr.filter(p => p.toLowerCase().includes('mpg_spawner/') || p.toLowerCase().includes('points/')).length;
 
   // ── Password Auth Gate ────────────────────────────────────────────────────
   if (!isAuthenticated) {

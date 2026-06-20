@@ -9,6 +9,16 @@ const KEY_TO_TIP_KEY_OVERRIDE = {
   VehicleKeys: 'tip_set_vehicle_key',
   VehicleDamage: 'tip_set_vehicle_damage',
   RoughLanding: 'tip_set_rough_landing',
+
+  // Economy / Market category item overrides
+  MinPriceThreshold: 'tip_econ_min_price',
+  MaxPriceThreshold: 'tip_econ_max_price',
+  MinStockThreshold: 'tip_econ_min_stock',
+  MaxStockThreshold: 'tip_econ_max_stock',
+  SellPricePercent: 'tip_econ_sell_pct',
+  QuantityPercent: 'tip_econ_qty_pct',
+  IsExchange: 'tip_econ_is_exchange',
+  InitStockPercent: 'tip_econ_init_stock',
 };
 
 function getTipKey(keyName) {
@@ -128,16 +138,17 @@ function Accordion({ title, children, isDirty, onReset, isList = false, onRemove
   );
 }
 
-// Checkbox Component
-function CustomCheckbox({ checked, onChange, label, isDirty, tipKey, searchQuery }) {
+// Toggle Switch Component
+function CustomToggle({ checked, onChange, label, isDirty, tipKey, searchQuery }) {
   return (
     <div 
-      className="checkbox-container" 
+      className="toggle-container" 
       onClick={() => onChange(!checked)}
-      style={{ margin: '8px 0' }}
       data-tipkey={tipKey}
     >
-      <div className={`checkbox-custom ${checked ? 'checked' : ''}`} />
+      <div className={`toggle-switch ${checked ? 'checked' : ''}`}>
+        <div className="toggle-thumb" />
+      </div>
       <span style={{ 
         color: isDirty ? 'var(--warning-color)' : 'var(--text-primary)',
         fontFamily: 'var(--font-mono)',
@@ -203,7 +214,7 @@ function RenderFormNode({
   if (typeof value === 'boolean') {
     return (
       <div className="form-group">
-        <CustomCheckbox 
+        <CustomToggle 
           checked={value} 
           onChange={(newVal) => onChange(path, newVal)} 
           label={displayLabel}
@@ -489,6 +500,62 @@ function RenderFormNode({
           />
         ))}
       </Accordion>
+    );
+  }
+
+  // 4.5 Chance or Percent Slider check
+  const isChance = typeof value === 'number' && keyName.toLowerCase().includes('chance');
+  const isPercent = typeof value === 'number' && keyName.toLowerCase().includes('percent');
+
+  if (isChance || isPercent) {
+    const min = isChance ? 0.0 : (value < 0 ? -1.0 : 0.0);
+    const max = isChance ? 1.0 : 100.0;
+    const step = isChance ? 0.01 : 1;
+    const tipKey = getTipKey(keyName);
+    return (
+      <div className="form-group" data-tipkey={tipKey} style={{ borderLeft: isDirty ? '2px solid var(--warning-color)' : 'none', paddingLeft: isDirty ? '8px' : '0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+          <label className={isDirty ? 'field-dirty-label' : ''} style={{ margin: 0 }}>
+            <span className="label-with-help">
+              {highlightMatch(displayLabel, searchQuery)}
+              <HelpIcon tipKey={tipKey} />
+            </span>
+          </label>
+          {isDirty && (
+            <button 
+              type="button" 
+              className="btn btn-warning" 
+              onClick={() => onResetKey(path)}
+              style={{ padding: '1px 6px', fontSize: '9px' }}
+            >
+              {t ? t('config_reset') : "RESET"}
+            </button>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            onChange={e => onChange(path, Number(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <input
+            type="number"
+            step={step}
+            value={value}
+            onChange={e => {
+              let val = Number(e.target.value);
+              if (Number.isNaN(val)) val = value;
+              onChange(path, val);
+            }}
+            className={isDirty ? 'field-dirty' : ''}
+            style={{ width: '80px', textAlign: 'right' }}
+          />
+        </div>
+      </div>
     );
   }
 

@@ -3,6 +3,7 @@ import { useToast } from './ToastManager';
 import { useTranslation } from '../utils/localization';
 import * as fileService from '../services/fileService';
 import * as idb from '../utils/indexedDB';
+import { getExpansionPrefix, getExpansionModPrefix, getMpgSpawnerPrefix } from '../utils/pathUtils';
 
 const MAP_PRESETS = [
   { name: '10km Grid (10000m)', size: 10000 },
@@ -25,10 +26,15 @@ const OBJECTIVE_TYPES = {
   6: { folder: 'TreasureHunt', prefix: 'TH', label: 'Treasure Hunt' }
 };
 
-function getObjectiveFilePath(typeId, id) {
+function getObjectiveFilePath(typeId, id, configs = {}) {
   const info = OBJECTIVE_TYPES[typeId];
   if (!info) return null;
-  return `ExpansionMod/Quests/Objectives/${info.folder}/Objective_${info.prefix}_${id}.json`;
+  const suffix = `quests/objectives/${info.folder.toLowerCase()}/objective_${info.prefix.toLowerCase()}_${id}.json`;
+  const existingKey = Object.keys(configs).find(k => k.toLowerCase() === suffix || k.toLowerCase().endsWith('/' + suffix));
+  if (existingKey) return existingKey;
+
+  const prefix = getExpansionModPrefix(configs);
+  return `${prefix}Quests/Objectives/${info.folder}/Objective_${info.prefix}_${id}.json`;
 }
 
 function updateCoordsInString(oldStr, newX, newZ) {
@@ -235,6 +241,15 @@ export default function TacticalMap({
   const [targetPointsFilePath, setTargetPointsFilePath] = useState('');
   const [batchPoints, setBatchPoints] = useState([]);
   const [isResizingRadius, setIsResizingRadius] = useState(false);
+
+  const [animationTick, setAnimationTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setAnimationTick(t => t + 1);
+    }, 50);
+    return () => clearInterval(timer);
+  }, []);
 
   // Context menu (right-click on map)
   const [contextMenu, setContextMenu] = useState(null); // { x, z, px, py }
@@ -813,12 +828,12 @@ export default function TacticalMap({
     for (const [filePath, file] of Object.entries(configs)) {
       if (!file.success || !file.content) continue;
       const content = file.content;
-      if (filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_') && content.ID !== undefined) {
+      if (filePath.toLowerCase().includes('quests/quests/quest_') && content.ID !== undefined) {
         const questId = content.ID;
         const questTitle = content.Title || `Quest #${questId}`;
         if (Array.isArray(content.Objectives)) {
           content.Objectives.forEach(objRef => {
-            const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID);
+            const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID, configs);
             if (objPath) {
               const lowerPath = objPath.toLowerCase();
               if (!objectiveToQuestMap[lowerPath]) {
@@ -836,7 +851,7 @@ export default function TacticalMap({
       const content = file.content;
 
       // 1. Airdrops
-      if (filePath.toLowerCase().startsWith('expansion/missions/airdrop_') && content.DropLocation) {
+      if (filePath.toLowerCase().includes('missions/airdrop_') && content.DropLocation) {
         airdrops.push({
           id: filePath,
           filePath,
@@ -851,7 +866,7 @@ export default function TacticalMap({
       }
 
       // 2. NPCs
-      if (filePath.toLowerCase().startsWith('expansionmod/quests/npcs/') && Array.isArray(content.Position)) {
+      if (filePath.toLowerCase().includes('quests/npcs/') && Array.isArray(content.Position)) {
         npcs.push({
           id: filePath,
           filePath,
@@ -864,8 +879,8 @@ export default function TacticalMap({
         });
       }
 
-      // 3. Safe Zones & Cylinder Zones
-      if (filePath.toLowerCase() === 'expansion/settings/safezonesettings.json') {
+      // 2. SafeZones
+      if (filePath.toLowerCase().endsWith('settings/safezonesettings.json')) {
         if (Array.isArray(content.CircleZones)) {
           content.CircleZones.forEach((zone, idx) => {
             if (Array.isArray(zone.Center)) {
@@ -904,8 +919,50 @@ export default function TacticalMap({
         }
       }
 
-      // 7. NoGo Areas
-      if (filePath.toLowerCase() === 'expansion/settings/ailocationsettings.json') {
+      // 3. AI Roaming Locations (circle/polygon)
+      if (filePath.toLowerCase().endsWith('settings/ailocationsettings.json')) {
+        if (Array.isArray(content.RoamingLocations)) {
+          content.RoamingLocations.forEach((loc, idx) => {
+            if (Array.isArray(loc.Position)) {
+              roamingLocations.push({
+                id: `roaming-${idx}`,
+                filePath,
+                name: loc.Name || `Roaming Loc #${idx + 1}`,
+                x: loc.Position[0],
+                z: loc.Position[2],
+                radius: loc.Radius || 200,
+                type: 'roaming_location',
+                locationType: loc.Type || 'Village',
+                enabled: loc.Enabled ?? 1,
+                xPath: ['RoamingLocations', idx, 'Position', 0],
+                zPath: ['RoamingLocations', idx, 'Position', 2],
+                arrayIndex: idx
+              });
+            }
+          });
+        }
+        // 4. AI Roaming Locations (PolygonZones)
+        if (Array.isArray(content.PolygonLocations)) {
+          content.PolygonLocations.forEach((loc, idx) => {
+            if (Array.isArray(loc.Position)) {
+               roamingLocations.push({
+                id: `polygon-${idx}`,
+                filePath,
+                name: loc.Name || `Polygon Loc #${idx + 1}`,
+                x: loc.Position[0],
+                z: loc.Position[2],
+                radius: loc.Radius || 200,
+                type: 'roaming_location',
+                locationType: loc.Type || 'Polygon',
+                enabled: loc.Enabled ?? 1,
+                xPath: ['PolygonLocations', idx, 'Position', 0],
+                zPath: ['PolygonLocations', idx, 'Position', 2],
+                arrayIndex: idx
+              });
+            }
+          });
+        }
+        // 7. NoGo Areas
         if (Array.isArray(content.NoGoAreas)) {
           content.NoGoAreas.forEach((area, idx) => {
             if (Array.isArray(area.Position)) {
@@ -951,7 +1008,7 @@ export default function TacticalMap({
       }
 
       // 4. Trader Zones
-      if (filePath.toLowerCase().startsWith('expansion/traderzones/') && Array.isArray(content.Position)) {
+      if (filePath.toLowerCase().includes('traderzones/') && Array.isArray(content.Position)) {
         traderzones.push({
           id: filePath,
           filePath,
@@ -966,7 +1023,7 @@ export default function TacticalMap({
       }
 
       // 5. AI Patrols
-      if (filePath.toLowerCase() === 'expansion/settings/aipatrolsettings.json' && Array.isArray(content.Patrols)) {
+      if (filePath.toLowerCase().endsWith('settings/aipatrolsettings.json') && Array.isArray(content.Patrols)) {
         content.Patrols.forEach((patrol, idx) => {
           if (Array.isArray(patrol.Waypoints) && patrol.Waypoints.length > 0) {
             const wps = patrol.Waypoints.map((wp, wpIdx) => ({
@@ -988,7 +1045,7 @@ export default function TacticalMap({
       }
 
       // 6. Quest Objectives
-      if (filePath.toLowerCase().startsWith('expansionmod/quests/objectives/')) {
+      if (filePath.toLowerCase().includes('quests/objectives/')) {
         const lowerPath = filePath.toLowerCase();
         const questRefs = objectiveToQuestMap[lowerPath] || [];
         
@@ -1074,7 +1131,7 @@ export default function TacticalMap({
 
       // 9. Spawner Triggers and Spawn Points
       const lowerPath = filePath.toLowerCase();
-      if (lowerPath.startsWith('mpg_spawner/points/') && lowerPath.endsWith('.json') && Array.isArray(content)) {
+      if (lowerPath.endsWith('.json') && (lowerPath.includes('mpg_spawner/points/') || lowerPath.startsWith('points/') || lowerPath.includes('/points/')) && Array.isArray(content)) {
         content.forEach((trigger, triggerIdx) => {
           const posStr = trigger.triggerPosition;
           if (posStr) {
@@ -1484,10 +1541,13 @@ export default function TacticalMap({
           ctx.shadowBlur = 10;
           ctx.shadowColor = factionColor;
         } else {
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 2.5;
           ctx.shadowBlur = 0;
         }
+        ctx.setLineDash([8, 4]);
+        ctx.lineDashOffset = -animationTick * 0.8;
         ctx.stroke();
+        ctx.setLineDash([]);
         ctx.restore();
 
         // Draw directional arrows at the midpoints of segments
@@ -1659,11 +1719,14 @@ export default function TacticalMap({
           ctx.globalAlpha = isFocused ? 0.95 : 0.25;
 
           if (isCrossFile) {
-            ctx.setLineDash(isFocused ? [6, 3, 2, 3] : [4, 4]); // Dash-dot for cross-file
+            ctx.setLineDash(isFocused ? [6, 3, 2, 3] : [4, 4]);
+            ctx.lineDashOffset = -animationTick * 0.4;
           } else if (!isFocused) {
             ctx.setLineDash([4, 4]);
+            ctx.lineDashOffset = -animationTick * 0.2;
           } else {
-            ctx.setLineDash([]);
+            ctx.setLineDash([6, 3]);
+            ctx.lineDashOffset = -animationTick * 0.6;
           }
 
           ctx.beginPath();
@@ -1747,7 +1810,14 @@ export default function TacticalMap({
             fillColor = 'rgba(255, 159, 67, 0.08)';
           }
 
+          const isSelected = selectedEntity && selectedEntity.type === 'spawner_trigger' && selectedEntity.id === trig.id;
+          const isHovered = hoveredEntity && hoveredEntity.type === 'spawner_trigger' && hoveredEntity.id === trig.id;
+
           ctx.save();
+          if (isSelected || isHovered) {
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = strokeColor;
+          }
           if (trig.widthX > 0 && trig.widthY > 0) {
             const w = (trig.widthX / mapSize) * 1024 * scale;
             const h = (trig.widthY / mapSize) * 1024 * scale;
@@ -1878,16 +1948,18 @@ export default function TacticalMap({
         ctx.arc(pos.x, pos.y, 16, 0, 2 * Math.PI);
         ctx.strokeStyle = '#00ffff'; // Glowing neon cyan border
         ctx.lineWidth = 2.5;
-        ctx.setLineDash([4, 2]); // Pulsing/dashed border
+        ctx.setLineDash([4, 2]); // Dashed border
+        ctx.lineDashOffset = -animationTick * 0.5;
         ctx.stroke();
         ctx.restore();
         
         ctx.save();
-        // Outer glow circle
+        // Pulsing outer glow circle
+        const pulseRadius = 20 + Math.sin(animationTick * 0.15) * 4;
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 22, 0, 2 * Math.PI);
+        ctx.arc(pos.x, pos.y, pulseRadius, 0, 2 * Math.PI);
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.25)';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
         ctx.restore();
       }
@@ -2139,7 +2211,7 @@ export default function TacticalMap({
       ctx.strokeRect(dragSelectRect.x, dragSelectRect.y, dragSelectRect.w, dragSelectRect.h);
       ctx.restore();
     }
-  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, selectedEntityIds, dragSelectRect, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius]);
+  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, selectedEntityIds, dragSelectRect, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius, animationTick]);
 
 
 
@@ -3022,7 +3094,7 @@ export default function TacticalMap({
   };
 
   const handleSaveNewSafezone = (x, z, radius) => {
-    const safezonesConfigPath = Object.keys(configs).find(p => p.toLowerCase() === 'expansion/settings/safezonesettings.json') || 'expansion/settings/safezonesettings.json';
+    const safezonesConfigPath = Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/safezonesettings.json')) || 'expansion/settings/safezonesettings.json';
     const file = configs[safezonesConfigPath];
     if (file?.success && file.content) {
       const cylinderZones = Array.isArray(file.content.CylinderZones) ? file.content.CylinderZones : [];
@@ -3085,7 +3157,8 @@ export default function TacticalMap({
 
     if (spawnType === 'airdrop') {
       // Create airdrop JSON file
-      const fileName = `expansion/missions/Airdrop_Random_Settlement_${spawnName.trim().replace(/\s+/g, '_')}.json`;
+      const prefix = getExpansionPrefix(configs);
+      const fileName = `${prefix}missions/Airdrop_Random_Settlement_${spawnName.trim().replace(/\s+/g, '_')}.json`;
       const template = {
         m_Version: 3,
         Enabled: 1,
@@ -3125,7 +3198,8 @@ export default function TacticalMap({
         }
       });
       const nextId = maxId + 1;
-      const fileName = `ExpansionMod/Quests/NPCs/QuestNPC_${nextId}.json`;
+      const prefix = getExpansionModPrefix(configs);
+      const fileName = `${prefix}Quests/NPCs/QuestNPC_${nextId}.json`;
       const template = {
         ConfigVersion: 6,
         ID: nextId,
@@ -3149,7 +3223,7 @@ export default function TacticalMap({
       onCreateFile(fileName, template);
     } else if (spawnType === 'safezone') {
       // Append to SafeZoneSettings CircleZones array
-      const filePath = 'expansion/settings/SafeZoneSettings.json';
+      const filePath = Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/safezonesettings.json')) || 'expansion/settings/SafeZoneSettings.json';
       const file = configs[filePath];
       if (file?.success) {
         const currentZones = Array.isArray(file.content.CircleZones) ? file.content.CircleZones : [];
@@ -3177,7 +3251,7 @@ export default function TacticalMap({
       }
     } else if (spawnType === 'roaming_location') {
       // Append to AILocationSettings.json RoamingLocations array
-      const filePath = 'expansion/settings/AILocationSettings.json';
+      const filePath = Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/ailocationsettings.json')) || 'expansion/settings/AILocationSettings.json';
       const file = configs[filePath];
       if (file?.success && file.content) {
         const currentLocs = Array.isArray(file.content.RoamingLocations) ? file.content.RoamingLocations : [];
@@ -3194,7 +3268,8 @@ export default function TacticalMap({
       }
     } else if (spawnType === 'traderzone') {
       // Create traderzone JSON file
-      const fileName = `expansion/traderzones/${spawnName.trim().replace(/\s+/g, '_')}.json`;
+      const prefix = getExpansionPrefix(configs);
+      const fileName = `${prefix}traderzones/${spawnName.trim().replace(/\s+/g, '_')}.json`;
       const template = {
         m_Version: 6,
         m_DisplayName: spawnName.trim(),
@@ -4450,7 +4525,7 @@ export default function TacticalMap({
               // Gather loaded MPG Spawner Triggers
               const spawnerFiles = Object.keys(configs).filter(p => {
                 const lower = p.toLowerCase();
-                return lower.startsWith('mpg_spawner/points/') && lower.endsWith('.json');
+                return lower.endsWith('.json') && (lower.includes('mpg_spawner/points/') || lower.startsWith('points/') || lower.includes('/points/'));
               }).sort();
               const allTriggers = [];
               spawnerFiles.forEach(fp => {
@@ -5156,7 +5231,7 @@ export default function TacticalMap({
                     if (newType === 'spawner_trigger') {
                       const paths = Object.keys(configs).filter(p => {
                         const lower = p.toLowerCase();
-                        return lower.startsWith('mpg_spawner/points/') && lower.endsWith('.json');
+                        return lower.endsWith('.json') && (lower.includes('mpg_spawner/points/') || lower.startsWith('points/') || lower.includes('/points/'));
                       }).sort();
                       if (paths.length > 0 && !targetPointsFilePath) {
                         setTargetPointsFilePath(paths[0]);
@@ -5185,7 +5260,7 @@ export default function TacticalMap({
                     {Object.keys(configs)
                       .filter(p => {
                         const lower = p.toLowerCase();
-                        return lower.startsWith('mpg_spawner/points/') && lower.endsWith('.json');
+                        return lower.endsWith('.json') && (lower.includes('mpg_spawner/points/') || lower.startsWith('points/') || lower.includes('/points/'));
                       })
                       .sort()
                       .map(path => {

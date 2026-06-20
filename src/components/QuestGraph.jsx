@@ -4,6 +4,7 @@ import FormCard from './shared/FormCard';
 import CoordinatesInput from './shared/CoordinatesInput';
 import { useTranslation } from '../utils/localization';
 import HelpIcon from './HelpIcon';
+import { getExpansionModPrefix } from '../utils/pathUtils';
 
 // Topological sorting layer layout for quest nodes
 function layoutQuests(quests, nodeOffsets) {
@@ -100,10 +101,15 @@ const OBJECTIVE_TYPES = {
   6: { folder: 'TreasureHunt', prefix: 'TH', label: 'Treasure Hunt' }
 };
 
-function getObjectiveFilePath(typeId, id) {
+function getObjectiveFilePath(typeId, id, configs = {}) {
   const info = OBJECTIVE_TYPES[typeId];
   if (!info) return null;
-  return `ExpansionMod/Quests/Objectives/${info.folder}/Objective_${info.prefix}_${id}.json`;
+  const suffix = `quests/objectives/${info.folder.toLowerCase()}/objective_${info.prefix.toLowerCase()}_${id}.json`;
+  const existingKey = Object.keys(configs).find(k => k.toLowerCase() === suffix || k.toLowerCase().endsWith('/' + suffix));
+  if (existingKey) return existingKey;
+
+  const prefix = getExpansionModPrefix(configs);
+  return `${prefix}Quests/Objectives/${info.folder}/Objective_${info.prefix}_${id}.json`;
 }
 
 // Simple Autocomplete block for reuse inside Quest Editor (optimized via off-thread Web Worker in AutocompleteInput)
@@ -116,6 +122,244 @@ function ItemAutocomplete({ suggestions, onAdd, label = "Add item", placeholder 
       buttonLabel={label} 
       layout={layout}
     />
+  );
+}
+
+function AISpawnForm({ spawn, onChange, loadoutsList, t, setCoordinatePicker, setActiveTab, onPickWaypointCallback }) {
+  const factionOptions = ["West", "East", "Raiders", "Mercenaries", "Civilians", "Guards", "Passive", "Zombies", "Shamans"];
+  const formationOptions = ["Vee", "File", "Wall", "Column", "Line", "StaggeredColumn"];
+  const behaviourOptions = ["HALT_OR_LOOP", "WANDER", "PATROL"];
+  const speedOptions = ["WALK", "JOG", "SPRINT", "RUN"];
+
+  const handleFieldChange = (key, val) => {
+    onChange({
+      ...spawn,
+      [key]: val
+    });
+  };
+
+  const handleWaypointChange = (idx, coordIdx, val) => {
+    const wps = [...(spawn.Waypoints || [])];
+    if (!wps[idx]) wps[idx] = [0.0, 0.0, 0.0];
+    wps[idx][coordIdx] = Number(val);
+    handleFieldChange('Waypoints', wps);
+  };
+
+  const addWaypoint = () => {
+    const wps = [...(spawn.Waypoints || []), [0.0, 0.0, 0.0]];
+    handleFieldChange('Waypoints', wps);
+  };
+
+  const removeWaypoint = (idx) => {
+    const wps = (spawn.Waypoints || []).filter((_, i) => i !== idx);
+    handleFieldChange('Waypoints', wps);
+  };
+
+  const pickWaypointFromMap = (idx) => {
+    setCoordinatePicker({
+      returnTab: 'quests',
+      callback: ({ x, z }) => {
+        const currentY = (spawn.Waypoints && spawn.Waypoints[idx]) ? (spawn.Waypoints[idx][1] ?? 0.0) : 0.0;
+        onPickWaypointCallback(idx, [x, currentY, z]);
+      }
+    });
+    setActiveTab('map');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '14px', borderRadius: '2px' }}>
+      
+      {/* Name & Faction */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_name') || "Group Name"}</label>
+          <input 
+            type="text" 
+            value={spawn.Name || ''} 
+            onChange={e => handleFieldChange('Name', e.target.value)} 
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_faction') || "AI Faction"}</label>
+          <select 
+            value={spawn.Faction || ''} 
+            onChange={e => handleFieldChange('Faction', e.target.value)}
+            style={{ width: '100%', padding: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '2px' }}
+          >
+            <option value="">-- Select --</option>
+            {factionOptions.map(f => <option key={f} value={f}>{t(`quest_faction_${f.toLowerCase()}`) || f}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Formation & Loadout */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_formation') || "AI Formation"}</label>
+          <select 
+            value={spawn.Formation || ''} 
+            onChange={e => handleFieldChange('Formation', e.target.value)}
+            style={{ width: '100%', padding: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '2px' }}
+          >
+            <option value="">-- Select --</option>
+            {formationOptions.map(f => <option key={f} value={f}>{t(`quest_formation_${f.toLowerCase()}`) || f}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_loadout') || "AI Loadout"}</label>
+          <select 
+            value={spawn.Loadout || ''} 
+            onChange={e => handleFieldChange('Loadout', e.target.value)}
+            style={{ width: '100%', padding: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '2px' }}
+          >
+            <option value="">-- Select --</option>
+            {loadoutsList.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* NumberOfAI & NumberOfAIMax */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_number') || "Number of AI"}</label>
+          <input 
+            type="number" 
+            value={spawn.NumberOfAI ?? 1} 
+            onChange={e => handleFieldChange('NumberOfAI', Number(e.target.value))} 
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_number_max') || "Max Number of AI"}</label>
+          <input 
+            type="number" 
+            value={spawn.NumberOfAIMax ?? 0} 
+            onChange={e => handleFieldChange('NumberOfAIMax', Number(e.target.value))} 
+          />
+        </div>
+      </div>
+
+      {/* Behaviour & Speeds */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_behaviour') || "AI Behaviour"}</label>
+          <select 
+            value={spawn.Behaviour || ''} 
+            onChange={e => handleFieldChange('Behaviour', e.target.value)}
+            style={{ width: '100%', padding: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '2px' }}
+          >
+            <option value="">-- Select --</option>
+            {behaviourOptions.map(b => <option key={b} value={b}>{t(`quest_behaviour_${b.toLowerCase()}`) || b}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_speed') || "Patrol Speed"}</label>
+          <select 
+            value={spawn.Speed || ''} 
+            onChange={e => handleFieldChange('Speed', e.target.value)}
+            style={{ width: '100%', padding: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '2px' }}
+          >
+            <option value="">-- Select --</option>
+            {speedOptions.map(s => <option key={s} value={s}>{t(`quest_speed_${s.toLowerCase()}`) || s}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Accuracy (Min/Max) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_accuracy_min') || "Min Accuracy"}</label>
+          <input 
+            type="number" 
+            step="0.05" 
+            min="0" 
+            max="1" 
+            value={spawn.AccuracyMin ?? 0.5} 
+            onChange={e => handleFieldChange('AccuracyMin', Number(e.target.value))} 
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_ai_accuracy_max') || "Max Accuracy"}</label>
+          <input 
+            type="number" 
+            step="0.05" 
+            min="0" 
+            max="1" 
+            value={spawn.AccuracyMax ?? 0.8} 
+            onChange={e => handleFieldChange('AccuracyMax', Number(e.target.value))} 
+          />
+        </div>
+      </div>
+
+      {/* Checkboxes */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '4px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+          <input 
+            type="checkbox" 
+            checked={spawn.CanBeLooted === 1 || spawn.CanBeLooted === true}
+            onChange={e => handleFieldChange('CanBeLooted', e.target.checked ? 1 : 0)} 
+          />
+          {t('quest_ai_can_be_looted') || "Can be Looted"}
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+          <input 
+            type="checkbox" 
+            checked={spawn.UnlimitedReload === 1 || spawn.UnlimitedReload === true}
+            onChange={e => handleFieldChange('UnlimitedReload', e.target.checked ? 1 : 0)} 
+          />
+          {t('quest_ai_unlimited_reload') || "Unlimited Reload"}
+        </label>
+      </div>
+
+      {/* Waypoints */}
+      <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '8px', paddingTop: '8px' }}>
+        <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+          {t('quest_ai_waypoints') || "Waypoints"}
+        </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginBottom: '8px' }}>
+          {(spawn.Waypoints || []).map((wp, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-dark)', width: '20px' }}>#{idx+1}</span>
+              {['X', 'Y', 'Z'].map((axis, cIdx) => (
+                <input 
+                  key={axis}
+                  type="number"
+                  placeholder={axis}
+                  value={wp[cIdx] ?? 0}
+                  onChange={e => handleWaypointChange(idx, cIdx, e.target.value)}
+                  style={{ width: '70px', padding: '2px 4px', fontSize: '11px' }}
+                />
+              ))}
+              <button 
+                type="button"
+                className="btn btn-accent"
+                onClick={() => pickWaypointFromMap(idx)}
+                style={{ padding: '2px 6px', fontSize: '10px' }}
+                title={t('quest_label_pick_coords') || "Pick from Map"}
+              >
+                🎯
+              </button>
+              <button 
+                type="button"
+                className="btn btn-danger"
+                onClick={() => removeWaypoint(idx)}
+                style={{ padding: '2px 6px', fontSize: '10px' }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        <button 
+          type="button"
+          className="btn btn-primary"
+          onClick={addWaypoint}
+          style={{ width: '100%', padding: '4px', fontSize: '11px' }}
+        >
+          {t('quest_ai_btn_add_waypoint') || "+ Add Waypoint"}
+        </button>
+      </div>
+
+    </div>
   );
 }
 
@@ -136,11 +380,95 @@ export default function QuestGraph({
   const containerRef = useRef(null);
   const { t, lang } = useTranslation();
 
-
+  const loadoutsList = useMemo(() => {
+    const list = [];
+    Object.keys(configs || {}).forEach(filePath => {
+      const lower = filePath.toLowerCase();
+      if ((lower.includes('/loadouts/') || lower.startsWith('loadouts/')) && filePath.endsWith('.json')) {
+        list.push(filePath.split('/').pop().replace('.json', ''));
+      }
+    });
+    return list.sort();
+  }, [configs]);
 
   const highlightSet = useMemo(() => {
     return new Set(Array.isArray(highlightedQuestIds) ? highlightedQuestIds.map(Number) : []);
   }, [highlightedQuestIds]);
+
+  // State and memoized derivation for topological list and autocomplete suggestions
+  const { quests, classnameSuggestions } = useMemo(() => {
+    const questList = [];
+    const classnames = new Set();
+
+    for (const [filePath, file] of Object.entries(configs)) {
+      if (!file.success || !file.content) continue;
+      const content = file.content;
+      
+      // Load Quests
+      if (filePath.toLowerCase().includes('quests/quests/quest_') && content.ID !== undefined) {
+        questList.push({
+          id: content.ID,
+          title: content.Title || `Quest #${content.ID}`,
+          followUpQuest: content.FollowUpQuest || 0,
+          preQuestIDs: Array.isArray(content.PreQuestIDs) ? content.PreQuestIDs : [],
+          giverIDs: Array.isArray(content.QuestGiverIDs) ? content.QuestGiverIDs : [],
+          turnInIDs: Array.isArray(content.QuestTurnInIDs) ? content.QuestTurnInIDs : [],
+          description: content.Descriptions ? content.Descriptions[0] : '',
+          objectives: Array.isArray(content.Objectives) ? content.Objectives : [],
+          filePath
+        });
+      }
+
+      // Collect Classnames for autocompletes
+      if (Array.isArray(content.Items)) {
+        content.Items.forEach(i => i.ClassName && classnames.add(i.ClassName));
+      }
+      if (content.StartingClothing) {
+        ['Tops', 'Pants', 'Shoes', 'Backpacks'].forEach(k => {
+          if (Array.isArray(content.StartingClothing[k])) {
+            content.StartingClothing[k].forEach(item => classnames.add(item));
+          }
+        });
+      }
+    }
+    
+    (Array.isArray(xmlItems) ? xmlItems : []).forEach(item => {
+      if (typeof item === 'string') classnames.add(item);
+    });
+    
+    questList.sort((a, b) => a.id - b.id);
+    return {
+      quests: questList,
+      classnameSuggestions: Array.from(classnames).sort()
+    };
+  }, [configs, xmlItems]);
+
+  const chainSet = useMemo(() => {
+    if (!selectedQuestId) return new Set();
+    const ids = new Set();
+    
+    const addAncestors = (qId) => {
+      if (ids.has(qId)) return;
+      ids.add(qId);
+      const q = quests.find(item => item.id === qId);
+      if (q && Array.isArray(q.preQuestIDs)) {
+        q.preQuestIDs.forEach(preId => addAncestors(Number(preId)));
+      }
+    };
+    
+    const addDescendants = (qId) => {
+      if (ids.has(qId)) return;
+      ids.add(qId);
+      const q = quests.find(item => item.id === qId);
+      if (q && q.followUpQuest > 0) {
+        addDescendants(Number(q.followUpQuest));
+      }
+    };
+
+    addAncestors(Number(selectedQuestId));
+    addDescendants(Number(selectedQuestId));
+    return ids;
+  }, [selectedQuestId, quests]);
 
   // Canvas pan & zoom states
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -188,54 +516,6 @@ export default function QuestGraph({
   // Drag connection line state
   const [connectionDrag, setConnectionDrag] = useState(null);
 
-  // State and memoized derivation for topological list and autocomplete suggestions
-  const { quests, classnameSuggestions } = useMemo(() => {
-    const questList = [];
-    const classnames = new Set();
-
-    for (const [filePath, file] of Object.entries(configs)) {
-      if (!file.success || !file.content) continue;
-      const content = file.content;
-      
-      // Load Quests
-      if (filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_') && content.ID !== undefined) {
-        questList.push({
-          id: content.ID,
-          title: content.Title || `Quest #${content.ID}`,
-          followUpQuest: content.FollowUpQuest || 0,
-          preQuestIDs: Array.isArray(content.PreQuestIDs) ? content.PreQuestIDs : [],
-          giverIDs: Array.isArray(content.QuestGiverIDs) ? content.QuestGiverIDs : [],
-          turnInIDs: Array.isArray(content.QuestTurnInIDs) ? content.QuestTurnInIDs : [],
-          description: content.Descriptions ? content.Descriptions[0] : '',
-          objectives: Array.isArray(content.Objectives) ? content.Objectives : [],
-          filePath
-        });
-      }
-
-      // Collect Classnames for autocompletes
-      if (Array.isArray(content.Items)) {
-        content.Items.forEach(i => i.ClassName && classnames.add(i.ClassName));
-      }
-      if (content.StartingClothing) {
-        ['Tops', 'Pants', 'Shoes', 'Backpacks'].forEach(k => {
-          if (Array.isArray(content.StartingClothing[k])) {
-            content.StartingClothing[k].forEach(item => classnames.add(item));
-          }
-        });
-      }
-    }
-    
-    (Array.isArray(xmlItems) ? xmlItems : []).forEach(item => {
-      if (typeof item === 'string') classnames.add(item);
-    });
-    
-    questList.sort((a, b) => a.id - b.id);
-    return {
-      quests: questList,
-      classnameSuggestions: Array.from(classnames).sort()
-    };
-  }, [configs, xmlItems]);
-
   // Selected entities and sync logic during rendering pass (React 18 style)
   const [prevQuests, setPrevQuests] = useState([]);
   const [prevSelectedQuestId, setPrevSelectedQuestId] = useState(null);
@@ -271,6 +551,8 @@ export default function QuestGraph({
 
   // Modal editor for Objective details
   const [editingObjective, setEditingObjective] = useState(null); // { objective, filePath }
+  const [activeCampGroupIdx, setActiveCampGroupIdx] = useState(0);
+  const [highlightChainMode, setHighlightChainMode] = useState(true);
 
   // Graph Search HUD
   const [searchQuery, setSearchQuery] = useState('');
@@ -286,7 +568,7 @@ export default function QuestGraph({
   // Load NPCs list for checkboxes
   const npcsList = [];
   Object.entries(configs).forEach(([p, file]) => {
-    if (file.success && file.content && p.toLowerCase().startsWith('expansionmod/quests/npcs/questnpc_') && file.content.ID !== undefined) {
+    if (file.success && file.content && p.toLowerCase().includes('quests/npcs/questnpc_') && file.content.ID !== undefined) {
       npcsList.push({
         id: file.content.ID,
         name: file.content.NPCName || `NPC #${file.content.ID}`,
@@ -297,7 +579,7 @@ export default function QuestGraph({
   npcsList.sort((a, b) => a.id - b.id);
 
   // Sidebar resizing states & handlers
-  const [sidebarWidth, setSidebarWidth] = useState(350);
+  const [sidebarWidth, setSidebarWidth] = useState(450);
   const isResizingRef = useRef(false);
 
   const handleResizeMouseDown = (e) => {
@@ -853,6 +1135,36 @@ export default function QuestGraph({
         if (Array.isArray(file.QuestTurnInIDs)) {
           file.QuestTurnInIDs.forEach(id => checkNpcExists(id, 'Quest Turn-In'));
         }
+
+        // Validate objective positions & specific properties
+        if (Array.isArray(file.Objectives)) {
+          file.Objectives.forEach(objRef => {
+            const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID, configs);
+            const objFile = objPath ? configs[objPath]?.content : null;
+            if (objFile) {
+              const typeLabel = OBJECTIVE_TYPES[objRef.ObjectiveType]?.label || 'Objective';
+              // Check Position for [0,0,0] (unconfigured)
+              if (objFile.Position !== undefined && Array.isArray(objFile.Position)) {
+                const isZero = objFile.Position.every(val => val === 0);
+                if (isZero) {
+                  results.push({
+                    type: 'warning',
+                    category: "Diagnostics Warning",
+                    msg: t('quest_audit_err_zero_pos', { id: objRef.ID, type: typeLabel }) || `Objective #${objRef.ID} (${typeLabel}) has a position set to [0,0,0].`,
+                    questId: q.id
+                  });
+                }
+              } else if (objRef.ObjectiveType === 2 || objRef.ObjectiveType === 3 || objRef.ObjectiveType === 9) {
+                results.push({
+                  type: 'error',
+                  category: "Missing Coordinates",
+                  msg: `Objective #${objRef.ID} (${typeLabel}) is missing coordinates (Position).`,
+                  questId: q.id
+                });
+              }
+            }
+          });
+        }
       }
     });
 
@@ -861,7 +1173,7 @@ export default function QuestGraph({
     quests.forEach(q => {
       if (Array.isArray(q.objectives)) {
         q.objectives.forEach(objRef => {
-          const path = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID);
+          const path = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID, configs);
           if (path) referencedObjectivePaths.add(path.toLowerCase());
         });
       }
@@ -869,7 +1181,7 @@ export default function QuestGraph({
 
     Object.keys(configs).forEach(filePath => {
       const lower = filePath.toLowerCase();
-      if (lower.startsWith('expansionmod/quests/objectives/') && lower.endsWith('.json')) {
+      if (lower.endsWith('.json') && (lower.includes('/quests/objectives/') || lower.startsWith('quests/objectives/'))) {
         if (!referencedObjectivePaths.has(lower)) {
           results.push({
             type: 'warning',
@@ -940,7 +1252,8 @@ export default function QuestGraph({
       Active: 1
     };
 
-    const filePath = `ExpansionMod/Quests/Quests/Quest_${nextId}.json`;
+    const prefix = getExpansionModPrefix(configs);
+    const filePath = `${prefix}Quests/Quests/Quest_${nextId}.json`;
     onCreateFile(filePath, newQuestTemplate);
 
     // Pin the new node at the cursor position if spawned via RMB
@@ -961,6 +1274,38 @@ export default function QuestGraph({
         filePath
       });
     }, 200);
+  };
+
+  const handleLinkSelectedSequentially = () => {
+    const selectedNodes = positionedNodes.filter(n => selectedQuestIds.has(n.id));
+    if (selectedNodes.length < 2) return;
+
+    // Sort by X coordinate (left to right)
+    const sorted = [...selectedNodes].sort((a, b) => a.x - b.x);
+
+    // Pin offsets for all positioned nodes so they don't jump during layout update
+    setNodeOffsets(prevOff => {
+      const updated = { ...prevOff };
+      positionedNodes.forEach(n => {
+        if (!updated[n.id]) updated[n.id] = { x: n.x, y: n.y };
+      });
+      return updated;
+    });
+
+    // Link sequentially
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const source = sorted[i];
+      const target = sorted[i + 1];
+
+      // Update target's PreQuestIDs
+      const targetPre = target.preQuestIDs || [];
+      if (!targetPre.includes(source.id)) {
+        onChangeField(target.filePath, ['PreQuestIDs'], [...targetPre, source.id]);
+      }
+
+      // Update source's FollowUpQuest
+      onChangeField(source.filePath, ['FollowUpQuest'], target.id);
+    }
   };
 
   const handleDeleteQuest = (singleQuestToDelete) => {
@@ -1006,7 +1351,7 @@ export default function QuestGraph({
               q2.objectives.some(o => o.ID === obj.ID && o.ObjectiveType === obj.ObjectiveType)
             );
             if (!isReferenced) {
-              const objPath = getObjectiveFilePath(obj.ObjectiveType, obj.ID);
+              const objPath = getObjectiveFilePath(obj.ObjectiveType, obj.ID, configs);
               if (objPath) onDeleteFile(objPath);
             }
           });
@@ -1023,6 +1368,97 @@ export default function QuestGraph({
     }
   };
 
+  const handleDuplicateQuest = () => {
+    if (!selectedQuest) return;
+    const questConfig = configs[selectedQuest.filePath]?.content;
+    if (!questConfig) return;
+
+    freezeCurrentLayout();
+    const nextQuestId = quests.length > 0 ? Math.max(...quests.map(q => Number(q.id) || 0)) + 1 : 1;
+
+    // 1. Duplicate Objectives (deep copy)
+    const duplicatedObjectivesRefs = [];
+    if (Array.isArray(questConfig.Objectives)) {
+      questConfig.Objectives.forEach(objRef => {
+        const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID, configs);
+        const objFile = configs[objPath];
+        if (objFile && objFile.success && objFile.content) {
+          // Find next available objective ID for this type (path-agnostically)
+          const folderName = OBJECTIVE_TYPES[objRef.ObjectiveType].folder.toLowerCase();
+          const prefix = OBJECTIVE_TYPES[objRef.ObjectiveType].prefix.toLowerCase();
+          let maxId = 0;
+          Object.entries(configs).forEach(([path, file]) => {
+            const lp = path.toLowerCase();
+            const matchStr = `quests/objectives/${folderName}/objective_${prefix}_`;
+            if (file.success && file.content && lp.includes(matchStr)) {
+              if (file.content.ID !== undefined && file.content.ID > maxId) {
+                maxId = file.content.ID;
+              }
+            }
+          });
+          const nextObjId = maxId + 1 + duplicatedObjectivesRefs.filter(o => o.ObjectiveType === objRef.ObjectiveType).length;
+
+          const clonedObjective = {
+            ...deepClone(objFile.content),
+            ID: nextObjId
+          };
+
+          const newObjPath = getObjectiveFilePath(objRef.ObjectiveType, nextObjId, configs);
+          onCreateFile(newObjPath, clonedObjective);
+
+          duplicatedObjectivesRefs.push({
+            ConfigVersion: objRef.ConfigVersion || 28,
+            ID: nextObjId,
+            ObjectiveType: objRef.ObjectiveType,
+            ObjectiveName: objRef.ObjectiveName || ''
+          });
+        }
+      });
+    }
+
+    // 2. Duplicate Quest Config
+    const clonedQuestConfig = {
+      ...questConfig,
+      ID: nextQuestId,
+      Title: `${questConfig.Title} (Copy)`,
+      Objectives: duplicatedObjectivesRefs,
+      FollowUpQuest: -1, // Reset follow up to prevent circles
+      PreQuestIDs: [] // Reset prerequisites to allow independent chaining
+    };
+
+    const prefix = getExpansionModPrefix(configs);
+    const newQuestPath = `${prefix}Quests/Quests/Quest_${nextQuestId}.json`;
+    onCreateFile(newQuestPath, clonedQuestConfig);
+
+    // Save offset position if dragged layout is stored, place slightly offsetted
+    if (selectedQuest.id && nodeOffsets[selectedQuest.id]) {
+      setNodeOffsets(prev => ({
+        ...prev,
+        [nextQuestId]: {
+          x: prev[selectedQuest.id].x + 40,
+          y: prev[selectedQuest.id].y + 40
+        }
+      }));
+    }
+
+    // Automatically select the newly created quest
+    setTimeout(() => {
+      const qRef = {
+        id: nextQuestId,
+        title: clonedQuestConfig.Title,
+        filePath: newQuestPath,
+        preQuestIDs: [],
+        followUpQuest: -1,
+        objectives: duplicatedObjectivesRefs
+      };
+      setSelectedQuest(qRef);
+      const singleSet = new Set([nextQuestId]);
+      selectedQuestIdsRef.current = singleSet;
+      setSelectedQuestIds(singleSet);
+      if (onSelectQuest) onSelectQuest(nextQuestId);
+    }, 100);
+  };
+
   // OBJECTIVE CREATION & DELETION
   const handleAddObjective = (typeId) => {
     if (!selectedQuest) return;
@@ -1034,8 +1470,9 @@ export default function QuestGraph({
 
     // Find next ID for this objective type across ALL configs in state
     let maxId = 0;
+    const targetSegment = `quests/objectives/${folderName.toLowerCase()}/objective_${prefix.toLowerCase()}_`.toLowerCase();
     Object.keys(configs).forEach(filePath => {
-      if (filePath.toLowerCase().startsWith(`expansionmod/quests/objectives/${folderName.toLowerCase()}/objective_${prefix.toLowerCase()}_`)) {
+      if (filePath.toLowerCase().includes(targetSegment)) {
         const file = configs[filePath];
         if (file.success && file.content && file.content.ID !== undefined) {
           if (file.content.ID > maxId) maxId = file.content.ID;
@@ -1092,20 +1529,126 @@ export default function QuestGraph({
       objTemplate = {
         ...objTemplate,
         Collections: [],
+        ShowDistance: 1,
+        AddItemsToNearbyMarketZone: 0,
+        NeedAnyCollection: 0
+      };
+    } else if (Number(typeId) === 6) { // Treasure Hunt
+      objTemplate = {
+        ...objTemplate,
+        ShowDistance: 1,
+        ContainerName: "ExpansionQuestSeaChest",
+        DigInStash: 1,
+        MarkerName: "???",
+        MarkerVisibility: 4,
+        Positions: [],
+        LootItemsAmount: 0,
+        MaxDistance: 10.0,
+        Loot: []
+      };
+    } else if (Number(typeId) === 7) { // AI Patrol
+      objTemplate = {
+        ...objTemplate,
+        MaxDistance: -1.0,
+        MinDistance: -1.0,
+        AllowedWeapons: [],
+        AllowedDamageZones: [],
+        AISpawn: {
+          Name: "AI Patrol Group",
+          Persist: 0,
+          Faction: "West",
+          Formation: "Vee",
+          FormationScale: 1.5,
+          FormationLooseness: 0.0,
+          Loadout: "SurvivorLoadout",
+          Units: [],
+          NumberOfAI: 3,
+          NumberOfAIMax: 0,
+          Behaviour: "HALT_OR_LOOP",
+          LootingBehaviour: "",
+          Speed: "JOG",
+          UnderThreatSpeed: "SPRINT",
+          DefaultStance: "STANDING",
+          DefaultLookAngle: 0.0,
+          CanBeLooted: 1,
+          LootDropOnDeath: "",
+          UnlimitedReload: 1,
+          SniperProneDistanceThreshold: 300.0,
+          AccuracyMin: 0.5,
+          AccuracyMax: 0.8,
+          ThreatDistanceLimit: 500.0,
+          NoiseInvestigationDistanceLimit: -1.0,
+          MaxFlankingDistance: -1.0,
+          EnableFlankingOutsideCombat: -1,
+          DamageMultiplier: 1.0,
+          DamageReceivedMultiplier: 1.0,
+          HeadshotResistance: 0.0,
+          ShoryukenChance: 0.0,
+          ShoryukenDamageMultiplier: 0.0,
+          CanSpawnInContaminatedArea: 0,
+          CanBeTriggeredByAI: 0,
+          MinDistRadius: 50.0,
+          MaxDistRadius: 500.0,
+          DespawnRadius: 600.0,
+          MinSpreadRadius: 0.0,
+          MaxSpreadRadius: 0.0,
+          Chance: 1.0,
+          DespawnTime: 1.0,
+          RespawnTime: 1.0,
+          LoadBalancingCategory: "",
+          ObjectClassName: "",
+          WaypointInterpolation: "",
+          UseRandomWaypointAsStartPoint: 1,
+          Waypoints: []
+        }
+      };
+    } else if (Number(typeId) === 8) { // AI Camp
+      objTemplate = {
+        ...objTemplate,
+        InfectedDeletionRadius: 500.0,
+        MaxDistance: -1.0,
+        MinDistance: -1.0,
+        AllowedWeapons: [],
+        AllowedDamageZones: [],
+        AISpawns: []
+      };
+    } else if (Number(typeId) === 9) { // AI VIP Escort
+      objTemplate = {
+        ...objTemplate,
+        NPCName: "VIP",
+        NPCClassName: "eAI_SurvivorM_Mirek",
+        NPCLoadoutFile: "",
         MaxDistance: 20.0,
-        MarkerName: "Collection Target",
-        ShowDistance: 1
+        Position: [0.0, 0.0, 0.0],
+        MarkerName: "Escort Destination",
+        ShowDistance: 1,
+        CanLootAI: 0
+      };
+    } else if (Number(typeId) === 10) { // Action
+      objTemplate = {
+        ...objTemplate,
+        ExecutionAmount: 1,
+        ActionNames: [],
+        AllowedClassNames: [],
+        ExcludedClassNames: []
+      };
+    } else if (Number(typeId) === 11) { // Crafting
+      objTemplate = {
+        ...objTemplate,
+        ExecutionAmount: 1,
+        ItemNames: []
       };
     }
 
-    const objPath = getObjectiveFilePath(typeId, nextObjId);
+    const objPath = getObjectiveFilePath(typeId, nextObjId, configs);
     onCreateFile(objPath, objTemplate);
 
     // Link reference in quest file
     const newObjectiveRef = {
       ConfigVersion: 28,
       ID: nextObjId,
-      ObjectiveType: Number(typeId)
+      ObjectiveType: Number(typeId),
+      ObjectiveName: ''
     };
     onChangeField(selectedQuest.filePath, ['Objectives'], [...(questConfig.Objectives || []), newObjectiveRef]);
   };
@@ -1127,19 +1670,38 @@ export default function QuestGraph({
       );
 
       if (!isReferenced) {
-        const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID);
-        if (objPath) {
-          onDeleteFile(objPath);
-        }
+        const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID, configs);
+        if (objPath) onDeleteFile(objPath);
       }
     }
+  };
+
+  const handleMoveObjective = (objIndex, direction) => {
+    if (!selectedQuest) return;
+    const questConfig = configs[selectedQuest.filePath]?.content;
+    if (!questConfig || !Array.isArray(questConfig.Objectives)) return;
+
+    const list = [...questConfig.Objectives];
+    if (direction === 'up' && objIndex > 0) {
+      const temp = list[objIndex];
+      list[objIndex] = list[objIndex - 1];
+      list[objIndex - 1] = temp;
+    } else if (direction === 'down' && objIndex < list.length - 1) {
+      const temp = list[objIndex];
+      list[objIndex] = list[objIndex + 1];
+      list[objIndex + 1] = temp;
+    } else {
+      return;
+    }
+
+    onChangeField(selectedQuest.filePath, ['Objectives'], list);
   };
 
   // RENDER HELPERS
   const activeQuestConfig = selectedQuest ? configs[selectedQuest.filePath]?.content : null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div className="quest-editor-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       
       {/* Sub-tab selection bar */}
       <div style={{
@@ -1200,6 +1762,34 @@ export default function QuestGraph({
               setQuestCtxMenu({ type: 'canvas', px: e.clientX, py: e.clientY, svgX: coords.x, svgY: coords.y });
             }}
             onClick={() => questCtxMenu && setQuestCtxMenu(null)}
+            onWheel={(e) => {
+              e.preventDefault();
+              const rect = e.currentTarget.getBoundingClientRect();
+              const mouseX = e.clientX - rect.left;
+              const mouseY = e.clientY - rect.top;
+              
+              // Calculate SVG coords of the mouse cursor before zooming
+              const svgX = (mouseX - panOffset.x) / zoom;
+              const svgY = (mouseY - panOffset.y) / zoom;
+              
+              // Zoom factor
+              const factor = 1.1;
+              let nextZoom = zoom;
+              if (e.deltaY < 0) {
+                // Zoom In
+                nextZoom = Math.min(zoom * factor, 3.0);
+              } else {
+                // Zoom Out
+                nextZoom = Math.max(zoom / factor, 0.3);
+              }
+              
+              // Adjust panOffset so mouse coordinates in SVG space remain under the cursor after zoom
+              const nextPanX = mouseX - svgX * nextZoom;
+              const nextPanY = mouseY - svgY * nextZoom;
+              
+              setZoom(nextZoom);
+              setPanOffset({ x: nextPanX, y: nextPanY });
+            }}
             style={{ 
               flex: 1, 
               height: '100%', 
@@ -1211,6 +1801,34 @@ export default function QuestGraph({
             }}
           >
         <svg style={{ width: '100%', height: '100%' }}>
+          <defs>
+            <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+              <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(149, 192, 149, 0.05)" strokeWidth="1" />
+              <path d="M 150 0 L 0 0 0 150" fill="none" stroke="rgba(149, 192, 149, 0.12)" strokeWidth="1.5" />
+            </pattern>
+            <marker
+              id="arrow-prereq"
+              viewBox="0 0 10 10"
+              refX="6"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#b4c6e7" opacity="0.8" />
+            </marker>
+            <marker
+              id="arrow-followup"
+              viewBox="0 0 10 10"
+              refX="6"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#b2fa9e" opacity="0.8" />
+            </marker>
+          </defs>
           <rect id="grid-bg" width="100%" height="100%" fill="url(#grid)" />
 
           {/* Group wrapper containing pan and zoom transforms */}
@@ -1246,6 +1864,12 @@ export default function QuestGraph({
 
                   const midX = 0.125 * startX + 0.375 * cp1X + 0.375 * cp2X + 0.125 * endX;
                   const midY = 0.125 * startY + 0.375 * cp1Y + 0.375 * cp2Y + 0.125 * endY;
+                  const isChainLine = chainSet.has(Number(preId)) && chainSet.has(Number(node.id));
+                  let prereqOpacity = lineVisible ? (isHighlight ? '1.0' : '0.65') : '0.08';
+                  if (highlightChainMode && selectedQuestId && !isChainLine) {
+                    prereqOpacity = '0.08';
+                  }
+
                   const connKey = `prereq-${preId}-${node.id}`;
                   const isHovered = hoveredConnectionKey === connKey;
 
@@ -1280,11 +1904,11 @@ export default function QuestGraph({
                         className={isSelectedLine && !isHighlight ? 'quest-line-prereq-active' : undefined}
                         d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
                         fill="none"
-                        stroke={isHovered ? '#ff6b6b' : (isHighlight ? '#ff4a4a' : '#44aacc')}
+                        stroke={isHovered ? '#ff6b6b' : (isHighlight ? '#ff4a4a' : (highlightChainMode && selectedQuestId && isChainLine ? '#00f3ff' : '#44aacc'))}
                         strokeWidth={isHovered ? '3' : (isHighlight ? '2.5' : (isSelectedLine ? '2' : '1.5'))}
                         strokeDasharray={isHighlight || isSelectedLine ? undefined : '4,4'}
                         markerEnd="url(#arrow-prereq)"
-                        opacity={lineVisible ? (isHighlight ? '1.0' : '0.65') : '0.08'}
+                        opacity={prereqOpacity}
                       />
                       {isHovered && lineVisible && (
                         <g 
@@ -1325,6 +1949,12 @@ export default function QuestGraph({
 
                   const midX = 0.125 * startX + 0.375 * cp1X + 0.375 * cp2X + 0.125 * endX;
                   const midY = 0.125 * startY + 0.375 * cp1Y + 0.375 * cp2Y + 0.125 * endY;
+                  const isChainLine = chainSet.has(Number(node.id)) && chainSet.has(Number(node.followUpQuest));
+                  let followOpacity = lineVisible ? (isHighlight ? '1.0' : '0.8') : '0.08';
+                  if (highlightChainMode && selectedQuestId && !isChainLine) {
+                    followOpacity = '0.08';
+                  }
+
                   const connKey = `follow-${node.id}-${node.followUpQuest}`;
                   const isHovered = hoveredConnectionKey === connKey;
 
@@ -1359,10 +1989,10 @@ export default function QuestGraph({
                         className={isSelectedLine && !isHighlight ? 'quest-line-followup-active' : undefined}
                         d={`M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`}
                         fill="none"
-                        stroke={isHovered ? '#ff6b6b' : (isHighlight ? '#ff4a4a' : '#b2fa9e')}
+                        stroke={isHovered ? '#ff6b6b' : (isHighlight ? '#ff4a4a' : (highlightChainMode && selectedQuestId && isChainLine ? '#00f3ff' : '#b2fa9e'))}
                         strokeWidth={isHovered ? '3' : (isHighlight ? '3' : (isSelectedLine ? '2.5' : '2'))}
                         markerEnd="url(#arrow-followup)"
-                        opacity={lineVisible ? (isHighlight ? '1.0' : '0.8') : '0.08'}
+                        opacity={followOpacity}
                       />
                       {isHovered && lineVisible && (
                         <g 
@@ -1401,7 +2031,13 @@ export default function QuestGraph({
               const isSelected = selectedQuestIds.has(node.id);
               const sq2 = searchQuery.trim().toLowerCase();
               const isMatch = !sq2 || String(node.id).includes(sq2) || node.title.toLowerCase().includes(sq2);
-              const nodeOpacity = sq2 && !isMatch ? 0.1 : 1;
+              
+              const isChainMember = !selectedQuestId || chainSet.has(Number(node.id));
+              let nodeOpacity = sq2 && !isMatch ? 0.1 : 1;
+              if (highlightChainMode && selectedQuestId && !isChainMember) {
+                nodeOpacity = 0.2;
+              }
+
               const hasUnsaved = configs[node.filePath]?.isDirty;
 
               const questContent = configs[node.filePath]?.content;
@@ -1419,6 +2055,7 @@ export default function QuestGraph({
               return (
                 <g 
                   key={node.id} 
+                  className={`quest-node ${isSelected ? 'selected' : ''}`}
                   transform={`translate(${node.x}, ${node.y})`}
                   style={{ opacity: nodeOpacity, transition: 'opacity 0.2s', cursor: 'grab' }}
                   onMouseDown={(e) => handleNodeDragStart(e, node.id)}
@@ -1433,11 +2070,11 @@ export default function QuestGraph({
                     width={node.width}
                     height={node.height}
                     rx="4"
-                    fill={isSelected ? 'var(--bg-tertiary)' : 'var(--bg-secondary)'}
-                    stroke={highlightSet.has(Number(node.id)) ? '#ff4a4a' : (isSelected ? 'var(--text-glow)' : hasUnsaved ? 'var(--warning-color)' : 'var(--border-color)')}
-                    strokeWidth={highlightSet.has(Number(node.id)) ? '2.5' : (isSelected ? '2' : '1.5')}
+                    fill={isSelected ? 'rgba(20, 28, 20, 0.92)' : 'rgba(13, 18, 13, 0.82)'}
+                    stroke={highlightSet.has(Number(node.id)) ? '#ff4a4a' : (isSelected ? 'var(--text-glow)' : (highlightChainMode && selectedQuestId && isChainMember ? '#00f3ff' : (hasUnsaved ? 'var(--warning-color)' : 'var(--border-color)')))}
+                    strokeWidth={highlightSet.has(Number(node.id)) ? '2.5' : (isSelected ? '2' : (highlightChainMode && selectedQuestId && isChainMember ? '2' : '1.5'))}
                     style={{
-                      filter: highlightSet.has(Number(node.id)) ? 'drop-shadow(0 0 10px rgba(255, 74, 74, 0.6))' : (isSelected ? 'drop-shadow(0 0 6px rgba(178, 250, 158, 0.25))' : 'none'),
+                      filter: highlightSet.has(Number(node.id)) ? 'drop-shadow(0 0 10px rgba(255, 74, 74, 0.6))' : (isSelected ? 'drop-shadow(0 0 6px rgba(178, 250, 158, 0.25))' : (highlightChainMode && selectedQuestId && isChainMember ? 'drop-shadow(0 0 8px rgba(0, 243, 255, 0.45))' : 'none')),
                       transition: 'fill 0.15s, stroke 0.15s'
                     }}
                   />
@@ -1603,6 +2240,27 @@ export default function QuestGraph({
           <button className="btn" onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }} style={{ padding: '4px 8px', fontSize: '11px' }} title="Reset Pan & Zoom">{t('config_reset')}</button>
           <button className="btn" onClick={() => setNodeOffsets({})} style={{ padding: '4px 8px', fontSize: '11px' }} title="Auto-align all nodes to default columns">{t('quest_btn_reset_layout') || 'Auto-Layout'}</button>
           <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}>
+            <input 
+              type="checkbox" 
+              checked={highlightChainMode} 
+              onChange={e => setHighlightChainMode(e.target.checked)} 
+            />
+            {t('quest_chk_highlight_chain') || "Highlight Chain"}
+          </label>
+          {selectedQuestIds.size >= 2 && (
+            <>
+              <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
+              <button 
+                className="btn btn-accent" 
+                onClick={handleLinkSelectedSequentially} 
+                style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 'bold' }}
+              >
+                🔗 {t('quest_btn_link_selected') || "Link Selected"}
+              </button>
+            </>
+          )}
+          <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
           <button className="btn btn-danger" onClick={runQuestAudit} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }} title="Run circular references, orphan objectives, and link validations">
             {t('quest_audit_btn') || "🛠️ DIAGNOSTICS"}
           </button>
@@ -1681,6 +2339,19 @@ export default function QuestGraph({
                   }, null, `📋 ${ru ? 'Копировать название' : 'Copy Quest Title'}`)}
 
                   <div style={{ height:'1px', background:'var(--border-color)', opacity:0.4, margin:'4px 0' }} />
+
+                  {BTN(() => {
+                    if (!selectedQuestIdsRef.current.has(n.id)) {
+                      const ns = new Set([n.id]);
+                      selectedQuestIdsRef.current = ns;
+                      setSelectedQuestIds(new Set(ns));
+                      setSelectedQuest(n);
+                      setPrevSelectedQuestId(n.id);
+                      if (onSelectQuest) onSelectQuest(n.id);
+                    }
+                    setQuestCtxMenu(null);
+                    setTimeout(() => handleDuplicateQuest(), 50);
+                  }, null, `👯 ${ru ? 'Дублировать квест' : 'Duplicate Quest'}`)}
 
                   {BTN(() => {
                     handleSeverAllConnections(n.id);
@@ -1774,7 +2445,7 @@ export default function QuestGraph({
 
       {/* Quest Editor Side Panel */}
       {selectedQuest && activeQuestConfig && (
-        <div style={{
+        <div className="quest-editor-sidebar" style={{
           width: `${sidebarWidth}px`,
           background: 'var(--bg-secondary)',
           borderLeft: '1px solid var(--border-color)',
@@ -1808,7 +2479,15 @@ export default function QuestGraph({
               <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>// {t('quest_editor_title')} (ID {selectedQuest.id})</div>
               <h3 style={{ margin: '2px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontSize: '16px' }}>{activeQuestConfig.Title}</h3>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button 
+                className="btn btn-accent" 
+                onClick={handleDuplicateQuest}
+                style={{ padding: '4px 8px', fontSize: '10px' }}
+                title={lang === 'ru' ? 'Дублировать квест и все его цели' : 'Duplicate quest and all its objectives'}
+              >
+                {lang === 'ru' ? 'Дублировать' : 'Duplicate'}
+              </button>
               <button 
                 className="btn btn-danger" 
                 onClick={handleDeleteQuest}
@@ -1849,7 +2528,7 @@ export default function QuestGraph({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflowX: 'auto', paddingBottom: '4px' }}>
                   {activeQuestConfig.Objectives.map((objRef, idx) => {
                     const typeInfo = OBJECTIVE_TYPES[objRef.ObjectiveType] || { label: 'Objective', prefix: 'OBJ' };
-                    const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID);
+                    const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID, configs);
                     const objFile = configs[objPath];
                     const objText = objFile?.success ? objFile.content.ObjectiveText : `${t(`quest_obj_type_${objRef.ObjectiveType}`) || typeInfo.label} #${objRef.ID}`;
                     
@@ -1872,24 +2551,57 @@ export default function QuestGraph({
                             padding: '4px 8px',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '6px',
+                            gap: '8px',
                             whiteSpace: 'nowrap',
-                            cursor: 'pointer',
                             transition: 'all 0.15s'
                           }}
-                          onClick={() => {
-                            if (objFile?.success) {
-                              setEditingObjective({ objective: objRef, filePath: objPath });
-                            } else {
-                              alert(`Objective config file is missing on disk:\n${objPath}`);
-                            }
-                          }}
-                          title={t('quest_edit_obj_tooltip', { id: objRef.ID })}
                         >
-                          <span style={{ fontSize: '12px' }}>{typeIcon}</span>
-                          <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: typeColor, fontWeight: 'bold' }}>
-                            {objText.length > 15 ? objText.slice(0, 15) + '...' : objText}
-                          </span>
+                          {/* Reordering arrows */}
+                          <div style={{ display: 'flex', gap: '4px', borderRight: '1px solid var(--border-color)', paddingRight: '6px', marginRight: '2px' }}>
+                            <button
+                              disabled={idx === 0}
+                              onClick={(e) => { e.stopPropagation(); handleMoveObjective(idx, 'up'); }}
+                              style={{ 
+                                background: 'transparent', border: 'none', 
+                                color: idx === 0 ? 'var(--text-dark)' : 'var(--text-secondary)', 
+                                cursor: idx === 0 ? 'not-allowed' : 'pointer', fontSize: '10px',
+                                padding: '2px', lineHeight: 1
+                              }}
+                              title="Move Left / Ранее"
+                            >
+                              ◀
+                            </button>
+                            <button
+                              disabled={idx === activeQuestConfig.Objectives.length - 1}
+                              onClick={(e) => { e.stopPropagation(); handleMoveObjective(idx, 'down'); }}
+                              style={{ 
+                                background: 'transparent', border: 'none', 
+                                color: idx === activeQuestConfig.Objectives.length - 1 ? 'var(--text-dark)' : 'var(--text-secondary)', 
+                                cursor: idx === activeQuestConfig.Objectives.length - 1 ? 'not-allowed' : 'pointer', fontSize: '10px',
+                                padding: '2px', lineHeight: 1
+                              }}
+                              title="Move Right / Позднее"
+                            >
+                              ▶
+                            </button>
+                          </div>
+
+                          <div 
+                            onClick={() => {
+                              if (objFile?.success) {
+                                setEditingObjective({ objective: objFile.content, filePath: objPath });
+                              } else {
+                                alert(`Objective config file is missing on disk:\n${objPath}`);
+                              }
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                            title={`${objText}\n(${t('quest_edit_obj_tooltip', { id: objRef.ID })})`}
+                          >
+                            <span style={{ fontSize: '12px' }}>{typeIcon}</span>
+                            <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: typeColor, fontWeight: 'bold' }}>
+                              {objText.length > 15 ? objText.slice(0, 15) + '...' : objText}
+                            </span>
+                          </div>
                         </div>
                       </React.Fragment>
                     );
@@ -1963,14 +2675,30 @@ export default function QuestGraph({
                     />
                   </div>
 
+                  <div>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {t('quest_label_object_set_file') || "Object Set Map File"}
+                    </label>
+                    <input 
+                      type="text" 
+                      value={activeQuestConfig.ObjectSetFileName || ''} 
+                      onChange={e => onChangeField(selectedQuest.filePath, ['ObjectSetFileName'], e.target.value)} 
+                    />
+                  </div>
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
                     {[
-                      { label: t('quest_chk_active'), key: 'Active' },
+                      { label: t('quest_chk_active'), key: 'Active', tipKey: 'tip_quest_active' },
                       { label: t('quest_chk_repeatable'), key: 'Repeatable', tipKey: 'tip_quest_repeatable' },
+                      { label: t('quest_chk_daily'), key: 'IsDailyQuest', tipKey: 'tip_quest_daily' },
+                      { label: t('quest_chk_weekly'), key: 'IsWeeklyQuest', tipKey: 'tip_quest_weekly' },
                       { label: t('quest_chk_autocomplete'), key: 'Autocomplete', tipKey: 'tip_quest_autocomplete' },
                       { label: t('quest_chk_cancel_death'), key: 'CancelQuestOnPlayerDeath', tipKey: 'tip_quest_cancel_death' },
                       { label: t('quest_chk_group'), key: 'IsGroupQuest', tipKey: 'tip_quest_group' },
-                      { label: t('quest_chk_achievement'), key: 'IsAchievement', tipKey: 'tip_quest_achievement' }
+                      { label: t('quest_chk_achievement'), key: 'IsAchievement', tipKey: 'tip_quest_achievement' },
+                      { label: t('quest_chk_need_quest_items') || "Player Need Quest Items", key: 'PlayerNeedQuestItems', tipKey: 'tip_quest_need_items' },
+                      { label: t('quest_chk_delete_quest_items') || "Delete Quest Items on Turn-in", key: 'DeleteQuestItems', tipKey: 'tip_quest_delete_items' },
+                      { label: t('quest_chk_suppress_log') || "Suppress Quest Log on Completion", key: 'SuppressQuestLogOnCompetion', tipKey: 'tip_quest_suppress_log' }
                     ].map(f => (
                       <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
                         <input 
@@ -2230,15 +2958,94 @@ export default function QuestGraph({
                   <div>
                     <span style={{ fontSize: '11px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_rewards')}</span>
                     
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', background: 'var(--bg-secondary)', padding: '6px', border: '1px solid var(--border-color)', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px', overflowY: 'auto', background: 'var(--bg-secondary)', padding: '8px', border: '1px solid var(--border-color)', marginBottom: '8px' }}>
                       {(activeQuestConfig.Rewards || []).length === 0 ? (
                         <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('quest_no_rewards')}</div>
                       ) : (
                         (activeQuestConfig.Rewards || []).map((reward, idx) => (
-                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-                            <div>
-                              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{reward.ClassName} ({reward.Amount}x)</div>
-                              <div style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{t('quest_reward_chance', { chance: reward.Chance * 100 })}</div>
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: '11px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', gap: '8px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{reward.ClassName}</div>
+                              
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '6px', marginTop: '2px' }}>
+                                <div>
+                                  <label style={{ fontSize: '8px', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>Amt</label>
+                                  <input 
+                                    type="number" 
+                                    value={reward.Amount ?? 1} 
+                                    onChange={e => {
+                                      const list = [...activeQuestConfig.Rewards];
+                                      list[idx] = { ...list[idx], Amount: Number(e.target.value) };
+                                      onChangeField(selectedQuest.filePath, ['Rewards'], list);
+                                    }}
+                                    style={{ width: '100%', fontSize: '10px', padding: '2px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', textAlign: 'center', borderRadius: '2px' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '8px', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>Chance</label>
+                                  <input 
+                                    type="number" 
+                                    step="0.05"
+                                    min="0"
+                                    max="1"
+                                    value={reward.Chance ?? 1.0} 
+                                    onChange={e => {
+                                      const list = [...activeQuestConfig.Rewards];
+                                      list[idx] = { ...list[idx], Chance: Number(e.target.value) };
+                                      onChangeField(selectedQuest.filePath, ['Rewards'], list);
+                                    }}
+                                    style={{ width: '100%', fontSize: '10px', padding: '2px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', textAlign: 'center', borderRadius: '2px' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '8px', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>{t('quest_label_damage_percent') || "Dmg%"}</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    max="100"
+                                    value={reward.DamagePercent ?? 0} 
+                                    onChange={e => {
+                                      const list = [...activeQuestConfig.Rewards];
+                                      list[idx] = { ...list[idx], DamagePercent: Number(e.target.value) };
+                                      onChangeField(selectedQuest.filePath, ['Rewards'], list);
+                                    }}
+                                    style={{ width: '100%', fontSize: '10px', padding: '2px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', textAlign: 'center', borderRadius: '2px' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '8px', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>{t('quest_label_health_percent') || "Hlth%"}</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    max="100"
+                                    value={reward.HealthPercent ?? 100} 
+                                    onChange={e => {
+                                      const list = [...activeQuestConfig.Rewards];
+                                      list[idx] = { ...list[idx], HealthPercent: Number(e.target.value) };
+                                      onChangeField(selectedQuest.filePath, ['Rewards'], list);
+                                    }}
+                                    style={{ width: '100%', fontSize: '10px', padding: '2px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', textAlign: 'center', borderRadius: '2px' }}
+                                  />
+                                </div>
+                              </div>
+                              <div style={{ marginTop: '4px' }}>
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => {
+                                    const atts = prompt(t('quest_label_attachments') || "Enter comma-separated attachment classnames:", (reward.Attachments || []).join(', '));
+                                    if (atts !== null) {
+                                      const attList = atts.split(',').map(s => s.trim()).filter(Boolean);
+                                      const list = [...activeQuestConfig.Rewards];
+                                      list[idx] = { ...list[idx], Attachments: attList };
+                                      onChangeField(selectedQuest.filePath, ['Rewards'], list);
+                                    }
+                                  }}
+                                  style={{ padding: '2px 6px', fontSize: '9px' }}
+                                >
+                                  🔧 {t('quest_btn_edit_attachments') || "Edit Attachments"} ({reward.Attachments?.length || 0})
+                                </button>
+                              </div>
                             </div>
                             <button 
                               className="btn btn-danger" 
@@ -2247,7 +3054,7 @@ export default function QuestGraph({
                                 list.splice(idx, 1);
                                 onChangeField(selectedQuest.filePath, ['Rewards'], list);
                               }}
-                              style={{ padding: '2px 6px', fontSize: '10px' }}
+                              style={{ padding: '2px 6px', fontSize: '10px', marginTop: '16px' }}
                             >
                               ×
                             </button>
@@ -2327,9 +3134,26 @@ export default function QuestGraph({
             <div style={{ border: '1px solid var(--border-color)', borderRadius: '2px', background: 'var(--bg-primary)' }}>
               <div 
                 onClick={() => setActiveAccordion(activeAccordion === 'objectives' ? '' : 'objectives')}
-                style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', borderBottom: activeAccordion === 'objectives' ? '1px solid var(--border-color)' : 'none' }}
+                style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', fontWeight: 'bold', borderBottom: activeAccordion === 'objectives' ? '1px solid var(--border-color)' : 'none' }}
               >
-                <span>{t('quest_acc_objectives', { count: activeQuestConfig.Objectives?.length || 0 })}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span>{t('quest_acc_objectives', { count: activeQuestConfig.Objectives?.length || 0 })}</span>
+                  <div
+                    onClick={e => {
+                      e.stopPropagation();
+                      const newVal = !(activeQuestConfig.SequentialObjectives === 1 || activeQuestConfig.SequentialObjectives === true);
+                      onChangeField(selectedQuest.filePath, ['SequentialObjectives'], newVal ? 1 : 0);
+                    }}
+                    className="checkbox-container"
+                    style={{ gap: '6px', fontSize: '11px', fontWeight: 'normal', color: 'var(--text-secondary)' }}
+                    title={t('quest_tip_sequential')}
+                  >
+                    <div className={`checkbox-custom ${(activeQuestConfig.SequentialObjectives === 1 || activeQuestConfig.SequentialObjectives === true) ? 'checked' : ''}`} style={{ width: '13px', height: '13px' }} />
+                    <span>
+                      {t('quest_chk_sequential')}
+                    </span>
+                  </div>
+                </div>
                 <span>{activeAccordion === 'objectives' ? '▼' : '►'}</span>
               </div>
               {activeAccordion === 'objectives' && (
@@ -2343,7 +3167,7 @@ export default function QuestGraph({
                       </div>
                     ) : (
                       (activeQuestConfig.Objectives || []).map((objRef, idx) => {
-                        const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID);
+                        const objPath = getObjectiveFilePath(objRef.ObjectiveType, objRef.ID, configs);
                         const objFile = configs[objPath];
                         const text = objFile?.success && objFile.content ? objFile.content.ObjectiveText : `Objective ID ${objRef.ID}`;
                         const typeLabel = t(`quest_obj_type_${objRef.ObjectiveType}`) || OBJECTIVE_TYPES[objRef.ObjectiveType]?.label || 'Unknown';
@@ -2357,16 +3181,52 @@ export default function QuestGraph({
                               justifyContent: 'space-between', alignItems: 'center', gap: '8px' 
                             }}
                           >
-                            <div style={{ overflow: 'hidden', marginRight: '6px' }}>
+                            <div style={{ overflow: 'hidden', marginRight: '6px', flex: 1 }}>
                               <span style={{ fontSize: '9px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
                                 {typeLabel} (ID {objRef.ID})
                               </span>
-                              <span style={{ fontSize: '12px', color: 'var(--text-glow)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', display: 'block' }}>
+                              <input
+                                type="text"
+                                value={objRef.ObjectiveName || ''}
+                                placeholder={t('quest_obj_name_placeholder') || 'Objective name (required)...'}
+                                onChange={e => {
+                                  const updatedObjs = (activeQuestConfig.Objectives || []).map((o, i) =>
+                                    i === idx ? { ...o, ObjectiveName: e.target.value } : o
+                                  );
+                                  onChangeField(selectedQuest.filePath, ['Objectives'], updatedObjs);
+                                }}
+                                style={{
+                                  fontSize: '12px', color: 'var(--text-glow)', background: 'transparent',
+                                  border: 'none', borderBottom: objRef.ObjectiveName ? '1px solid transparent' : '1px solid var(--accent-warning, #f0a500)',
+                                  outline: 'none', width: '100%', padding: '1px 0', marginTop: '2px',
+                                  fontFamily: 'inherit'
+                                }}
+                                title={t('quest_obj_name_tooltip') || 'Internal objective name visible in quest file'}
+                              />
+                              <span style={{ fontSize: '10px', color: 'var(--text-dark)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', display: 'block' }}>
                                 {text}
                               </span>
                             </div>
                             
-                            <div style={{ display: 'flex', gap: '4px' }}>
+                            <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                              <button 
+                                className="btn"
+                                onClick={() => handleMoveObjective(idx, 'up')}
+                                disabled={idx === 0}
+                                style={{ padding: '2px 6px', fontSize: '10px', opacity: idx === 0 ? 0.3 : 1, cursor: idx === 0 ? 'not-allowed' : 'pointer' }}
+                                title="Move Up"
+                              >
+                                ▲
+                              </button>
+                              <button 
+                                className="btn"
+                                onClick={() => handleMoveObjective(idx, 'down')}
+                                disabled={idx === (activeQuestConfig.Objectives.length - 1)}
+                                style={{ padding: '2px 6px', fontSize: '10px', opacity: idx === (activeQuestConfig.Objectives.length - 1) ? 0.3 : 1, cursor: idx === (activeQuestConfig.Objectives.length - 1) ? 'not-allowed' : 'pointer' }}
+                                title="Move Down"
+                              >
+                                ▼
+                              </button>
                               <button 
                                 className="btn btn-accent"
                                 onClick={() => {
@@ -2546,7 +3406,8 @@ export default function QuestGraph({
                       setCoordinatePicker({
                         returnTab: originalTab,
                         callback: ({ x, z }) => {
-                          const newPos = [x, 0.0, z];
+                          const currentY = obj.Position?.[1] ?? 0.0;
+                          const newPos = [x, currentY, z];
                           const updated = { ...obj, Position: newPos };
                           setEditingObjective({ objective: updated, filePath: path });
                           onChangeField(path, ['Position'], newPos);
@@ -2576,7 +3437,6 @@ export default function QuestGraph({
                   </div>
                 </div>
               )}
-
               {/* Travel parameters */}
               {editingObjective.objective.ObjectiveType === 3 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -2626,8 +3486,364 @@ export default function QuestGraph({
                       </label>
                     ))}
                   </div>
+
+                  {/* Coordinates view for Travel */}
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '2px', marginTop: '6px' }}>
+                    <CoordinatesInput
+                      label={t('quest_label_coords') || "Coordinates"}
+                      position={editingObjective.objective.Position || [0,0,0]}
+                      onChange={(newPos, idx, val) => {
+                        const updated = { ...editingObjective.objective, Position: newPos };
+                        setEditingObjective({ ...editingObjective, objective: updated });
+                        onChangeField(editingObjective.filePath, ['Position', idx], val);
+                      }}
+                      onPickFromMap={() => {
+                        const originalTab = 'quests';
+                        const obj = editingObjective.objective;
+                        const path = editingObjective.filePath;
+                        setCoordinatePicker({
+                          returnTab: originalTab,
+                          callback: ({ x, z }) => {
+                            const currentY = obj.Position?.[1] ?? 0.0;
+                            const newPos = [x, currentY, z];
+                            const updated = { ...obj, Position: newPos };
+                            setEditingObjective({ objective: updated, filePath: path });
+                            onChangeField(path, ['Position'], newPos);
+                          }
+                        });
+                        setActiveTab('map');
+                        setEditingObjective(null);
+                      }}
+                      pickLabel={t('quest_label_pick_coords') || "🎯 Pick from Map"}
+                      step="0.1"
+                      inputStyle={{ border: '1px solid var(--border-color)' }}
+                    />
+                    <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <button 
+                        type="button"
+                        className="btn btn-accent" 
+                        onClick={() => {
+                          const pos = editingObjective.objective.Position || [0,0,0];
+                          onNavigateToMap(pos);
+                          setEditingObjective(null);
+                        }}
+                        style={{ padding: '2px 8px', fontSize: '9px' }}
+                        title={t('quest_locate_on_map')}
+                      >
+                        {t('quest_btn_plot_map')}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
+
+              {/* AI VIP Escort (ObjectiveType 9) parameters */}
+              {editingObjective.objective.ObjectiveType === 9 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  
+                  {/* NPC Name & NPC ClassName */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {t('quest_vip_npc_name') || "VIP NPC Name"}
+                      </label>
+                      <input 
+                        type="text" 
+                        value={editingObjective.objective.NPCName || ''} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, NPCName: e.target.value };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['NPCName'], e.target.value);
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {t('quest_vip_npc_classname') || "VIP NPC Classname"}
+                      </label>
+                      <input 
+                        type="text" 
+                        value={editingObjective.objective.NPCClassName || ''} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, NPCClassName: e.target.value };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['NPCClassName'], e.target.value);
+                        }} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* NPCLoadoutFile & MaxDistance */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {t('quest_vip_loadout') || "VIP NPC Loadout Profile"}
+                      </label>
+                      <select 
+                        value={editingObjective.objective.NPCLoadoutFile || ''} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, NPCLoadoutFile: e.target.value };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['NPCLoadoutFile'], e.target.value);
+                        }}
+                        style={{ width: '100%', padding: '6px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '2px' }}
+                      >
+                        <option value="">-- None --</option>
+                        {loadoutsList.map(loadout => (
+                          <option key={loadout} value={loadout}>{loadout}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {t('quest_vip_max_dist') || "Max Destination Distance (Radius)"}
+                      </label>
+                      <input 
+                        type="number" 
+                        value={editingObjective.objective.MaxDistance ?? 20.0} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, MaxDistance: Number(e.target.value) };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['MaxDistance'], Number(e.target.value));
+                        }} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* Coordinates editor for VIP Destination position */}
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '2px', marginTop: '4px' }}>
+                    <CoordinatesInput
+                      label={t('quest_label_destination') || "Destination Coordinates"}
+                      position={editingObjective.objective.Position || [0,0,0]}
+                      onChange={(newPos, idx, val) => {
+                        const updated = { ...editingObjective.objective, Position: newPos };
+                        setEditingObjective({ ...editingObjective, objective: updated });
+                        onChangeField(editingObjective.filePath, ['Position', idx], val);
+                      }}
+                      onPickFromMap={() => {
+                        const originalTab = 'quests';
+                        const obj = editingObjective.objective;
+                        const path = editingObjective.filePath;
+                        setCoordinatePicker({
+                          returnTab: originalTab,
+                          callback: ({ x, z }) => {
+                            const currentY = obj.Position?.[1] ?? 0.0;
+                            const newPos = [x, currentY, z];
+                            const updated = { ...obj, Position: newPos };
+                            setEditingObjective({ objective: updated, filePath: path });
+                            onChangeField(path, ['Position'], newPos);
+                          }
+                        });
+                        setActiveTab('map');
+                        setEditingObjective(null);
+                      }}
+                      pickLabel={t('quest_label_pick_coords') || "🎯 Pick Destination from Map"}
+                      step="0.1"
+                      inputStyle={{ border: '1px solid var(--border-color)' }}
+                    />
+                  </div>
+
+                  {/* Marker Name */}
+                  <div>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {t('quest_vip_marker_name') || "Destination Marker Name"}
+                    </label>
+                    <input 
+                      type="text" 
+                      value={editingObjective.objective.MarkerName || ''} 
+                      onChange={e => {
+                        const updated = { ...editingObjective.objective, MarkerName: e.target.value };
+                        setEditingObjective({ ...editingObjective, objective: updated });
+                        onChangeField(editingObjective.filePath, ['MarkerName'], e.target.value);
+                      }} 
+                    />
+                  </div>
+
+                  {/* Checkboxes */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '6px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={editingObjective.objective.CanLootAI === 1 || editingObjective.objective.CanLootAI === true}
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, CanLootAI: e.target.checked ? 1 : 0 };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['CanLootAI'], e.target.checked ? 1 : 0);
+                        }} 
+                      />
+                      {t('quest_vip_can_loot') || "Can Loot VIP NPC"}
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={editingObjective.objective.ShowDistance === 1 || editingObjective.objective.ShowDistance === true}
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, ShowDistance: e.target.checked ? 1 : 0 };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['ShowDistance'], e.target.checked ? 1 : 0);
+                        }} 
+                      />
+                      {t('quest_vip_show_dist') || "Show Destination Distance"}
+                    </label>
+                  </div>
+
+                </div>
+              )}
+
+              {/* AI Patrol (ObjectiveType 7) parameters */}
+              {editingObjective.objective.ObjectiveType === 7 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-glow)' }}>
+                    {t('quest_ai_patrol_section') || "AI Patrol Configuration"}
+                  </span>
+                  <AISpawnForm 
+                    spawn={editingObjective.objective.AISpawn || {}} 
+                    onChange={updatedSpawn => {
+                      const updated = { ...editingObjective.objective, AISpawn: updatedSpawn };
+                      setEditingObjective({ ...editingObjective, objective: updated });
+                      onChangeField(editingObjective.filePath, ['AISpawn'], updatedSpawn);
+                    }}
+                    loadoutsList={loadoutsList}
+                    t={t}
+                    setCoordinatePicker={setCoordinatePicker}
+                    setActiveTab={setActiveTab}
+                    onPickWaypointCallback={(wpIdx, newPos) => {
+                      const currentSpawn = editingObjective.objective.AISpawn || {};
+                      const wps = [...(currentSpawn.Waypoints || [])];
+                      wps[wpIdx] = newPos;
+                      const updatedSpawn = { ...currentSpawn, Waypoints: wps };
+                      const updatedObjective = { ...editingObjective.objective, AISpawn: updatedSpawn };
+                      setEditingObjective({ objective: updatedObjective, filePath: editingObjective.filePath });
+                      onChangeField(editingObjective.filePath, ['AISpawn'], updatedSpawn);
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* AI Camp (ObjectiveType 8) parameters */}
+              {editingObjective.objective.ObjectiveType === 8 && (() => {
+                const spawns = editingObjective.objective.AISpawns || [];
+                const activeSpawn = spawns[activeCampGroupIdx] || spawns[0] || null;
+
+                const handleAddCampSpawn = () => {
+                  const newSpawn = {
+                    Name: `Camp Group #${spawns.length + 1}`,
+                    Faction: "West",
+                    Formation: "Vee",
+                    Loadout: "SurvivorLoadout",
+                    NumberOfAI: 3,
+                    Waypoints: []
+                  };
+                  const updatedSpawns = [...spawns, newSpawn];
+                  const updated = { ...editingObjective.objective, AISpawns: updatedSpawns };
+                  setEditingObjective({ ...editingObjective, objective: updated });
+                  onChangeField(editingObjective.filePath, ['AISpawns'], updatedSpawns);
+                  setActiveCampGroupIdx(spawns.length);
+                };
+
+                const handleRemoveCampSpawn = (idx) => {
+                  const updatedSpawns = spawns.filter((_, i) => i !== idx);
+                  const updated = { ...editingObjective.objective, AISpawns: updatedSpawns };
+                  setEditingObjective({ ...editingObjective, objective: updated });
+                  onChangeField(editingObjective.filePath, ['AISpawns'], updatedSpawns);
+                  setActiveCampGroupIdx(0);
+                };
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-glow)' }}>
+                      {t('quest_ai_camp_section') || "AI Camp Configuration"}
+                    </span>
+
+                    {/* InfectedDeletionRadius */}
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {t('quest_ai_inf_del_rad') || "Infected Deletion Radius"}
+                      </label>
+                      <input 
+                        type="number" 
+                        value={editingObjective.objective.InfectedDeletionRadius ?? 500.0} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, InfectedDeletionRadius: Number(e.target.value) };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['InfectedDeletionRadius'], Number(e.target.value));
+                        }} 
+                      />
+                    </div>
+
+                    {/* Groups list */}
+                    <div style={{ border: '1px solid var(--border-color)', borderRadius: '2px', padding: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--text-secondary)' }}>
+                          {t('quest_ai_spawns') || "AI Spawn Groups"} ({spawns.length})
+                        </span>
+                        <button 
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={handleAddCampSpawn}
+                          style={{ padding: '2px 8px', fontSize: '9px' }}
+                        >
+                          {t('quest_ai_btn_add_spawn') || "+ Add Spawn Group"}
+                        </button>
+                      </div>
+
+                      {spawns.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                          {spawns.map((s, idx) => (
+                            <div 
+                              key={idx} 
+                              onClick={() => setActiveCampGroupIdx(idx)}
+                              style={{ 
+                                display: 'flex', alignItems: 'center', gap: '6px', 
+                                background: activeCampGroupIdx === idx ? 'var(--btn-accent-bg)' : 'var(--bg-secondary)', 
+                                border: '1px solid var(--border-color)', borderRadius: '2px', 
+                                padding: '4px 8px', fontSize: '11px', cursor: 'pointer',
+                                color: activeCampGroupIdx === idx ? '#fff' : 'var(--text-primary)'
+                              }}
+                            >
+                              <span>{s.Name || `Group #${idx+1}`}</span>
+                              <span 
+                                onClick={(e) => { e.stopPropagation(); handleRemoveCampSpawn(idx); }}
+                                style={{ color: 'var(--danger-color)', marginLeft: '4px', fontWeight: 'bold' }}
+                              >
+                                ×
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Active group settings */}
+                    {activeSpawn && (
+                      <AISpawnForm 
+                        spawn={activeSpawn}
+                        onChange={updatedSpawn => {
+                          const updatedSpawns = [...spawns];
+                          updatedSpawns[activeCampGroupIdx] = updatedSpawn;
+                          const updated = { ...editingObjective.objective, AISpawns: updatedSpawns };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['AISpawns'], updatedSpawns);
+                        }}
+                        loadoutsList={loadoutsList}
+                        t={t}
+                        setCoordinatePicker={setCoordinatePicker}
+                        setActiveTab={setActiveTab}
+                        onPickWaypointCallback={(wpIdx, newPos) => {
+                          const updatedSpawns = [...spawns];
+                          const wps = [...(activeSpawn.Waypoints || [])];
+                          wps[wpIdx] = newPos;
+                          updatedSpawns[activeCampGroupIdx] = { ...activeSpawn, Waypoints: wps };
+                          const updatedObjective = { ...editingObjective.objective, AISpawns: updatedSpawns };
+                          setEditingObjective({ objective: updatedObjective, filePath: editingObjective.filePath });
+                          onChangeField(editingObjective.filePath, ['AISpawns'], updatedSpawns);
+                        }}
+                      />
+                    )}
+
+                  </div>
+                );
+              })()}
 
               {/* Delivery / Collection parameters */}
               {(editingObjective.objective.ObjectiveType === 5 || editingObjective.objective.ObjectiveType === 4) && (
@@ -2707,13 +3923,60 @@ export default function QuestGraph({
                       />
                     </div>
                   </div>
+
+                  {/* ShowDistance for Delivery and Collection */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={editingObjective.objective.ShowDistance === 1 || editingObjective.objective.ShowDistance === true}
+                        onChange={e => {
+                          const val = e.target.checked ? 1 : 0;
+                          const updated = { ...editingObjective.objective, ShowDistance: val };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['ShowDistance'], val);
+                        }}
+                      />
+                      {t('quest_chk_show_distance') || "Show Distance"}
+                    </label>
+                    {editingObjective.objective.ObjectiveType === 5 && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={editingObjective.objective.AddItemsToNearbyMarketZone === 1 || editingObjective.objective.AddItemsToNearbyMarketZone === true}
+                          onChange={e => {
+                            const val = e.target.checked ? 1 : 0;
+                            const updated = { ...editingObjective.objective, AddItemsToNearbyMarketZone: val };
+                            setEditingObjective({ ...editingObjective, objective: updated });
+                            onChangeField(editingObjective.filePath, ['AddItemsToNearbyMarketZone'], val);
+                          }}
+                        />
+                        {t('quest_chk_add_items_market') || "Add to Market Zone"}
+                      </label>
+                    )}
+                    {editingObjective.objective.ObjectiveType === 4 && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={editingObjective.objective.NeedAnyCollection === 1 || editingObjective.objective.NeedAnyCollection === true}
+                          onChange={e => {
+                            const val = e.target.checked ? 1 : 0;
+                            const updated = { ...editingObjective.objective, NeedAnyCollection: val };
+                            setEditingObjective({ ...editingObjective, objective: updated });
+                            onChangeField(editingObjective.filePath, ['NeedAnyCollection'], val);
+                          }}
+                        />
+                        {t('quest_chk_need_any_collection') || "Need Any One Item (not all)"}
+                      </label>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* Target parameters */}
               {editingObjective.objective.ObjectiveType === 2 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                     <div>
                       <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_kill_count')}</label>
                       <input 
@@ -2723,6 +3986,18 @@ export default function QuestGraph({
                           const updated = { ...editingObjective.objective, Amount: Number(e.target.value) };
                           setEditingObjective({ ...editingObjective, objective: updated });
                           onChangeField(editingObjective.filePath, ['Amount'], Number(e.target.value));
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_min_radial') || 'MIN RADIAL DISTANCE'}</label>
+                      <input 
+                        type="number" 
+                        value={editingObjective.objective.MinDistance ?? -1.0} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, MinDistance: Number(e.target.value) };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['MinDistance'], Number(e.target.value));
                         }} 
                       />
                     </div>
@@ -2737,6 +4012,119 @@ export default function QuestGraph({
                           onChangeField(editingObjective.filePath, ['MaxDistance'], Number(e.target.value));
                         }} 
                       />
+                    </div>
+                  </div>
+
+                  {/* Target Settings (Suicide, AI, Factions) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '4px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={editingObjective.objective.CountSelfKill === 1 || editingObjective.objective.CountSelfKill === true}
+                        onChange={e => {
+                          const val = e.target.checked ? 1 : 0;
+                          const updated = { ...editingObjective.objective, CountSelfKill: val };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['CountSelfKill'], val);
+                        }} 
+                      />
+                      {t('quest_chk_count_self_kill')}
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={editingObjective.objective.CountAIPlayers === 1 || editingObjective.objective.CountAIPlayers === true}
+                        onChange={e => {
+                          const val = e.target.checked ? 1 : 0;
+                          const updated = { ...editingObjective.objective, CountAIPlayers: val };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['CountAIPlayers'], val);
+                        }} 
+                      />
+                      {t('quest_chk_count_ai_players')}
+                    </label>
+                  </div>
+
+                  {/* Allowed Target Factions */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_target_factions')}</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      {(editingObjective.objective.AllowedTargetFactions || []).length === 0 ? (
+                        <span style={{ fontSize: '10px', color: 'var(--text-dark)' }}>Any faction / Любые фракции</span>
+                      ) : (
+                        (editingObjective.objective.AllowedTargetFactions || []).map((fac, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
+                            <span>{t(`quest_faction_${fac.toLowerCase()}`) || fac}</span>
+                            <button 
+                              onClick={() => {
+                                const list = (editingObjective.objective.AllowedTargetFactions || []).filter(item => item !== fac);
+                                const updated = { ...editingObjective.objective, AllowedTargetFactions: list };
+                                setEditingObjective({ ...editingObjective, objective: updated });
+                                onChangeField(editingObjective.filePath, ['AllowedTargetFactions'], list);
+                              }}
+                              style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                      <select id="new-target-faction" style={{ fontSize: '12px', flex: 1, padding: '4px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
+                        {["West", "East", "Raiders", "Mercenaries", "Civilians", "Guards", "Passive", "Zombies", "Shamans"].map(f => (
+                          <option key={f} value={f}>{t(`quest_faction_${f.toLowerCase()}`) || f}</option>
+                        ))}
+                      </select>
+                      <button 
+                        className="btn" 
+                        onClick={() => {
+                          const select = document.getElementById('new-target-faction');
+                          if (select) {
+                            const val = select.value;
+                            const current = editingObjective.objective.AllowedTargetFactions || [];
+                            if (!current.includes(val)) {
+                              const list = [...current, val];
+                              const updated = { ...editingObjective.objective, AllowedTargetFactions: list };
+                              setEditingObjective({ ...editingObjective, objective: updated });
+                              onChangeField(editingObjective.filePath, ['AllowedTargetFactions'], list);
+                            }
+                          }
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Allowed Damage Zones */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_dmg_zones')}</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                      {['Head', 'Torso', 'LeftArm', 'RightArm', 'LeftLeg', 'RightLeg'].map(zone => {
+                        const currentZones = editingObjective.objective.AllowedDamageZones || [];
+                        const isChecked = currentZones.includes(zone);
+                        return (
+                          <label key={zone} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isChecked}
+                              onChange={e => {
+                                let updatedZones;
+                                if (e.target.checked) {
+                                  updatedZones = [...currentZones, zone];
+                                } else {
+                                  updatedZones = currentZones.filter(z => z !== zone);
+                                }
+                                const updated = { ...editingObjective.objective, AllowedDamageZones: updatedZones };
+                                setEditingObjective({ ...editingObjective, objective: updated });
+                                onChangeField(editingObjective.filePath, ['AllowedDamageZones'], updatedZones);
+                              }}
+                            />
+                            <span>{t(`quest_dmg_zone_${zone.toLowerCase()}`) || zone}</span>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -2863,6 +4251,534 @@ export default function QuestGraph({
                       </div>
                     </div>
 
+                  </div>
+                </div>
+              )}
+
+              {/* Action parameters (Type 10) */}
+              {editingObjective.objective.ObjectiveType === 10 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_exec_amt') || 'Execution Amount'}</label>
+                    <input 
+                      type="number" 
+                      value={editingObjective.objective.ExecutionAmount ?? 1} 
+                      onChange={e => {
+                        const updated = { ...editingObjective.objective, ExecutionAmount: Number(e.target.value) };
+                        setEditingObjective({ ...editingObjective, objective: updated });
+                        onChangeField(editingObjective.filePath, ['ExecutionAmount'], Number(e.target.value));
+                      }} 
+                    />
+                  </div>
+
+                  {/* ActionNames */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_actions') || 'Action Names'}</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      {(editingObjective.objective.ActionNames || []).length === 0 ? (
+                        <span style={{ fontSize: '10px', color: 'var(--text-dark)' }}>No specific action names defined</span>
+                      ) : (
+                        (editingObjective.objective.ActionNames || []).map((an, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
+                            <span>{an}</span>
+                            <button 
+                              onClick={() => {
+                                const list = (editingObjective.objective.ActionNames || []).filter(item => item !== an);
+                                const updated = { ...editingObjective.objective, ActionNames: list };
+                                setEditingObjective({ ...editingObjective, objective: updated });
+                                onChangeField(editingObjective.filePath, ['ActionNames'], list);
+                              }}
+                              style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
+                      <input 
+                        type="text" 
+                        id="new-action-name" 
+                        placeholder="Action name (e.g. ActionEatMeat)..." 
+                        style={{ flex: 1, fontSize: '12px', padding: '4px' }} 
+                      />
+                      <button 
+                        className="btn" 
+                        onClick={() => {
+                          const input = document.getElementById('new-action-name');
+                          if (input && input.value.trim()) {
+                            const name = input.value.trim();
+                            const list = [...(editingObjective.objective.ActionNames || []), name];
+                            const updated = { ...editingObjective.objective, ActionNames: list };
+                            setEditingObjective({ ...editingObjective, objective: updated });
+                            onChangeField(editingObjective.filePath, ['ActionNames'], list);
+                            input.value = '';
+                          }
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* AllowedClassNames */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_allowed_classes') || 'Allowed Target Classnames'}</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      {(editingObjective.objective.AllowedClassNames || []).length === 0 ? (
+                        <span style={{ fontSize: '10px', color: 'var(--text-dark)' }}>Any target / Любые цели</span>
+                      ) : (
+                        (editingObjective.objective.AllowedClassNames || []).map((cn, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
+                            <span>{cn}</span>
+                            <button 
+                              onClick={() => {
+                                const list = (editingObjective.objective.AllowedClassNames || []).filter(item => item !== cn);
+                                const updated = { ...editingObjective.objective, AllowedClassNames: list };
+                                setEditingObjective({ ...editingObjective, objective: updated });
+                                onChangeField(editingObjective.filePath, ['AllowedClassNames'], list);
+                              }}
+                              style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div style={{ marginTop: '6px' }}>
+                      <ItemAutocomplete
+                        suggestions={classnameSuggestions}
+                        onAdd={(name) => {
+                          const list = [...(editingObjective.objective.AllowedClassNames || []), name];
+                          const updated = { ...editingObjective.objective, AllowedClassNames: list };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['AllowedClassNames'], list);
+                        }}
+                        label={t('quest_btn_add_target') || 'Add ClassName'}
+                        placeholder={t('quest_ph_classname')}
+                      />
+                    </div>
+                  </div>
+
+                  {/* ExcludedClassNames */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_excluded_classes') || 'Excluded Target Classnames'}</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      {(editingObjective.objective.ExcludedClassNames || []).length === 0 ? (
+                        <span style={{ fontSize: '10px', color: 'var(--text-dark)' }}>None / Нет</span>
+                      ) : (
+                        (editingObjective.objective.ExcludedClassNames || []).map((cn, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
+                            <span>{cn}</span>
+                            <button 
+                              onClick={() => {
+                                const list = (editingObjective.objective.ExcludedClassNames || []).filter(item => item !== cn);
+                                const updated = { ...editingObjective.objective, ExcludedClassNames: list };
+                                setEditingObjective({ ...editingObjective, objective: updated });
+                                onChangeField(editingObjective.filePath, ['ExcludedClassNames'], list);
+                              }}
+                              style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div style={{ marginTop: '6px' }}>
+                      <ItemAutocomplete
+                        suggestions={classnameSuggestions}
+                        onAdd={(name) => {
+                          const list = [...(editingObjective.objective.ExcludedClassNames || []), name];
+                          const updated = { ...editingObjective.objective, ExcludedClassNames: list };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['ExcludedClassNames'], list);
+                        }}
+                        label={t('quest_btn_add_excluded') || 'Add Excluded'}
+                        placeholder={t('quest_ph_classname')}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Crafting parameters (Type 11) */}
+              {editingObjective.objective.ObjectiveType === 11 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_exec_amt') || 'Execution Amount'}</label>
+                    <input 
+                      type="number" 
+                      value={editingObjective.objective.ExecutionAmount ?? 1} 
+                      onChange={e => {
+                        const updated = { ...editingObjective.objective, ExecutionAmount: Number(e.target.value) };
+                        setEditingObjective({ ...editingObjective, objective: updated });
+                        onChangeField(editingObjective.filePath, ['ExecutionAmount'], Number(e.target.value));
+                      }} 
+                    />
+                  </div>
+
+                  {/* ItemNames */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                    <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_item_names') || 'Item Names to Craft'}</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0', background: 'var(--bg-primary)', padding: '6px', minHeight: '30px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      {(editingObjective.objective.ItemNames || []).length === 0 ? (
+                        <span style={{ fontSize: '10px', color: 'var(--text-dark)' }}>No items specified</span>
+                      ) : (
+                        (editingObjective.objective.ItemNames || []).map((cn, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '2px 6px', fontSize: '11px' }}>
+                            <span>{cn}</span>
+                            <button 
+                              onClick={() => {
+                                const list = (editingObjective.objective.ItemNames || []).filter(item => item !== cn);
+                                const updated = { ...editingObjective.objective, ItemNames: list };
+                                setEditingObjective({ ...editingObjective, objective: updated });
+                                onChangeField(editingObjective.filePath, ['ItemNames'], list);
+                              }}
+                              style={{ border: 'none', background: 'transparent', color: 'var(--danger-color)', cursor: 'pointer', padding: 0, fontSize: '12px', lineHeight: 1 }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div style={{ marginTop: '6px' }}>
+                      <ItemAutocomplete
+                        suggestions={classnameSuggestions}
+                        onAdd={(name) => {
+                          const list = [...(editingObjective.objective.ItemNames || []), name];
+                          const updated = { ...editingObjective.objective, ItemNames: list };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['ItemNames'], list);
+                        }}
+                        label={t('quest_btn_add_item') || 'Add Item ClassName'}
+                        placeholder={t('quest_ph_classname')}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Treasure Hunt parameters (Type 6) */}
+              {editingObjective.objective.ObjectiveType === 6 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_container') || 'Stash Container Classname'}</label>
+                      <ItemAutocomplete
+                        suggestions={classnameSuggestions}
+                        onAdd={(name) => {
+                          const updated = { ...editingObjective.objective, ContainerName: name };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['ContainerName'], name);
+                        }}
+                        label="Set"
+                        placeholder={editingObjective.objective.ContainerName || 'ExpansionStash_WoodenCrate'}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_loot_amt') || 'Loot Items Amount'}</label>
+                      <input 
+                        type="number" 
+                        value={editingObjective.objective.LootItemsAmount ?? 1} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, LootItemsAmount: Number(e.target.value) };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['LootItemsAmount'], Number(e.target.value));
+                        }} 
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_max_distance') || 'Max Distance (Radius)'}</label>
+                      <input 
+                        type="number" 
+                        value={editingObjective.objective.MaxDistance ?? 20} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, MaxDistance: Number(e.target.value) };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['MaxDistance'], Number(e.target.value));
+                        }} 
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '16px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={editingObjective.objective.DigInStash === 1 || editingObjective.objective.DigInStash === true}
+                          onChange={e => {
+                            const val = e.target.checked ? 1 : 0;
+                            const updated = { ...editingObjective.objective, DigInStash: val };
+                            setEditingObjective({ ...editingObjective, objective: updated });
+                            onChangeField(editingObjective.filePath, ['DigInStash'], val);
+                          }}
+                        />
+                        <span>{t('quest_chk_dig') || 'Player Must Dig Stash'}</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_marker_name') || 'Marker Name'}</label>
+                      <input 
+                        type="text" 
+                        value={editingObjective.objective.MarkerName || ''} 
+                        onChange={e => {
+                          const updated = { ...editingObjective.objective, MarkerName: e.target.value };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['MarkerName'], e.target.value);
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('quest_label_marker_visibility') || 'Marker Visibility'}</label>
+                      <select
+                        value={editingObjective.objective.MarkerVisibility ?? 1}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          const updated = { ...editingObjective.objective, MarkerVisibility: val };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['MarkerVisibility'], val);
+                        }}
+                        style={{ fontSize: '12px', padding: '4px', width: '100%' }}
+                      >
+                        <option value={0}>{t('quest_opt_marker_hidden') || 'Hidden'}</option>
+                        <option value={1}>{t('quest_opt_marker_visible') || 'Visible'}</option>
+                        <option value={2}>{t('quest_opt_marker_map_only') || 'Visible on Map Only'}</option>
+                        <option value={3}>{t('quest_opt_marker_gps_only') || 'Visible on GPS/Compass Only'}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Positions list */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_stash_locations') || 'Stash Locations (Positions)'}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '6px', border: '1px solid var(--border-color)', marginBottom: '8px' }}>
+                      {(editingObjective.objective.Positions || []).length === 0 ? (
+                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('quest_no_stash_locations') || 'No positions set. Add at least one position!'}</div>
+                      ) : (
+                        (editingObjective.objective.Positions || []).map((pos, pIdx) => (
+                          <div key={pIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', gap: '6px' }}>
+                            <span>[{pos.join(', ')}]</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button 
+                                className="btn"
+                                onClick={() => {
+                                  setActiveTab('map');
+                                  setCoordinatePicker({
+                                    active: true,
+                                    returnTab: 'quests',
+                                    callback: ({ x, z }) => {
+                                      const currentY = editingObjective.objective.Positions?.[pIdx]?.[1] ?? 0.0;
+                                      const updatedList = [...editingObjective.objective.Positions];
+                                      updatedList[pIdx] = [Number(x.toFixed(2)), Number(currentY.toFixed(2)), Number(z.toFixed(2))];
+                                      const updated = { ...editingObjective.objective, Positions: updatedList };
+                                      setEditingObjective({ ...editingObjective, objective: updated });
+                                      onChangeField(editingObjective.filePath, ['Positions'], updatedList);
+                                    }
+                                  });
+                                }}
+                                style={{ padding: '1px 6px', fontSize: '9px' }}
+                              >
+                                🗺️
+                              </button>
+                              <button 
+                                className="btn btn-danger" 
+                                onClick={() => {
+                                  const list = [...(editingObjective.objective.Positions || [])];
+                                  list.splice(pIdx, 1);
+                                  const updated = { ...editingObjective.objective, Positions: list };
+                                  setEditingObjective({ ...editingObjective, objective: updated });
+                                  onChangeField(editingObjective.filePath, ['Positions'], list);
+                                }}
+                                style={{ padding: '1px 6px', fontSize: '9px' }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        className="btn" 
+                        onClick={() => {
+                          const list = [...(editingObjective.objective.Positions || []), [0.0, 0.0, 0.0]];
+                          const updated = { ...editingObjective.objective, Positions: list };
+                          setEditingObjective({ ...editingObjective, objective: updated });
+                          onChangeField(editingObjective.filePath, ['Positions'], list);
+                        }}
+                        style={{ fontSize: '11px', padding: '4px 8px' }}
+                      >
+                        + Add Custom Coordinate
+                      </button>
+                      <button 
+                        className="btn btn-accent" 
+                        onClick={() => {
+                          setActiveTab('map');
+                          setCoordinatePicker({
+                            active: true,
+                            returnTab: 'quests',
+                            callback: ({ x, z }) => {
+                              const list = [...(editingObjective.objective.Positions || []), [Number(x.toFixed(2)), 0.0, Number(z.toFixed(2))]];
+                              const updated = { ...editingObjective.objective, Positions: list };
+                              setEditingObjective({ ...editingObjective, objective: updated });
+                              onChangeField(editingObjective.filePath, ['Positions'], list);
+                            }
+                          });
+                        }}
+                        style={{ fontSize: '11px', padding: '4px 8px' }}
+                      >
+                        📍 Pick on Map
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Loot List */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-glow)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>{t('quest_label_loot') || 'Stash Loot Table'}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '6px', border: '1px solid var(--border-color)', marginBottom: '8px' }}>
+                      {(editingObjective.objective.Loot || []).length === 0 ? (
+                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>No loot items defined</div>
+                      ) : (
+                        (editingObjective.objective.Loot || []).map((item, itemIdx) => (
+                          <div key={itemIdx} style={{ display: 'flex', flexDirection: 'column', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', marginBottom: '4px', fontSize: '11px', gap: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                              {/* Support both old ClassName and new Name field format */}
+                              <span>{item.Name || item.ClassName} (Chance: {((item.Chance ?? 1) * (item.Chance > 1 ? 1 : 100)).toFixed(0)}%)</span>
+                              <button 
+                                className="btn btn-danger" 
+                                onClick={() => {
+                                  const list = [...editingObjective.objective.Loot];
+                                  list.splice(itemIdx, 1);
+                                  const updated = { ...editingObjective.objective, Loot: list };
+                                  setEditingObjective({ ...editingObjective, objective: updated });
+                                  onChangeField(editingObjective.filePath, ['Loot'], list);
+                                }}
+                                style={{ padding: '1px 4px', fontSize: '9px' }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '6px', fontSize: '10px' }}>
+                              <div>
+                                <span>Min:</span>
+                                <input 
+                                  type="number" 
+                                  value={item.Min ?? item.QuantityMin ?? 0} 
+                                  onChange={e => {
+                                    const list = [...editingObjective.objective.Loot];
+                                    list[itemIdx] = { ...item, Min: Number(e.target.value) };
+                                    const updated = { ...editingObjective.objective, Loot: list };
+                                    setEditingObjective({ ...editingObjective, objective: updated });
+                                    onChangeField(editingObjective.filePath, ['Loot'], list);
+                                  }}
+                                  style={{ padding: '2px', fontSize: '10px' }}
+                                />
+                              </div>
+                              <div>
+                                <span>Max:</span>
+                                <input 
+                                  type="number" 
+                                  value={item.Max ?? item.QuantityMax ?? -1} 
+                                  onChange={e => {
+                                    const list = [...editingObjective.objective.Loot];
+                                    list[itemIdx] = { ...item, Max: Number(e.target.value) };
+                                    const updated = { ...editingObjective.objective, Loot: list };
+                                    setEditingObjective({ ...editingObjective, objective: updated });
+                                    onChangeField(editingObjective.filePath, ['Loot'], list);
+                                  }}
+                                  style={{ padding: '2px', fontSize: '10px' }}
+                                />
+                              </div>
+                              <div>
+                                <span>Chance:</span>
+                                <input 
+                                  type="number" 
+                                  step="0.05" min="0" max="1"
+                                  value={item.Chance ?? 1.0} 
+                                  onChange={e => {
+                                    const list = [...editingObjective.objective.Loot];
+                                    list[itemIdx] = { ...item, Chance: Number(e.target.value) };
+                                    const updated = { ...editingObjective.objective, Loot: list };
+                                    setEditingObjective({ ...editingObjective, objective: updated });
+                                    onChangeField(editingObjective.filePath, ['Loot'], list);
+                                  }}
+                                  style={{ padding: '2px', fontSize: '10px' }}
+                                />
+                              </div>
+                              <div>
+                                <span>Atts:</span>
+                                <button
+                                  className="btn"
+                                  onClick={() => {
+                                    const atts = prompt("Enter comma-separated attachment classnames:", (item.Attachments || []).map(a => a.Name || a).join(', '));
+                                    if (atts !== null) {
+                                      const attList = atts.split(',').map(s => s.trim()).filter(Boolean).map(n => ({ Name: n, Chance: 1.0, Attachments: [] }));
+                                      const list = [...editingObjective.objective.Loot];
+                                      list[itemIdx] = { ...item, Attachments: attList };
+                                      const updated = { ...editingObjective.objective, Loot: list };
+                                      setEditingObjective({ ...editingObjective, objective: updated });
+                                      onChangeField(editingObjective.filePath, ['Loot'], list);
+                                    }
+                                  }}
+                                  style={{ padding: '2px', fontSize: '9px', width: '100%' }}
+                                >
+                                  {item.Attachments?.length || 0} Atts
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {/* Add Loot Item - uses real format: Name, Min, Max, Chance, Attachments, QuantityPercent, Variants */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', background: 'var(--bg-secondary)', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '2px', marginTop: '6px' }}>
+                      <div style={{ gridColumn: 'span 3' }}>
+                        <ItemAutocomplete
+                          suggestions={classnameSuggestions}
+                          onAdd={(name) => {
+                            const chance = Number(document.getElementById('new-loot-chance')?.value || 1.0);
+                            const min = Number(document.getElementById('new-loot-min')?.value || 0);
+                            const max = Number(document.getElementById('new-loot-max')?.value || -1);
+                            const newItem = {
+                              Name: name,
+                              Chance: chance,
+                              Attachments: [],
+                              QuantityPercent: -1.0,
+                              Max: max,
+                              Min: min,
+                              Variants: []
+                            };
+                            const list = [...(editingObjective.objective.Loot || []), newItem];
+                            const updated = { ...editingObjective.objective, Loot: list };
+                            setEditingObjective({ ...editingObjective, objective: updated });
+                            onChangeField(editingObjective.filePath, ['Loot'], list);
+                          }}
+                          label={t('quest_btn_add_loot') || 'Add to Loot'}
+                          placeholder={t('quest_ph_classname')}
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Chance (0–1):</span>
+                        <input id="new-loot-chance" type="number" defaultValue="0.3" step="0.05" min="0" max="1" style={{ width: '100%', fontSize: '11px', padding: '3px' }} />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Min Qty:</span>
+                        <input id="new-loot-min" type="number" defaultValue="0" style={{ width: '100%', fontSize: '11px', padding: '3px' }} />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Max Qty (-1=any):</span>
+                        <input id="new-loot-max" type="number" defaultValue="-1" style={{ width: '100%', fontSize: '11px', padding: '3px' }} />
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3051,7 +4967,7 @@ function QuestNPCsManager({
   const npcs = useMemo(() => {
     const list = [];
     Object.entries(configs).forEach(([path, file]) => {
-      if (file.success && file.content && path.toLowerCase().startsWith('expansionmod/quests/npcs/questnpc_') && file.content.ID !== undefined) {
+      if (file.success && file.content && path.toLowerCase().includes('quests/npcs/questnpc_') && file.content.ID !== undefined) {
         list.push({
           filePath: path,
           content: file.content
@@ -3077,7 +4993,7 @@ function QuestNPCsManager({
     const list = [];
     Object.keys(configs).forEach(filePath => {
       const lower = filePath.toLowerCase();
-      if (lower.startsWith('expansionmod/loadouts/') && filePath.endsWith('.json')) {
+      if ((lower.includes('/loadouts/') || lower.startsWith('loadouts/')) && filePath.endsWith('.json')) {
         const name = filePath.split('/').pop().replace('.json', '');
         list.push(name);
       }
@@ -3091,7 +5007,9 @@ function QuestNPCsManager({
 
   const handleGoToLoadout = () => {
     if (!currentLoadout) return;
-    const path = `ExpansionMod/Loadouts/${currentLoadout}.json`;
+    const targetSuffix = `loadouts/${currentLoadout.toLowerCase()}.json`;
+    const path = Object.keys(configs).find(k => k.toLowerCase() === targetSuffix || k.toLowerCase().endsWith('/' + targetSuffix)) 
+      || `${getExpansionModPrefix(configs)}Loadouts/${currentLoadout}.json`;
     localStorage.setItem('dayz_editor_aibots_active_tab', 'loadouts');
     localStorage.setItem('dayz_editor_aibots_selected_loadout_path', path);
     setActiveTab('aibots');
@@ -3108,7 +5026,8 @@ function QuestNPCsManager({
   const handleCreateNpc = () => {
     const maxId = npcs.reduce((max, npc) => Math.max(max, npc.content.ID || 0), 0);
     const newId = maxId + 1;
-    const filePath = `ExpansionMod/Quests/NPCs/QuestNPC_${newId}.json`;
+    const prefix = getExpansionModPrefix(configs);
+    const filePath = `${prefix}Quests/NPCs/QuestNPC_${newId}.json`;
     const newNpc = {
       ConfigVersion: 6,
       ID: newId,
@@ -3158,11 +5077,11 @@ function QuestNPCsManager({
   }, [configs, xmlItems]);
 
   return (
-    <div style={{ display: 'flex', flex: 1, height: 'calc(100% - 42px)', overflow: 'hidden' }}>
+    <div className="quest-editor-container" style={{ display: 'flex', flex: 1, height: 'calc(100% - 42px)', overflow: 'hidden' }}>
       
       {/* LEFT COLUMN: NPC List */}
       <div style={{
-        width: '320px',
+        width: '380px',
         borderRight: '1px solid var(--border-color)',
         background: 'var(--bg-tertiary)',
         display: 'flex',
@@ -3284,7 +5203,7 @@ function QuestNPCsManager({
       </div>
 
       {/* RIGHT COLUMN: Form Editor */}
-      <div style={{ flex: 1, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+      <div className="quest-npc-form-editor" style={{ flex: 1, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
         {!selectedNpc ? (
           <div style={{
             display: 'flex',
@@ -3330,12 +5249,12 @@ function QuestNPCsManager({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               
               {/* General Properties Card */}
-              <FormCard title="// GENERAL SETTINGS">
+              <FormCard title={t('quest_npc_card_general') || "// GENERAL SETTINGS"}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   {/* Name Input */}
                   <div>
                     <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
-                      NPC NAME
+                      {t('quest_npc_label_name') || "NPC NAME"}
                     </label>
                     <input 
                       type="text"
@@ -3383,7 +5302,7 @@ function QuestNPCsManager({
                 {/* Classname Autocomplete */}
                 <div style={{ marginTop: '16px' }}>
                   <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-mono)' }}>
-                    CLASSNAME
+                    {t('quest_label_classname') || "CLASSNAME"}
                   </label>
                   {classnameSuggestions.length === 0 && (
                     <div style={{ fontSize: '10px', color: '#f0ad4e', marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
@@ -3407,9 +5326,9 @@ function QuestNPCsManager({
               </FormCard>
 
               {/* Position and Orientation Card */}
-              <FormCard title="// SPAWN POSITION & ORIENTATION">
+              <FormCard title={t('quest_npc_card_spawn') || "// SPAWN POSITION & ORIENTATION"}>
                 <CoordinatesInput
-                  label="POSITION"
+                  label={t('quest_label_coords') || "POSITION"}
                   position={selectedNpc.content.Position}
                   onChange={(newPos, idx, val) => {
                     onChangeField(selectedNpc.filePath, ['Position'], newPos);
@@ -3418,7 +5337,8 @@ function QuestNPCsManager({
                     setCoordinatePicker({
                       returnTab: 'quests',
                       callback: ({ x, z }) => {
-                        const newPos = [x, 0.0, z];
+                        const currentY = selectedNpc.content.Position?.[1] ?? 0.0;
+                        const newPos = [x, currentY, z];
                         onChangeField(selectedNpc.filePath, ['Position'], newPos);
                       }
                     });
@@ -3467,7 +5387,7 @@ function QuestNPCsManager({
               </FormCard>
 
               {/* Dialogue & Loadout Card */}
-              <FormCard title="// DIALOGUE & VISUAL APPEARANCE">
+              <FormCard title={t('quest_npc_card_dialogue') || "// DIALOGUE & VISUAL APPEARANCE"}>
 
                 {/* Dialogue Text */}
                 <div style={{ marginBottom: '16px' }}>
@@ -3582,7 +5502,7 @@ function QuestNPCsManager({
                   {/* Active Toggle & Static Emote */}
                   <div>
                     <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '10px', fontFamily: 'var(--font-mono)' }}>
-                      ADDITIONAL FLAGS
+                      {t('quest_npc_label_flags') || "ADDITIONAL FLAGS"}
                     </label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px' }}>
@@ -3591,7 +5511,7 @@ function QuestNPCsManager({
                           checked={selectedNpc.content.Active === 1}
                           onChange={e => onChangeField(selectedNpc.filePath, ['Active'], e.target.checked ? 1 : 0)}
                         />
-                        <span>ACTIVE ON DISK</span>
+                        <span>{t('quest_npc_flag_active') || "ACTIVE ON DISK"}</span>
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px' }}>
                         <input 
@@ -3599,7 +5519,7 @@ function QuestNPCsManager({
                           checked={selectedNpc.content.NPCEmoteIsStatic === 1}
                           onChange={e => onChangeField(selectedNpc.filePath, ['NPCEmoteIsStatic'], e.target.checked ? 1 : 0)}
                         />
-                        <span>STATIC STARTING EMOTE</span>
+                        <span>{t('quest_npc_flag_static') || "STATIC STARTING EMOTE"}</span>
                       </label>
                     </div>
                   </div>
@@ -3608,7 +5528,7 @@ function QuestNPCsManager({
               </FormCard>
 
               {/* Emotes Configuration Card */}
-              <FormCard title="// EMOTE TRIGGERS" style={{ marginBottom: '20px' }}>
+              <FormCard title={t('quest_npc_card_emotes') || "// EMOTE TRIGGERS"} style={{ marginBottom: '20px' }}>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   

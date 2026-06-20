@@ -105,8 +105,8 @@ export default function GlobalSearch({
       if (!file.success || !file.content) return;
       const lp = path.toLowerCase();
 
-      // Market item classnames
-      if (lp.startsWith('expansionmod/market/') && Array.isArray(file.content.Items)) {
+      // Market items classnames and names
+      if (lp.includes('market/') && Array.isArray(file.content.Items)) {
         file.content.Items.forEach(item => {
           if (item.ClassName?.toLowerCase().includes(lower)) {
             found.push({
@@ -120,7 +120,7 @@ export default function GlobalSearch({
       }
 
       // Quest titles, IDs, and reward/item classnames
-      if (lp.startsWith('expansionmod/quests/quests/quest_')) {
+      if (lp.includes('quests/quests/quest_')) {
         const title = file.content.Title || path.split('/').pop();
         const idStr = String(file.content.ID ?? '');
         const items = new Set();
@@ -150,7 +150,7 @@ export default function GlobalSearch({
       }
 
       // AI Patrol routes
-      if (lp === 'expansion/settings/aipatrolsettings.json' && Array.isArray(file.content.Patrols)) {
+      if (lp.endsWith('settings/aipatrolsettings.json') && Array.isArray(file.content.Patrols)) {
         file.content.Patrols.forEach((patrol, idx) => {
           const name = patrol.Name || `Patrol #${idx + 1}`;
           if (name.toLowerCase().includes(lower)) {
@@ -165,7 +165,7 @@ export default function GlobalSearch({
       }
 
       // AI Roaming locations
-      if (lp === 'expansion/settings/ailocationsettings.json' && Array.isArray(file.content.RoamingLocations)) {
+      if (lp.endsWith('settings/ailocationsettings.json') && Array.isArray(file.content.RoamingLocations)) {
         file.content.RoamingLocations.forEach(loc => {
           if (loc.Name && loc.Name.toLowerCase().includes(lower)) {
             found.push({
@@ -179,7 +179,7 @@ export default function GlobalSearch({
       }
 
       // Trader display names
-      if (lp.startsWith('expansionmod/traders/') && file.content.DisplayName) {
+      if (lp.includes('traders/') && file.content.DisplayName) {
         if (file.content.DisplayName.toLowerCase().includes(lower)) {
           found.push({
             type: 'TRADER',
@@ -191,7 +191,7 @@ export default function GlobalSearch({
       }
 
       // AI Loadout items
-      if (lp.startsWith('expansionmod/loadouts/')) {
+      if (lp.includes('loadouts/')) {
         const clsNames = new Set();
         collectLoadoutClassnames(file.content, clsNames);
         let matchLoadout = false;
@@ -212,7 +212,7 @@ export default function GlobalSearch({
       }
 
       // Spawn starting gear and clothing
-      if (lp === 'expansion/settings/spawnsettings.json') {
+      if (lp.endsWith('settings/spawnsettings.json')) {
         const c = file.content;
         const itemSet = new Set();
         if (c.StartingClothing) {

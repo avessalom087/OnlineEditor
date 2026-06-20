@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { AutocompleteWorkerWrapper } from '../../utils/autocompleteWorker';
 
+function highlightMatch(text, query) {
+  if (!query) return text;
+  const parts = text.split(new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'));
+  return (
+    <span>
+      {parts.map((part, i) => 
+        part.toLowerCase() === query.toLowerCase() 
+          ? <strong key={i} style={{ color: 'var(--text-glow)', textShadow: '0 0 4px rgba(178, 250, 158, 0.4)' }}>{part}</strong> 
+          : <span key={i}>{part}</span>
+      )}
+    </span>
+  );
+}
+
 /**
  * Reusable Autocomplete Input Component
  * Supports both controlled state (value + onChange) and uncontrolled local state.
@@ -174,7 +188,7 @@ export default function AutocompleteInput({
                     onMouseOver={() => setActiveIndex(idx)}
                     onMouseOut={() => setActiveIndex(-1)}
                   >
-                    {sug}
+                    {highlightMatch(sug, inputValue)}
                   </li>
                 );
               })}

@@ -5,6 +5,7 @@ import { translateStrKey } from '../utils/strKeys';
 import { useTranslation } from '../utils/localization';
 import HelpIcon from './HelpIcon';
 import { AutocompleteWorkerWrapper } from '../utils/autocompleteWorker';
+import { getExpansionModPrefix } from '../utils/pathUtils';
 
 
 // ─── EditableCell ─────────────────────────────────────────────────────────────
@@ -261,13 +262,13 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
 
   // ─ File lists ─────────────────────────────────────────────────────────────
   const categoryPaths = useMemo(() => {
-    const paths = Object.keys(configs).filter(p => p.toLowerCase().startsWith('expansionmod/market/') && configs[p].success);
+    const paths = Object.keys(configs).filter(p => p.toLowerCase().includes('market/') && configs[p].success);
     paths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
     return paths;
   }, [configs]);
 
   const traderPaths = useMemo(() => {
-    const paths = Object.keys(configs).filter(p => p.toLowerCase().startsWith('expansionmod/traders/') && configs[p].success);
+    const paths = Object.keys(configs).filter(p => p.toLowerCase().includes('traders/') && configs[p].success);
     paths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
     return paths;
   }, [configs]);
@@ -275,7 +276,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
   const questsList = useMemo(() => {
     const list = [];
     Object.entries(configs).forEach(([p, file]) => {
-      if (file.success && file.content && p.toLowerCase().startsWith('expansionmod/quests/quests/quest_') && file.content.ID !== undefined) {
+      if (file.success && file.content && p.toLowerCase().includes('quests/quests/quest_') && file.content.ID !== undefined) {
         list.push({ id: file.content.ID, title: file.content.Title || `Quest #${file.content.ID}` });
       }
     });
@@ -2118,8 +2119,11 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
               {/* Min to Max price percentage slider */}
               {enableMinRatioLock && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '26px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'Соотношение мин. цены:' : 'Min Price ratio:'}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontFamily: 'var(--font-mono)', alignItems: 'center' }}>
+                    <span className="label-with-help" style={{ color: 'var(--text-secondary)' }}>
+                      {lang === 'ru' ? 'Соотношение мин. цены:' : 'Min Price ratio:'}
+                      <HelpIcon tipKey="tip_econ_bulk_min_ratio" />
+                    </span>
                     <span style={{ color: 'var(--text-glow)', fontWeight: 'bold' }}>{Math.round(bulkMinRatio * 100)}%</span>
                   </div>
                   <input
@@ -2639,7 +2643,8 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                         return;
                       }
 
-                      const finalFilename = `expansionmod/traders/${wizardFilename.toLowerCase().trim()}.json`;
+                      const prefix = getExpansionModPrefix(configs);
+                      const finalFilename = `${prefix}Traders/${wizardFilename.toLowerCase().trim()}.json`;
                       const newTraderConfig = {
                         m_Version: 13,
                         DisplayName: wizardDisplayName,

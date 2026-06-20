@@ -250,6 +250,33 @@ async function rotateBackups(rootDirHandle) {
 }
 
 /**
+ * Strips editor-only fields that should not be written to disk.
+ * Currently removes `ObjectiveName` from Objectives[] in quest files
+ * (it is an internal label only, not part of the Expansion JSON format).
+ * @param {string} filePath
+ * @param {object} content
+ * @returns {object} sanitized content (new object, original not mutated)
+ */
+function sanitizeContent(filePath, content) {
+  const lp = filePath.toLowerCase();
+  // Only quest files have Objectives[]
+  if (lp.includes('quests/quests/') && Array.isArray(content?.Objectives)) {
+    return {
+      ...content,
+      Objectives: content.Objectives.map(obj => {
+        // Remove ObjectiveName if present (editor-only label)
+        if ('ObjectiveName' in obj) {
+          const { ObjectiveName, ...rest } = obj;
+          return rest;
+        }
+        return obj;
+      })
+    };
+  }
+  return content;
+}
+
+/**
  * Saves a single configuration file with automated backup.
  * @param {string} filePath 
  * @param {object} content 
@@ -266,10 +293,11 @@ export async function saveFile(filePath, content) {
   // Backup the file first if it exists
   await backupFile(activeDirHandle, backupFolderHandle, filePath);
 
-  // Write new content
+  // Write new content (strip editor-only fields before writing)
+  const sanitized = sanitizeContent(filePath, content);
   const fileHandle = await getFileHandleFromPath(activeDirHandle, filePath, { create: true });
   const writable = await fileHandle.createWritable();
-  await writable.write(JSON.stringify(content, null, 4));
+  await writable.write(JSON.stringify(sanitized, null, 4));
   await writable.close();
 
   // Rotate old backups
@@ -295,10 +323,11 @@ export async function saveAll(files) {
     // Backup the file first if it exists
     await backupFile(activeDirHandle, backupFolderHandle, file.filePath);
 
-    // Write new content
+    // Write new content (strip editor-only fields before writing)
+    const sanitized = sanitizeContent(file.filePath, file.content);
     const fileHandle = await getFileHandleFromPath(activeDirHandle, file.filePath, { create: true });
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(file.content, null, 4));
+    await writable.write(JSON.stringify(sanitized, null, 4));
     await writable.close();
   }
 

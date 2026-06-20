@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from '../utils/localization';
 
 /**
@@ -80,17 +81,19 @@ export default function HelpIcon({ tipKey, position = 'right', style = {} }) {
         ?
       </span>
 
-      {visible && (
+      {visible && createPortal(
         <div
           ref={tooltipRef}
           className="help-tooltip"
           style={{ top: coords.top, left: coords.left }}
           onMouseEnter={show}
           onMouseLeave={hide}
+          onClick={e => e.stopPropagation()}
         >
           <div className="help-tooltip-arrow" />
           <div className="help-tooltip-text">{text}</div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

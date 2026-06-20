@@ -3,6 +3,7 @@ import AutocompleteInput from './shared/AutocompleteInput';
 import FormCard from './shared/FormCard';
 import HelpIcon from './HelpIcon';
 import { useTranslation } from '../utils/localization';
+import { getMpgSpawnerPrefix } from '../utils/pathUtils';
 
 
 // Helper to parse pipe-delimited spawn list entry
@@ -336,13 +337,13 @@ export default function MPGSpawnerEditor({
   }, [xmlItems]);
 
   // Extract Global Config path and Point Config paths
-  const globalConfigPath = 'MPG_Spawner/Config.json';
+  const globalConfigPath = Object.keys(configs).find(p => p.toLowerCase().endsWith('mpg_spawner/config.json') || p.toLowerCase() === 'config.json') || 'MPG_Spawner/Config.json';
   const globalConfig = configs[globalConfigPath];
 
   const pointPaths = useMemo(() => {
     return Object.keys(configs).filter(p => {
       const lower = p.toLowerCase();
-      return lower.startsWith('mpg_spawner/points/') && lower.endsWith('.json');
+      return (lower.includes('mpg_spawner/points/') || lower.includes('points/')) && lower.endsWith('.json');
     }).sort((a, b) => {
       const fileA = a.split('/').pop();
       const fileB = b.split('/').pop();
@@ -413,7 +414,8 @@ export default function MPGSpawnerEditor({
     if (!finalName.endsWith('.json')) {
       finalName += '.json';
     }
-    const relativePath = `MPG_Spawner/Points/${finalName}`;
+    const prefix = getMpgSpawnerPrefix(configs);
+    const relativePath = `${prefix}Points/${finalName}`;
 
     if (configs[relativePath]) {
       alert(lang === 'ru' ? 'Файл с таким именем уже существует!' : 'A file with this name already exists!');
@@ -1605,8 +1607,9 @@ export default function MPGSpawnerEditor({
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }} className="label-with-help">
                         {t('spawner_trigger_cooldown')} (s)
+                        <HelpIcon tipKey="tip_mpg_cooldown" />
                       </label>
                       <input
                         type="text"
@@ -2471,11 +2474,14 @@ export default function MPGSpawnerEditor({
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
                       <label className="checkbox-container">
                         <div className={`checkbox-custom ${selectedTrigger.triggerCleanupOnLeave === 1 ? 'checked' : ''}`}
                           onClick={() => handleUpdateTriggerField('triggerCleanupOnLeave', selectedTrigger.triggerCleanupOnLeave === 1 ? 0 : 1)} />
-                        <span style={{ fontSize: '11px' }}>{lang === 'ru' ? 'Удалять при выходе игроков' : 'Cleanup on player exit'}</span>
+                        <span style={{ fontSize: '11px' }} className="label-with-help">
+                          {lang === 'ru' ? 'Удалять при выходе игроков' : 'Cleanup on player exit'}
+                          <HelpIcon tipKey="tip_mpg_cleanup_leave" />
+                        </span>
                       </label>
 
                       <label className="checkbox-container">
@@ -2493,7 +2499,10 @@ export default function MPGSpawnerEditor({
                       <label className="checkbox-container">
                         <div className={`checkbox-custom ${selectedTrigger.triggerDisableOnWin === 1 ? 'checked' : ''}`}
                           onClick={() => handleUpdateTriggerField('triggerDisableOnWin', selectedTrigger.triggerDisableOnWin === 1 ? 0 : 1)} />
-                        <span style={{ fontSize: '11px' }}>{lang === 'ru' ? 'Отключать при победе' : 'Disable on Win'}</span>
+                        <span style={{ fontSize: '11px' }} className="label-with-help">
+                          {lang === 'ru' ? 'Отключать при победе' : 'Disable on Win'}
+                          <HelpIcon tipKey="tip_mpg_disable_win" />
+                        </span>
                       </label>
 
                       <label className="checkbox-container">

@@ -3,6 +3,7 @@ import { validateConfig, cleanJsonComments } from '../utils/diagnostics';
 import { useToast } from './ToastManager';
 import * as fileService from '../services/fileService';
 import { useTranslation } from '../utils/localization';
+import HelpIcon from './HelpIcon';
 
 function getDiffPaths(obj1, obj2, currentPath = []) {
   if (obj1 === obj2) return [];
@@ -121,12 +122,12 @@ export default function Dashboard({
     paths.forEach(filePath => {
       const file = configs[filePath];
       if (file.success && file.content) {
-        if (filePath.toLowerCase().startsWith('expansionmod/quests/quests/quest_')) {
+        if (filePath.toLowerCase().includes('quests/quests/quest_')) {
           if (file.content.ID !== undefined) {
             allQuestsIds.add(file.content.ID);
           }
         }
-        if (filePath.toLowerCase().startsWith('expansionmod/market/')) {
+        if (filePath.toLowerCase().includes('market/')) {
           const catName = filePath.split('/').pop().replace('.json', '');
           marketCategories.add(catName.toLowerCase());
           if (Array.isArray(file.content.Items)) {
@@ -156,16 +157,16 @@ export default function Dashboard({
       const content = file.content;
 
       // Count statistics
-      if (lowerPath.startsWith('expansionmod/quests/quests/quest_') && content.ID !== undefined) {
+      if (lowerPath.includes('quests/quests/quest_') && content.ID !== undefined) {
         tQuests++;
       }
-      if (lowerPath.startsWith('expansionmod/quests/npcs/questnpc_')) {
+      if (lowerPath.includes('quests/npcs/questnpc_')) {
         tNPCs++;
       }
-      if (lowerPath.startsWith('expansionmod/market/') && Array.isArray(content.Items)) {
+      if (lowerPath.includes('market/') && Array.isArray(content.Items)) {
         tMarketItems += content.Items.length;
       }
-      if (lowerPath === 'expansion/settings/aipatrolsettings.json' && Array.isArray(content.Patrols)) {
+      if (lowerPath.endsWith('settings/aipatrolsettings.json') && Array.isArray(content.Patrols)) {
         tPatrols += content.Patrols.length;
         content.Patrols.forEach(p => {
           if (Array.isArray(p.Waypoints)) {
@@ -173,13 +174,13 @@ export default function Dashboard({
           }
         });
       }
-      if (lowerPath === 'expansion/settings/safezonesettings.json') {
+      if (lowerPath.endsWith('settings/safezonesettings.json')) {
         if (Array.isArray(content.CircleZones)) tSafeZones += content.CircleZones.length;
         if (Array.isArray(content.PolygonZones)) tSafeZones += content.PolygonZones.length;
         if (Array.isArray(content.CylinderZones)) tSafeZones += content.CylinderZones.length;
       }
       // Quest objective types
-      if (lowerPath.startsWith('expansionmod/quests/objectives/')) {
+      if (lowerPath.includes('quests/objectives/')) {
         tQuestObjectivesCount++;
         if (content.ObjectiveType !== undefined) {
           const typeNum = content.ObjectiveType;
@@ -187,7 +188,7 @@ export default function Dashboard({
         }
       }
       // MPG Spawners
-      if (lowerPath.startsWith('mpg_spawner/points/') && lowerPath.endsWith('.json') && Array.isArray(content)) {
+      if ((lowerPath.includes('mpg_spawner/points/') || lowerPath.includes('points/')) && lowerPath.endsWith('.json') && Array.isArray(content)) {
         tMpgSpawnerFiles++;
         content.forEach(trig => {
           tMpgTriggers++;
@@ -446,7 +447,10 @@ export default function Dashboard({
               <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('status_diagnostics_title')}</div>
-                  <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('status_healing_title')}</h2>
+                  <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)', display: 'flex', alignItems: 'center', gap: '6px' }} className="label-with-help">
+                    {t('status_healing_title')}
+                    <HelpIcon tipKey="tip_dash_healing" />
+                  </h2>
                 </div>
                 {totalIssuesCount > 0 && (
                   <button 
@@ -652,7 +656,10 @@ export default function Dashboard({
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('db_title')}</div>
-                <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)' }}>{t('db_header')}</h2>
+                <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)', display: 'flex', alignItems: 'center', gap: '6px' }} className="label-with-help">
+                  {t('db_header')}
+                  <HelpIcon tipKey="tip_dash_xml_db" />
+                </h2>
               </div>
               {Array.isArray(xmlItems) && xmlItems.length > 0 && (
                 <button 

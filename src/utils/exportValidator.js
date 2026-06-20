@@ -10,7 +10,7 @@ export function validateBeforeExport(configs) {
   const allQuestsIds = new Set();
   const questPrereqs = {};
   Object.entries(configs).forEach(([p, f]) => {
-    if (f.success && f.content && p.toLowerCase().startsWith('expansionmod/quests/quests/quest_')) {
+    if (f.success && f.content && p.toLowerCase().includes('quests/quests/quest_')) {
       if (f.content.ID !== undefined) {
         allQuestsIds.add(f.content.ID);
         questPrereqs[f.content.ID] = Array.isArray(f.content.PreQuestIDs) ? f.content.PreQuestIDs : [];
@@ -77,7 +77,7 @@ export function validateBeforeExport(configs) {
     const shortName = path.split('/').pop();
 
     // ─── Market Categories ───────────────────────────────────────────────────
-    if (lp.startsWith('expansionmod/market/') && Array.isArray(file.content.Items)) {
+    if (lp.includes('market/') && Array.isArray(file.content.Items)) {
       file.content.Items.forEach((item, idx) => {
         if (!item.ClassName || item.ClassName.trim() === '') {
           issues.push({
@@ -112,7 +112,7 @@ export function validateBeforeExport(configs) {
     }
 
     // ─── Quests ──────────────────────────────────────────────────────────────
-    if (lp.startsWith('expansionmod/quests/quests/quest_')) {
+    if (lp.includes('quests/quests/quest_')) {
       if (!file.content.Title || file.content.Title.trim() === '') {
         issues.push({
           filePath: path,
@@ -170,13 +170,7 @@ export function validateBeforeExport(configs) {
       // Objectives check
       if (Array.isArray(file.content.Objectives)) {
         file.content.Objectives.forEach((obj, idx) => {
-          if (!obj.ObjectiveName || obj.ObjectiveName.trim() === '') {
-            issues.push({
-              filePath: path,
-              severity: 'warning',
-              message: `${shortName} → Objective #${idx + 1}: ObjectiveName is empty.`,
-            });
-          }
+          // Note: ObjectiveName is an editor-only label, not validated here
 
           if (obj && obj.ID !== undefined && obj.ObjectiveType !== undefined) {
             const typeId = obj.ObjectiveType;
@@ -189,8 +183,8 @@ export function validateBeforeExport(configs) {
                 message: `${shortName} → Objective #${idx + 1}: Invalid or unknown ObjectiveType ${typeId}`,
               });
             } else {
-              const targetPath = `expansionmod/quests/objectives/${info.folder.toLowerCase()}/objective_${info.prefix.toLowerCase()}_${objId}.json`;
-              const exists = Object.keys(configs).some(k => k.toLowerCase() === targetPath);
+              const suffix = `quests/objectives/${info.folder.toLowerCase()}/objective_${info.prefix.toLowerCase()}_${objId}.json`;
+              const exists = Object.keys(configs).some(k => k.toLowerCase().endsWith(suffix));
               if (!exists) {
                 issues.push({
                   filePath: path,
@@ -205,7 +199,7 @@ export function validateBeforeExport(configs) {
     }
 
     // ─── AI Patrol Settings ──────────────────────────────────────────────────
-    if (lp === 'expansion/settings/aipatrolsettings.json' && Array.isArray(file.content.Patrols)) {
+    if (lp.endsWith('settings/aipatrolsettings.json') && Array.isArray(file.content.Patrols)) {
       file.content.Patrols.forEach((patrol, idx) => {
         const name = patrol.Name || `Patrol #${idx + 1}`;
         if (Array.isArray(patrol.Waypoints)) {
@@ -226,7 +220,7 @@ export function validateBeforeExport(configs) {
     }
 
     // ─── Safe Zone Settings ──────────────────────────────────────────────────
-    if (lp === 'expansion/settings/safezonesettings.json') {
+    if (lp.endsWith('settings/safezonesettings.json')) {
       const allZones = [
         ...(file.content.CircleZones  || []),
         ...(file.content.PolygonZones || []),
