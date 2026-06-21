@@ -561,6 +561,32 @@ export default function QuestGraph({
   const [isAuditOpen, setIsAuditOpen] = useState(false);
   const [auditResults, setAuditResults] = useState([]);
 
+  // Quest Wizard states
+  const [showQuestWizard, setShowQuestWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [wQuestTitle, setWQuestTitle] = useState('');
+  const [wQuestObjectiveText, setWQuestObjectiveText] = useState('');
+  const [wQuestStartText, setWQuestStartText] = useState('');
+  const [wQuestProgressText, setWQuestProgressText] = useState('');
+  const [wQuestEndText, setWQuestEndText] = useState('');
+  const [wPreQuestID, setWPreQuestID] = useState(-1);
+  const [wGiverNPCID, setWGiverNPCID] = useState('');
+  const [wTurnInNPCID, setWTurnInNPCID] = useState('');
+
+  const [wObjectiveType, setWObjectiveType] = useState(5); // 5 = Delivery
+  const [wObjTargetClass, setWObjTargetClass] = useState('Infected');
+  const [wObjTargetAmount, setWObjTargetAmount] = useState(10);
+  const [wObjTravelName, setWObjTravelName] = useState('Travel Destination');
+  const [wObjTravelCoords, setWObjTravelCoords] = useState([7500.0, 0.0, 7500.0]);
+  const [wObjDeliveryClass, setWObjDeliveryClass] = useState('');
+  const [wObjDeliveryAmount, setWObjDeliveryAmount] = useState(1);
+  const [wObjDeliveryName, setWObjDeliveryName] = useState('Steve');
+  const [wObjCollectionClass, setWObjCollectionClass] = useState('');
+  const [wObjCollectionAmount, setWObjCollectionAmount] = useState(1);
+
+  const [wReputationReward, setWReputationReward] = useState(100);
+  const [wRewardItems, setWRewardItems] = useState([]);
+
   // Right-click context menu state
   // type: 'canvas' | 'node' | 'connection'
   const [questCtxMenu, setQuestCtxMenu] = useState(null);
@@ -1274,6 +1300,194 @@ export default function QuestGraph({
         filePath
       });
     }, 200);
+  };
+
+  const handleQuestWizardGenerate = () => {
+    if (!wQuestTitle.trim()) {
+      alert(lang === 'ru' ? 'Введите название квеста!' : 'Please enter quest title!');
+      return;
+    }
+
+    const prefix = getExpansionModPrefix(configs);
+    const nextQuestId = quests.length > 0 ? Math.max(...quests.map(q => Number(q.id) || 0)) + 1 : 1;
+    const questFilePath = `${prefix}Quests/Quests/Quest_${nextQuestId}.json`;
+
+    // Calculate objective ID
+    const folderName = OBJECTIVE_TYPES[wObjectiveType].folder;
+    const prefixName = OBJECTIVE_TYPES[wObjectiveType].prefix;
+    let maxObjId = 0;
+    const targetSegment = `quests/objectives/${folderName.toLowerCase()}/objective_${prefixName.toLowerCase()}_`.toLowerCase();
+    Object.keys(configs).forEach(filePath => {
+      if (filePath.toLowerCase().includes(targetSegment)) {
+        const file = configs[filePath];
+        if (file.success && file.content && file.content.ID !== undefined) {
+          if (file.content.ID > maxObjId) maxObjId = file.content.ID;
+        }
+      }
+    });
+    const nextObjId = maxObjId + 1;
+
+    // Formulate Objective content
+    let objTemplate = {
+      ConfigVersion: 28,
+      ID: nextObjId,
+      ObjectiveType: Number(wObjectiveType),
+      ObjectiveText: wQuestObjectiveText || `Complete objective #${nextObjId}`,
+      TimeLimit: -1,
+      Active: 1
+    };
+
+    if (Number(wObjectiveType) === 3) { // Travel
+      objTemplate = {
+        ...objTemplate,
+        Position: wObjTravelCoords,
+        MaxDistance: 20.0,
+        MarkerName: wObjTravelName || "Travel Destination",
+        ShowDistance: 1,
+        TriggerOnEnter: 1,
+        TriggerOnExit: 0
+      };
+    } else if (Number(wObjectiveType) === 5) { // Delivery
+      objTemplate = {
+        ...objTemplate,
+        Collections: [
+          {
+            Amount: Number(wObjDeliveryAmount) || 1,
+            ClassName: wObjDeliveryClass || "ExpansionQuestItemPaper",
+            QuantityPercent: -1,
+            MinQuantityPercent: -1
+          }
+        ],
+        ShowDistance: 1,
+        AddItemsToNearbyMarketZone: 0,
+        MaxDistance: 20.0,
+        MarkerName: wObjDeliveryName || "Delivery Target"
+      };
+    } else if (Number(wObjectiveType) === 2) { // Target (Kill)
+      objTemplate = {
+        ...objTemplate,
+        Position: [0.0, 0.0, 0.0],
+        MaxDistance: -1.0,
+        MinDistance: -1.0,
+        Amount: Number(wObjTargetAmount) || 10,
+        ClassNames: [wObjTargetClass || "Infected"],
+        CountSelfKill: 0,
+        AllowedWeapons: [],
+        ExcludedClassNames: [],
+        CountAIPlayers: 0,
+        AllowedTargetFactions: [],
+        AllowedDamageZones: []
+      };
+    } else if (Number(wObjectiveType) === 4) { // Collection
+      objTemplate = {
+        ...objTemplate,
+        Collections: [
+          {
+            Amount: Number(wObjCollectionAmount) || 1,
+            ClassName: wObjCollectionClass || "ExpansionQuestItemPaper",
+            QuantityPercent: -1,
+            MinQuantityPercent: -1
+          }
+        ],
+        ShowDistance: 1,
+        AddItemsToNearbyMarketZone: 0,
+        NeedAnyCollection: 0
+      };
+    }
+
+    const preQuestIDs = wPreQuestID !== -1 && wPreQuestID !== "-1" ? [Number(wPreQuestID)] : [];
+    const giverIDs = wGiverNPCID !== "" && wGiverNPCID !== "--" ? [Number(wGiverNPCID)] : [];
+    const turnInIDs = wTurnInNPCID !== "" && wTurnInNPCID !== "--" ? [Number(wTurnInNPCID)] : [];
+
+    const questTemplate = {
+      ConfigVersion: 22,
+      ID: nextQuestId,
+      Type: 1,
+      Title: wQuestTitle || `Quest #${nextQuestId}`,
+      Descriptions: [
+        wQuestStartText || "Quest dialog start text.",
+        wQuestProgressText || "Quest progress details.",
+        wQuestEndText || "Quest turn-in description."
+      ],
+      ObjectiveText: wQuestObjectiveText || "Complete quest objective.",
+      FollowUpQuest: -1,
+      Repeatable: 0,
+      IsDailyQuest: 0,
+      IsWeeklyQuest: 0,
+      CancelQuestOnPlayerDeath: 0,
+      Autocomplete: 0,
+      IsGroupQuest: 0,
+      ObjectSetFileName: "",
+      QuestItems: [],
+      Rewards: wRewardItems.map(item => ({
+        ClassName: item.ClassName,
+        Amount: Number(item.Amount) || 1
+      })),
+      NeedToSelectReward: 0,
+      RandomReward: 0,
+      RandomRewardAmount: -1,
+      RewardsForGroupOwnerOnly: 1,
+      RewardBehavior: 0,
+      QuestGiverIDs: giverIDs,
+      QuestTurnInIDs: turnInIDs,
+      IsAchievement: 0,
+      Objectives: [
+        {
+          ConfigVersion: 28,
+          ID: nextObjId,
+          ObjectiveType: Number(wObjectiveType)
+        }
+      ],
+      QuestColor: 0,
+      ReputationReward: Number(wReputationReward) || 0,
+      ReputationRequirement: -1,
+      PreQuestIDs: preQuestIDs,
+      RequiredFaction: "",
+      FactionReward: "",
+      PlayerNeedQuestItems: 1,
+      DeleteQuestItems: 1,
+      SequentialObjectives: 1,
+      FactionReputationRequirements: {},
+      FactionReputationRewards: {},
+      SuppressQuestLogOnCompetion: 0,
+      Active: 1
+    };
+
+    const objPath = getObjectiveFilePath(wObjectiveType, nextObjId, configs);
+
+    onCreateFile(objPath, objTemplate);
+    onCreateFile(questFilePath, questTemplate);
+
+    setTimeout(() => {
+      setSelectedQuest({
+        id: nextQuestId,
+        title: questTemplate.Title,
+        followUpQuest: -1,
+        preQuestIDs,
+        giverIDs,
+        turnInIDs,
+        description: questTemplate.Descriptions[0],
+        objectives: questTemplate.Objectives,
+        filePath: questFilePath
+      });
+      const singleSet = new Set([nextQuestId]);
+      selectedQuestIdsRef.current = singleSet;
+      setSelectedQuestIds(singleSet);
+      if (onSelectQuest) onSelectQuest(nextQuestId);
+    }, 150);
+
+    // Reset wizard
+    setShowQuestWizard(false);
+    setWizardStep(1);
+    setWQuestTitle('');
+    setWQuestObjectiveText('');
+    setWQuestStartText('');
+    setWQuestProgressText('');
+    setWQuestEndText('');
+    setWPreQuestID(-1);
+    setWGiverNPCID('');
+    setWTurnInNPCID('');
+    setWRewardItems([]);
   };
 
   const handleLinkSelectedSequentially = () => {
@@ -2231,8 +2445,11 @@ export default function QuestGraph({
           gap: '8px',
           alignItems: 'center'
         }}>
-          <button className="btn btn-accent" onClick={handleCreateQuest} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }}>
-            {t('quest_btn_create')}
+          <button className="btn" onClick={handleCreateQuest} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }}>
+            + {lang === 'ru' ? 'Быстрый квест' : 'Quick Quest'}
+          </button>
+          <button className="btn btn-accent" onClick={() => { setShowQuestWizard(true); setWizardStep(1); }} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }}>
+            🧙‍♂️ {lang === 'ru' ? 'Конструктор квестов' : 'Quest Builder'}
           </button>
           <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
           <button className="btn" onClick={() => setZoom(prev => Math.min(prev * 1.2, 3))} style={{ padding: '4px 8px', fontSize: '12px' }}>+</button>
@@ -4906,6 +5123,412 @@ export default function QuestGraph({
               <button className="btn" onClick={() => setIsAuditOpen(false)}>
                 {t('quest_btn_close') || "Close"}
               </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ── Quest Wizard Modal ────────────────────────────────── */}
+      {showQuestWizard && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '640px', height: '640px', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', border: '1px solid var(--border-glow)', borderRadius: '4px', padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px' }}>// QUEST_WIZARD_STEP_{wizardStep}_OF_4</div>
+                <h3 style={{ margin: '4px 0 0 0', fontSize: '16px', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)' }}>
+                  {lang === 'ru' ? 'Конструктор создания квестов' : 'Quest Builder'}
+                </h3>
+              </div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[1, 2, 3, 4].map(s => (
+                  <div key={s} style={{
+                    width: '24px', height: '6px', borderRadius: '1px',
+                    background: s === wizardStep ? 'var(--text-glow)' : s < wizardStep ? 'var(--accent-color)' : 'var(--border-color)'
+                  }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Content Body */}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', paddingRight: '4px' }}>
+              
+              {/* STEP 1: Quest Metadata */}
+              {wizardStep === 1 && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Шаг 1: Настройте название, диалоги квеста и связи с NPC.' : 'Step 1: Set quest title, dialogues, and NPC links.'}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Название квеста *' : 'Quest Title *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={wQuestTitle}
+                      onChange={e => setWQuestTitle(e.target.value)}
+                      placeholder="e.g. A dirty rat's job"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Краткое описание задачи квеста *' : 'Objective Description Text *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={wQuestObjectiveText}
+                      onChange={e => setWQuestObjectiveText(e.target.value)}
+                      placeholder="e.g. Deliver the note to Steve."
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {lang === 'ru' ? 'Квестодатель (NPC Giver)' : 'Quest Giver NPC'}
+                      </label>
+                      <select value={wGiverNPCID} onChange={e => setWGiverNPCID(e.target.value)}>
+                        <option value="">-- {lang === 'ru' ? 'Выберите NPC' : 'Select NPC'} --</option>
+                        {npcsList.map(n => (
+                          <option key={n.id} value={n.id}>#{n.id} - {n.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {lang === 'ru' ? 'Приемщик (NPC Turn-in)' : 'Quest Turn-In NPC'}
+                      </label>
+                      <select value={wTurnInNPCID} onChange={e => setWTurnInNPCID(e.target.value)}>
+                        <option value="">-- {lang === 'ru' ? 'Выберите NPC' : 'Select NPC'} --</option>
+                        {npcsList.map(n => (
+                          <option key={n.id} value={n.id}>#{n.id} - {n.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Предварительный квест (Prerequisite)' : 'Prerequisite Quest'}
+                    </label>
+                    <select value={wPreQuestID} onChange={e => setWPreQuestID(Number(e.target.value))}>
+                      <option value={-1}>-- {lang === 'ru' ? 'Нет пререквизита' : 'No Prerequisite'} --</option>
+                      {quests.map(q => (
+                        <option key={q.id} value={q.id}>#{q.id} - {q.title}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Диалог при взятии квеста' : 'Quest Start Dialog text'}
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={wQuestStartText}
+                      onChange={e => setWQuestStartText(e.target.value)}
+                      placeholder="Start dialog text..."
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {lang === 'ru' ? 'Текст в процессе выполнения' : 'Quest Progress text'}
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={wQuestProgressText}
+                        onChange={e => setWQuestProgressText(e.target.value)}
+                        placeholder="Progress text..."
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {lang === 'ru' ? 'Текст при завершении квеста' : 'Quest Turn-in text'}
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={wQuestEndText}
+                        onChange={e => setWQuestEndText(e.target.value)}
+                        placeholder="Turn-in dialog text..."
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* STEP 2: Objective Details */}
+              {wizardStep === 2 && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Шаг 2: Укажите тип цели квеста и её параметры.' : 'Step 2: Set objective type and details.'}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Тип цели квеста' : 'Objective Type'}
+                    </label>
+                    <select value={wObjectiveType} onChange={e => setWObjectiveType(Number(e.target.value))}>
+                      <option value={5}>{lang === 'ru' ? 'Доставка предметов (Delivery)' : 'Delivery'}</option>
+                      <option value={2}>{lang === 'ru' ? 'Уничтожение целей (Kill)' : 'Kill Target'}</option>
+                      <option value={3}>{lang === 'ru' ? 'Путешествие (Travel)' : 'Travel'}</option>
+                      <option value={4}>{lang === 'ru' ? 'Сбор предметов (Collection)' : 'Collection'}</option>
+                    </select>
+                  </div>
+
+                  {/* Delivery Objective Fields */}
+                  {wObjectiveType === 5 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--bg-primary)', padding: '14px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '11px', color: 'var(--text-glow)' }}>📦 {lang === 'ru' ? 'Параметры доставки' : 'Delivery Parameters'}</div>
+                      <div>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Предмет для доставки' : 'Item ClassName'}</label>
+                        <AutocompleteInput
+                          suggestions={classnameSuggestions}
+                          placeholder="e.g. ExpansionQuestItemPaper"
+                          onSelect={setWObjDeliveryClass}
+                          value={wObjDeliveryClass}
+                          onChange={setWObjDeliveryClass}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+                        <div>
+                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Количество' : 'Quantity'}</label>
+                          <input type="number" min={1} value={wObjDeliveryAmount} onChange={e => setWObjDeliveryAmount(Math.max(1, Number(e.target.value)))} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Имя точки/получателя (Marker)' : 'Recipient / Marker Name'}</label>
+                          <input type="text" value={wObjDeliveryName} onChange={e => setWObjDeliveryName(e.target.value)} placeholder="e.g. Steve" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Target/Kill Objective Fields */}
+                  {wObjectiveType === 2 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--bg-primary)', padding: '14px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '11px', color: 'var(--text-glow)' }}>🎯 {lang === 'ru' ? 'Параметры зачистки/убийства' : 'Kill Target Parameters'}</div>
+                      <div>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Класснейм жертвы' : 'Target ClassName'}</label>
+                        <AutocompleteInput
+                          suggestions={classnameSuggestions}
+                          placeholder="e.g. Infected, ExpansionHardlineAIBotCivMale"
+                          onSelect={setWObjTargetClass}
+                          value={wObjTargetClass}
+                          onChange={setWObjTargetClass}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Количество целей' : 'Kill Count'}</label>
+                        <input type="number" min={1} value={wObjTargetAmount} onChange={e => setWObjTargetAmount(Math.max(1, Number(e.target.value)))} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Travel Objective Fields */}
+                  {wObjectiveType === 3 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--bg-primary)', padding: '14px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '11px', color: 'var(--text-glow)' }}>🗺️ {lang === 'ru' ? 'Параметры перемещения' : 'Travel Parameters'}</div>
+                      <div>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Название точки назначения' : 'Marker / Destination Name'}</label>
+                        <input type="text" value={wObjTravelName} onChange={e => setWObjTravelName(e.target.value)} placeholder="e.g. NW Airfield" />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Координаты точки (X, Y, Z)' : 'Destination Coords (X, Y, Z)'}</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: '8px', color: 'var(--text-dark)' }}>X</span>
+                            <input type="number" step="any" value={wObjTravelCoords[0]} onChange={e => setWObjTravelCoords([Number(e.target.value), wObjTravelCoords[1], wObjTravelCoords[2]])} style={{ padding: '4px' }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: '8px', color: 'var(--text-dark)' }}>Y</span>
+                            <input type="number" step="any" value={wObjTravelCoords[1]} onChange={e => setWObjTravelCoords([wObjTravelCoords[0], Number(e.target.value), wObjTravelCoords[2]])} style={{ padding: '4px' }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: '8px', color: 'var(--text-dark)' }}>Z</span>
+                            <input type="number" step="any" value={wObjTravelCoords[2]} onChange={e => setWObjTravelCoords([wObjTravelCoords[0], wObjTravelCoords[1], Number(e.target.value)])} style={{ padding: '4px' }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Collection Objective Fields */}
+                  {wObjectiveType === 4 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--bg-primary)', padding: '14px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '11px', color: 'var(--text-glow)' }}>🎒 {lang === 'ru' ? 'Параметры сбора' : 'Collection Parameters'}</div>
+                      <div>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Предмет для сбора' : 'Item ClassName'}</label>
+                        <AutocompleteInput
+                          suggestions={classnameSuggestions}
+                          placeholder="e.g. ExpansionQuestItemPaper"
+                          onSelect={setWObjCollectionClass}
+                          value={wObjCollectionClass}
+                          onChange={setWObjCollectionClass}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Количество для сбора' : 'Quantity'}</label>
+                        <input type="number" min={1} value={wObjCollectionAmount} onChange={e => setWObjCollectionAmount(Math.max(1, Number(e.target.value)))} />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* STEP 3: Rewards */}
+              {wizardStep === 3 && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Шаг 3: Настройте награды за выполнение квеста.' : 'Step 3: Choose quest completion rewards.'}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Награда за репутацию' : 'Reputation Reward Amount'}
+                    </label>
+                    <input
+                      type="number"
+                      value={wReputationReward}
+                      onChange={e => setWReputationReward(Number(e.target.value))}
+                    />
+                  </div>
+
+                  {/* Reward Items list */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                      {lang === 'ru' ? 'Список наградных предметов' : 'Reward Items List'}
+                    </label>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto', marginBottom: '10px' }}>
+                      {wRewardItems.length === 0 ? (
+                        <div style={{ padding: '16px', border: '1px dashed var(--border-color)', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                          {lang === 'ru' ? 'Список пуст. Предметы не будут выданы в награду.' : 'List empty. No item rewards will be given.'}
+                        </div>
+                      ) : (
+                        wRewardItems.map((item, idx) => (
+                          <div key={idx} style={{ display: 'flex', justifySelf: 'stretch', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-primary)', padding: '6px 12px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>{item.ClassName} (x{item.Amount})</span>
+                            <span onClick={() => setWRewardItems(prev => prev.filter((_, i) => i !== idx))} style={{ color: 'var(--text-dark)', cursor: 'pointer', fontSize: '14px', padding: '0 4px' }}>×</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <AutocompleteInput
+                        suggestions={classnameSuggestions}
+                        placeholder={lang === 'ru' ? 'Добавить предмет...' : 'Add reward item classname...'}
+                        onSelect={(name) => {
+                          if (name.trim()) {
+                            const amt = Number(prompt(lang === 'ru' ? 'Количество:' : 'Amount:', '1') || 1);
+                            setWRewardItems(prev => [...prev, { ClassName: name.trim(), Amount: amt }]);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* STEP 4: Summary */}
+              {wizardStep === 4 && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Шаг 4: Подтвердите создание следующих файлов и настроек.' : 'Step 4: Confirm generation of the following configurations.'}
+                  </div>
+
+                  <div className="card-hud" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--text-glow)', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      {lang === 'ru' ? '📜 Новый квест' : '📜 New Quest'}
+                    </div>
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                      <strong>{lang === 'ru' ? 'Название' : 'Title'}:</strong> {wQuestTitle}<br />
+                      <strong>{lang === 'ru' ? 'Описание задачи' : 'Objective'}:</strong> {wQuestObjectiveText}<br />
+                      <strong>{lang === 'ru' ? 'NPC Квестодатель' : 'Giver NPC'}:</strong> {wGiverNPCID ? `NPC ID #${wGiverNPCID}` : 'None'}<br />
+                      <strong>{lang === 'ru' ? 'NPC Приемщик' : 'Turn-in NPC'}:</strong> {wTurnInNPCID ? `NPC ID #${wTurnInNPCID}` : 'None'}<br />
+                      <strong>{lang === 'ru' ? 'Пререквизит' : 'Prerequisite ID'}:</strong> {wPreQuestID !== -1 ? `Quest ID #${wPreQuestID}` : 'None'}
+                    </div>
+                  </div>
+
+                  <div className="card-hud" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--text-glow)', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      {lang === 'ru' ? '🎯 Квестовая цель (Objective)' : '🎯 Quest Objective'}
+                    </div>
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                      <strong>{lang === 'ru' ? 'Тип цели' : 'Objective Type'}:</strong> {OBJECTIVE_TYPES[wObjectiveType]?.label || wObjectiveType}<br />
+                      {wObjectiveType === 5 && (
+                        <>
+                          <strong>{lang === 'ru' ? 'Предмет для доставки' : 'Delivery item'}:</strong> {wObjDeliveryClass}<br />
+                          <strong>{lang === 'ru' ? 'Количество' : 'Quantity'}:</strong> {wObjDeliveryAmount}<br />
+                          <strong>{lang === 'ru' ? 'Точка' : 'Marker'}:</strong> {wObjDeliveryName}
+                        </>
+                      )}
+                      {wObjectiveType === 2 && (
+                        <>
+                          <strong>{lang === 'ru' ? 'Цель уничтожения' : 'Kill target'}:</strong> {wObjTargetClass}<br />
+                          <strong>{lang === 'ru' ? 'Количество' : 'Count'}:</strong> {wObjTargetAmount}
+                        </>
+                      )}
+                      {wObjectiveType === 3 && (
+                        <>
+                          <strong>{lang === 'ru' ? 'Точка назначения' : 'Destination'}:</strong> {wObjTravelName}<br />
+                          <strong>{lang === 'ru' ? 'Координаты' : 'Coordinates'}:</strong> [{wObjTravelCoords.join(', ')}]
+                        </>
+                      )}
+                      {wObjectiveType === 4 && (
+                        <>
+                          <strong>{lang === 'ru' ? 'Предмет для сбора' : 'Collection item'}:</strong> {wObjCollectionClass}<br />
+                          <strong>{lang === 'ru' ? 'Количество' : 'Quantity'}:</strong> {wObjCollectionAmount}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="card-hud" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--text-glow)', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      {lang === 'ru' ? '🎁 Награды' : '🎁 Rewards'}
+                    </div>
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                      <strong>{lang === 'ru' ? 'Репутация' : 'Reputation'}:</strong> {wReputationReward}<br />
+                      <strong>{lang === 'ru' ? 'Предметы в награду' : 'Reward Items'}:</strong> {wRewardItems.length > 0 ? wRewardItems.map(i => `${i.ClassName} (x${i.Amount})`).join(', ') : 'None'}
+                    </div>
+                  </div>
+                </>
+              )}
+
+            </div>
+
+            {/* Footer Buttons */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '14px', marginTop: '14px' }}>
+              <button className="btn" onClick={() => { setShowQuestWizard(false); setWizardStep(1); }}>
+                {lang === 'ru' ? 'Отмена' : 'Cancel'}
+              </button>
+              {wizardStep > 1 && (
+                <button className="btn" onClick={() => setWizardStep(prev => prev - 1)}>
+                  {lang === 'ru' ? 'Назад' : 'Back'}
+                </button>
+              )}
+              {wizardStep < 4 ? (
+                <button
+                  className="btn btn-accent"
+                  disabled={wizardStep === 1 && (!wQuestTitle.trim() || !wQuestObjectiveText.trim())}
+                  onClick={() => setWizardStep(prev => prev + 1)}
+                >
+                  {lang === 'ru' ? 'Далее' : 'Next'}
+                </button>
+              ) : (
+                <button className="btn btn-accent" onClick={handleQuestWizardGenerate}>
+                  {lang === 'ru' ? 'Создать квест' : 'Generate Quest'}
+                </button>
+              )}
             </div>
 
           </div>

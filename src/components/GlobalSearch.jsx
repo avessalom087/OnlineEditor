@@ -9,6 +9,7 @@ const TYPE_STYLES = {
   TRADER: { color: '#c9a6f5', bg: 'rgba(180,100,255,0.10)', label: 'TRADER' },
   LOADOUT: { color: '#82e6d9', bg: 'rgba(130,230,217,0.10)', label: 'LOADOUT' },
   COMMAND: { color: '#ff7eb6', bg: 'rgba(255,126,182,0.12)', label: 'COMMAND' },
+  SFL:    { color: '#f0b86e', bg: 'rgba(240,184,110,0.10)', label: 'SFL'    },
 };
 
 function collectLoadoutClassnames(node, set) {
@@ -251,6 +252,62 @@ export default function GlobalSearch({
           });
         }
       }
+      // SearchForLoot — building categories, loot items, proxies
+      if (lp.includes('searchforloot/')) {
+        const c = file.content;
+        // Building categories
+        if (Array.isArray(c.SFLBuildings)) {
+          c.SFLBuildings.forEach(cat => {
+            const catMatch = cat.name?.toLowerCase().includes(lower);
+            const bldMatch = Array.isArray(cat.buildings) && cat.buildings.some(b => b.toLowerCase().includes(lower));
+            if (catMatch || bldMatch) {
+              found.push({
+                type: 'SFL',
+                label: cat.name,
+                sub: bldMatch
+                  ? `🏠 Building category · contains "${qTrimmed}"`
+                  : `🏠 Building category · ${cat.buildings.filter(b=>b).length} buildings`,
+                tab: 'searchforloot',
+              });
+            }
+          });
+        }
+        // Loot categories & items
+        if (Array.isArray(c.SFLLootCategory)) {
+          c.SFLLootCategory.forEach(cat => {
+            const catMatch = cat.name?.toLowerCase().includes(lower);
+            const itemMatch = Array.isArray(cat.loot) && cat.loot.some(i => i.toLowerCase().includes(lower));
+            if (catMatch || itemMatch) {
+              found.push({
+                type: 'SFL',
+                label: itemMatch ? cat.loot.find(i => i.toLowerCase().includes(lower)) : cat.name,
+                sub: itemMatch
+                  ? `📦 Loot item in SFL category: ${cat.name}`
+                  : `📦 Loot category · ${cat.loot.length} items · rarity ${cat.rarity}%`,
+                tab: 'searchforloot',
+              });
+            }
+          });
+        }
+        // Proxy categories
+        if (Array.isArray(c.SFLProxyCategory)) {
+          c.SFLProxyCategory.forEach(cat => {
+            const catMatch = cat.name?.toLowerCase().includes(lower);
+            const prxMatch = Array.isArray(cat.proxies) && cat.proxies.some(p => p.toLowerCase().includes(lower));
+            if (catMatch || prxMatch) {
+              found.push({
+                type: 'SFL',
+                label: prxMatch ? cat.proxies.find(p => p.toLowerCase().includes(lower)) : cat.name,
+                sub: prxMatch
+                  ? `🔧 Proxy in SFL category: ${cat.name}`
+                  : `🔧 Proxy category · ${cat.proxies.length} proxies`,
+                tab: 'searchforloot',
+              });
+            }
+          });
+        }
+      }
+
     });
 
     setResults(found.slice(0, 15));

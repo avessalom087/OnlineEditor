@@ -220,6 +220,7 @@ export default function TacticalMap({
   
   // Entity Search query inside Map Sidebar
   const [searchQuery, setSearchQuery] = useState('');
+  const [mapPing, setMapPing] = useState(null); // { x, z, startTick, color }
 
   // AI Patrol Route drawing & merging states
   const [activePatrolDrawIndex, setActivePatrolDrawIndex] = useState(-1); // -1 = disabled
@@ -1390,15 +1391,21 @@ export default function TacticalMap({
       entities.safezones.forEach(sz => {
         const pos = gameToPixels(sz.x, sz.z);
         const rad = (sz.radius / mapSize) * 1024 * scale;
+        const isSelected = selectedEntity && selectedEntity.id === sz.id;
+        const isHovered = hoveredEntity && hoveredEntity.id === sz.id;
 
         ctx.save();
+        if (isSelected || isHovered) {
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#2ecc71';
+        }
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
         ctx.fillStyle = sz.type === 'safezone_cylinder' ? 'rgba(46, 204, 113, 0.12)' : 'rgba(46, 204, 113, 0.08)';
         ctx.fill();
         
         ctx.strokeStyle = '#2ecc71';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = (isSelected || isHovered) ? 3.0 : 1.5;
         if (sz.type === 'safezone_cylinder') {
           ctx.setLineDash([6, 3, 2, 3]); // Dash-dot pattern
         }
@@ -1444,15 +1451,21 @@ export default function TacticalMap({
       entities.nogoareas.forEach(nogo => {
         const pos = gameToPixels(nogo.x, nogo.z);
         const rad = (nogo.radius / mapSize) * 1024 * scale;
+        const isSelected = selectedEntity && selectedEntity.id === nogo.id;
+        const isHovered = hoveredEntity && hoveredEntity.id === nogo.id;
 
         ctx.save();
+        if (isSelected || isHovered) {
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#d63031';
+        }
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(214, 48, 49, 0.12)';
         ctx.fill();
         
         ctx.strokeStyle = '#d63031';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = (isSelected || isHovered) ? 3.0 : 1.5;
         ctx.setLineDash([4, 4]); // Dashed line
         ctx.stroke();
         ctx.restore();
@@ -1472,15 +1485,21 @@ export default function TacticalMap({
       entities.roamingLocations.forEach(loc => {
         const pos = gameToPixels(loc.x, loc.z);
         const rad = (loc.radius / mapSize) * 1024 * scale;
+        const isSelected = selectedEntity && selectedEntity.id === loc.id;
+        const isHovered = hoveredEntity && hoveredEntity.id === loc.id;
 
         ctx.save();
+        if (isSelected || isHovered) {
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#e17055';
+        }
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
         ctx.fillStyle = loc.enabled ? 'rgba(225, 112, 85, 0.08)' : 'rgba(225, 112, 85, 0.02)';
         ctx.fill();
         
         ctx.strokeStyle = loc.enabled ? '#e17055' : 'rgba(225, 112, 85, 0.4)';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = (isSelected || isHovered) ? 3.0 : 1.5;
         ctx.setLineDash([8, 4]); // Long dashed pattern
         ctx.stroke();
         ctx.restore();
@@ -1501,14 +1520,20 @@ export default function TacticalMap({
       entities.traderzones.forEach(tz => {
         const pos = gameToPixels(tz.x, tz.z);
         const rad = (tz.radius / mapSize) * 1024 * scale;
+        const isSelected = selectedEntity && selectedEntity.id === tz.id;
+        const isHovered = hoveredEntity && hoveredEntity.id === tz.id;
 
         ctx.save();
+        if (isSelected || isHovered) {
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#0984e3';
+        }
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(9, 132, 227, 0.08)';
         ctx.fill();
         ctx.strokeStyle = '#0984e3';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = (isSelected || isHovered) ? 2.5 : 1.0;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
         ctx.restore();
@@ -1520,19 +1545,29 @@ export default function TacticalMap({
       entities.airdrops.forEach(ad => {
         const pos = gameToPixels(ad.x, ad.z);
         const rad = (ad.radius / mapSize) * 1024 * scale;
+        const isSelected = selectedEntity && selectedEntity.id === ad.id;
+        const isHovered = hoveredEntity && hoveredEntity.id === ad.id;
 
+        ctx.save();
+        if (isSelected || isHovered) {
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#f1c40f';
+        }
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(241, 196, 15, 0.12)';
         ctx.fill();
         ctx.strokeStyle = '#f1c40f';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = (isSelected || isHovered) ? 3.0 : 1.5;
         ctx.stroke();
+        ctx.restore();
 
+        ctx.save();
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 4, 0, 2 * Math.PI);
         ctx.fillStyle = '#f1c40f';
         ctx.fill();
+        ctx.restore();
       });
     }
 
@@ -1677,17 +1712,26 @@ export default function TacticalMap({
       entities.questObjectives.forEach(qo => {
         const pos = gameToPixels(qo.x, qo.z);
         const rad = (qo.radius / mapSize) * 1024 * scale;
+        const isSelected = selectedEntity && selectedEntity.id === qo.id;
+        const isHovered = hoveredEntity && hoveredEntity.id === qo.id;
 
+        ctx.save();
+        if (isSelected || isHovered) {
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = '#e84393';
+        }
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, rad, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(232, 67, 147, 0.06)';
         ctx.fill();
         ctx.strokeStyle = '#e84393';
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = (isSelected || isHovered) ? 3.0 : 1.2;
         ctx.setLineDash([3, 3]);
         ctx.stroke();
         ctx.setLineDash([]);
+        ctx.restore();
 
+        ctx.save();
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, 5, 0, 2 * Math.PI);
         ctx.fillStyle = '#e84393';
@@ -1695,6 +1739,7 @@ export default function TacticalMap({
         ctx.strokeStyle = '#070907';
         ctx.lineWidth = 1;
         ctx.stroke();
+        ctx.restore();
       });
     }
 
@@ -2244,6 +2289,31 @@ export default function TacticalMap({
       ctx.textBaseline = 'alphabetic'; // Restore
     }
 
+    // Draw map ping animation if active
+    if (mapPing && animationTick - mapPing.startTick < 30) {
+      const elapsed = animationTick - mapPing.startTick;
+      const progress = elapsed / 30; // 0 to 1
+      const pos = gameToPixels(mapPing.x, mapPing.z);
+      const maxPingRad = 60 * scale; // max radius of ping ring on screen
+      const currentRad = progress * maxPingRad;
+      const opacity = 1 - progress;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, currentRad, 0, 2 * Math.PI);
+      ctx.strokeStyle = mapPing.color || '#ffffff';
+      ctx.globalAlpha = opacity;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Also draw a smaller concentric circle for extra juice
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, currentRad * 0.5, 0, 2 * Math.PI);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Draw drag selection rectangle
     if (dragSelectRect) {
       ctx.save();
@@ -2255,7 +2325,7 @@ export default function TacticalMap({
       ctx.strokeRect(dragSelectRect.x, dragSelectRect.y, dragSelectRect.w, dragSelectRect.h);
       ctx.restore();
     }
-  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, selectedEntityIds, dragSelectRect, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius, animationTick]);
+  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, selectedEntityIds, dragSelectRect, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius, animationTick, mapPing]);
 
 
 
@@ -3399,7 +3469,7 @@ export default function TacticalMap({
     setShowSpawnModal(false);
   };
 
-  // Center view on entity from Sidebar click
+  // Center view on entity from Sidebar click with smooth pan and zoom + pulse ping
   const handleLocateEntity = (entity) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -3413,13 +3483,62 @@ export default function TacticalMap({
     const mapPxX = normX * mapPxSize;
     const mapPxY = normY * mapPxSize;
 
-    setScale(2.5); // zoom in
-    setOffset({
+    const targetScale = 2.5;
+    const targetOffset = {
       x: canvasCenterX - mapPxX * 2.5,
       y: canvasCenterY - mapPxY * 2.5
-    });
+    };
+
+    // Smooth animation using requestAnimationFrame
+    const duration = 400; // ms
+    const startTime = performance.now();
+    const startScale = scale;
+    const startOffset = { ...offset };
+
+    const animate = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Easing function (easeInOutCubic)
+      const ease = progress < 0.5 
+        ? 4 * progress * progress * progress 
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+      setScale(startScale + (targetScale - startScale) * ease);
+      setOffset({
+        x: startOffset.x + (targetOffset.x - startOffset.x) * ease,
+        y: startOffset.y + (targetOffset.y - startOffset.y) * ease
+      });
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    requestAnimationFrame(animate);
 
     setHoveredEntity(entity);
+    setSelectedEntityIds(new Set([entity.id]));
+    setSelectedEntity(entity);
+
+    // Get color for the ping ring
+    let pingColor = '#ffffff';
+    if (entity.type === 'airdrop') pingColor = '#f1c40f';
+    else if (entity.type === 'safezone' || entity.type === 'safezone_cylinder') pingColor = '#2ecc71';
+    else if (entity.type === 'traderzone') pingColor = '#0984e3';
+    else if (entity.type === 'npc') pingColor = '#a29bfe';
+    else if (entity.type === 'patrol_waypoint' || entity.type === 'patrol') pingColor = '#00cec9';
+    else if (entity.type === 'quest_objective') pingColor = '#e84393';
+    else if (entity.type === 'roaming_location') pingColor = '#e17055';
+    else if (entity.type === 'nogo_area') pingColor = '#d63031';
+    else if (entity.type === 'spawner_trigger') pingColor = '#ff3f34';
+    else if (entity.type === 'spawner_spawn_point') pingColor = '#ff5e57';
+
+    setMapPing({
+      x: entity.x,
+      z: entity.z,
+      startTick: animationTick,
+      color: pingColor
+    });
   };
 
   // Gather and filter all list items for map sidebar index

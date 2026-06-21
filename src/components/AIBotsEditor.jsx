@@ -13,6 +13,115 @@ const STANCES = ['STANDING', 'CROUCHED', 'PRONE', 'RELAXED'];
 const CLOTHING_SLOTS = ['Body', 'Legs', 'Feet', 'Vest', 'Headgear', 'Gloves', 'Backpack', 'Mask', 'Eyewear', 'Shoulder', 'Melee'];
 const LOCATION_TYPES = ['Village', 'City', 'Military', 'Industrial', 'Custom'];
 
+const DEFAULT_FACTION_UNITS = {
+  West: ['ExpansionHardlineAIBotWestMale', 'ExpansionHardlineAIBotWestFemale'],
+  East: ['ExpansionHardlineAIBotEastMale', 'ExpansionHardlineAIBotEastFemale'],
+  Guards: ['ExpansionHardlineAIBotGuardsMale', 'ExpansionHardlineAIBotGuardsFemale'],
+  Civilian: ['ExpansionHardlineAIBotCivMale', 'ExpansionHardlineAIBotCivFemale'],
+  Passive: ['ExpansionHardlineAIBotCivMale', 'ExpansionHardlineAIBotCivFemale'],
+  Aggressive: ['ExpansionHardlineAIBotCivMale', 'ExpansionHardlineAIBotCivFemale'],
+  Shamans: ['ExpansionHardlineAIBotCivMale', 'ExpansionHardlineAIBotCivFemale'],
+  Survivors: ['ExpansionHardlineAIBotCivMale', 'ExpansionHardlineAIBotCivFemale'],
+  Raiders: ['ExpansionHardlineAIBotCivMale', 'ExpansionHardlineAIBotCivFemale'],
+  Mercenaries: ['ExpansionHardlineAIBotWestMale', 'ExpansionHardlineAIBotWestFemale'],
+  Zombies: ['ExpansionHardlineAIBotCivMale'],
+  PassiveZombies: ['ExpansionHardlineAIBotCivMale']
+};
+
+const DIFFICULTY_PRESETS = {
+  easy: { AccuracyMin: 0.15, AccuracyMax: 0.35, ThreatDistanceLimit: 100, NoiseInvestigationDistanceLimit: 100, DamageMultiplier: 0.5, DamageReceivedMultiplier: 1.5, HeadshotResistance: 0.0, Speed: 'WALK', UnderThreatSpeed: 'JOG' },
+  medium: { AccuracyMin: 0.35, AccuracyMax: 0.65, ThreatDistanceLimit: 180, NoiseInvestigationDistanceLimit: 150, DamageMultiplier: 0.9, DamageReceivedMultiplier: 1.0, HeadshotResistance: 0.1, Speed: 'JOG', UnderThreatSpeed: 'SPRINT' },
+  hard: { AccuracyMin: 0.65, AccuracyMax: 0.85, ThreatDistanceLimit: 300, NoiseInvestigationDistanceLimit: 250, DamageMultiplier: 1.3, DamageReceivedMultiplier: 0.7, HeadshotResistance: 0.3, Speed: 'JOG', UnderThreatSpeed: 'SPRINT' },
+  sniper: { AccuracyMin: 0.85, AccuracyMax: 0.98, ThreatDistanceLimit: 500, NoiseInvestigationDistanceLimit: 300, DamageMultiplier: 1.8, DamageReceivedMultiplier: 1.0, HeadshotResistance: 0.2, Speed: 'WALK', UnderThreatSpeed: 'SPRINT', DefaultStance: 'PRONE' },
+  boss: { AccuracyMin: 0.80, AccuracyMax: 0.95, ThreatDistanceLimit: 400, NoiseInvestigationDistanceLimit: 300, DamageMultiplier: 2.2, DamageReceivedMultiplier: 0.3, HeadshotResistance: 0.7, Speed: 'JOG', UnderThreatSpeed: 'SPRINT' }
+};
+
+const CLOTHING_PRESETS = {
+  Military: {
+    Body: ['M65Jacket_Khaki', 'M65Jacket_Olive', 'M65Jacket_Tan'],
+    Legs: ['CargoPants_Beige', 'CargoPants_Green', 'CargoPants_Grey'],
+    Feet: ['CombatBoots_Black', 'CombatBoots_Green'],
+    Vest: ['HighCapacityVest_Olive', 'HighCapacityVest_Black'],
+    Headgear: ['MICH2001Helmet'],
+    Backpack: ['TortillaBag'],
+    Gloves: ['TacticalGloves_Green', 'TacticalGloves_Black']
+  },
+  Police: {
+    Body: ['PoliceJacket', 'PoliceJacketOrel'],
+    Legs: ['PolicePants', 'PolicePantsOrel'],
+    Feet: ['CombatBoots_Black'],
+    Vest: ['PoliceVest'],
+    Headgear: ['PoliceCap'],
+    Gloves: ['WorkingGloves_Black']
+  },
+  Civilian: {
+    Body: ['Hoodie_Green', 'Hoodie_Grey', 'Hoodie_Black'],
+    Legs: ['Jeans_Black', 'Jeans_BlueDark'],
+    Feet: ['AthleticShoes_Black', 'AthleticShoes_Grey'],
+    Backpack: ['MountainBag_Red', 'MountainBag_Blue']
+  },
+  NBC: {
+    Body: ['NBCJacket_Yellow', 'NBCJacket_Gray'],
+    Legs: ['NBCPants_Yellow', 'NBCPants_Gray'],
+    Feet: ['NBCBoots_Yellow', 'NBCBoots_Gray'],
+    Gloves: ['NBCGloves_Yellow', 'NBCGloves_Gray'],
+    Mask: ['GP5GasMask'],
+    Headgear: ['NBCHood_Yellow', 'NBCHood_Gray']
+  }
+};
+
+const WEAPON_PRESETS = {
+  M4A1: {
+    weapon: 'M4A1',
+    magazine: 'Mag_STANAG_30Rnd',
+    ammo: 'Ammo_556x45'
+  },
+  AKM: {
+    weapon: 'AKM',
+    magazine: 'Mag_AKM_30Rnd',
+    ammo: 'Ammo_762x39'
+  },
+  MP5K: {
+    weapon: 'MP5K',
+    magazine: 'Mag_MP5_30Rnd',
+    ammo: 'Ammo_9x19'
+  },
+  Mosin: {
+    weapon: 'Mosin9130',
+    magazine: '',
+    ammo: 'Ammo_762x54'
+  },
+  Ruger1022: {
+    weapon: 'Ruger1022',
+    magazine: 'Mag_Ruger1022_30Rnd',
+    ammo: 'Ammo_22'
+  },
+  None: null
+};
+
+const LOOT_PRESETS = {
+  'Military Ammo': [
+    { ClassName: 'Ammo_556x45', Chance: 0.5, Min: 10, Max: 20 },
+    { ClassName: 'Ammo_762x39', Chance: 0.5, Min: 10, Max: 20 },
+    { ClassName: 'Ammo_9x19', Chance: 0.6, Min: 15, Max: 25 },
+    { ClassName: 'Mag_STANAG_30Rnd', Chance: 0.25, Min: 1, Max: 1 }
+  ],
+  'Medical': [
+    { ClassName: 'BandageDressing', Chance: 0.8, Min: 1, Max: 2 },
+    { ClassName: 'FirstAidKit', Chance: 0.4, Min: 1, Max: 1 },
+    { ClassName: 'Morphine', Chance: 0.2, Min: 1, Max: 1 },
+    { ClassName: 'Epinephrine', Chance: 0.2, Min: 1, Max: 1 }
+  ],
+  'Food & Drinks': [
+    { ClassName: 'SodaCan_Cola', Chance: 0.6, Min: 1, Max: 1 },
+    { ClassName: 'SodaCan_Spite', Chance: 0.6, Min: 1, Max: 1 },
+    { ClassName: 'PeachesCan', Chance: 0.5, Min: 1, Max: 1 },
+    { ClassName: 'TunaCan', Chance: 0.4, Min: 1, Max: 1 }
+  ],
+  'Empty': []
+};
+
+
 
 function ConfigListRow({
   className,
@@ -109,6 +218,25 @@ export default function AIBotsEditor({
   const [newAdminInput, setNewAdminInput] = useState('');
   const [newFactionInput, setNewFactionInput] = useState('');
   const [newClimbInput, setNewClimbInput] = useState('');
+
+  // Patrol Wizard states
+  const [showPatrolWizard, setShowPatrolWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [wPatrolName, setWPatrolName] = useState('');
+  const [wFaction, setWFaction] = useState('West');
+  const [wDifficulty, setWDifficulty] = useState('medium');
+  const [wNumAI, setWNumAI] = useState(1);
+  const [wNumAIMax, setWNumAIMax] = useState(2);
+  const [wBehaviour, setWBehaviour] = useState('LOOP_OR_ALTERNATE');
+  const [wCoords, setWCoords] = useState([7500.0, 0.0, 7500.0]);
+  const [wUnits, setWUnits] = useState(['ExpansionHardlineAIBotWestMale', 'ExpansionHardlineAIBotWestFemale']);
+  const [wLoadoutName, setWLoadoutName] = useState('');
+  const [wClothingPreset, setWClothingPreset] = useState('Military');
+  const [wWeaponChoice, setWWeaponChoice] = useState('M4A1');
+  const [wFoodChoice, setWFoodChoice] = useState(true);
+  const [wLootName, setWLootName] = useState('');
+  const [wLootPreset, setWLootPreset] = useState('Military Ammo');
+  const [wLootItems, setWLootItems] = useState([]);
 
   const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
   const patrolFile = configs[patrolConfigPath];
@@ -361,6 +489,247 @@ export default function AIBotsEditor({
       onChangeField(patrolConfigPath, ['Patrols'], newList);
       setSelectedPatrolIdx(Math.max(0, selectedPatrolIdx - 1));
     }
+  };
+
+  const handleWizardFactionChange = (fac) => {
+    setWFaction(fac);
+    if (DEFAULT_FACTION_UNITS[fac]) {
+      setWUnits(DEFAULT_FACTION_UNITS[fac]);
+    } else {
+      setWUnits([]);
+    }
+  };
+
+  const handleWizardPresetLootSelect = (presetKey) => {
+    setWLootPreset(presetKey);
+    const items = LOOT_PRESETS[presetKey] || [];
+    setWLootItems(items.map(item => ({ ...item })));
+  };
+
+  const handlePatrolWizardGenerate = () => {
+    if (!wPatrolName.trim()) {
+      alert(lang === 'ru' ? 'Введите имя патруля!' : 'Please enter a patrol name!');
+      return;
+    }
+
+    const prefix = getExpansionModPrefix(configs);
+    const loadoutName = wLoadoutName.trim() || `${wPatrolName.trim()}_Loadout`;
+    const lootName = wLootName.trim() || `${wPatrolName.trim()}_Loot`;
+
+    const loadoutPath = `${prefix}Loadouts/${loadoutName}.json`;
+    const lootPath = `${prefix}AI/LootDrops/${lootName}.json`;
+
+    // 1. Generate Loadout JSON content
+    const attachments = CLOTHING_SLOTS.map(slotName => {
+      const presetItems = CLOTHING_PRESETS[wClothingPreset]?.[slotName] || [];
+      const items = presetItems.map(clsName => ({
+        ClassName: clsName,
+        Include: "",
+        Chance: 1.0,
+        Quantity: { Min: 0.0, Max: 0.0 },
+        Health: [{ Min: 0.7, Max: 1.0, Zone: "" }],
+        InventoryAttachments: [],
+        InventoryCargo: [],
+        ConstructionPartsBuilt: [],
+        Sets: []
+      }));
+      return { SlotName: slotName, Items: items };
+    });
+
+    if (wWeaponChoice && wWeaponChoice !== 'None') {
+      const wpPreset = WEAPON_PRESETS[wWeaponChoice];
+      const weaponItem = {
+        ClassName: wpPreset.weapon,
+        Include: "",
+        Chance: 1.0,
+        Quantity: { Min: 0.0, Max: 0.0 },
+        Health: [{ Min: 0.7, Max: 1.0, Zone: "" }],
+        InventoryAttachments: [],
+        InventoryCargo: [],
+        ConstructionPartsBuilt: [],
+        Sets: []
+      };
+
+      if (wpPreset.magazine) {
+        weaponItem.InventoryAttachments.push({
+          SlotName: "magazine",
+          Items: [{
+            ClassName: wpPreset.magazine,
+            Include: "",
+            Chance: 1.0,
+            Quantity: { Min: 0.0, Max: 0.0 },
+            Health: [{ Min: 0.7, Max: 1.0, Zone: "" }],
+            InventoryAttachments: [],
+            InventoryCargo: [],
+            ConstructionPartsBuilt: [],
+            Sets: []
+          }]
+        });
+      }
+
+      const shoulderSlot = attachments.find(a => a.SlotName === 'Shoulder');
+      if (shoulderSlot) {
+        shoulderSlot.Items.push(weaponItem);
+      }
+    }
+
+    const cargo = [];
+    if (wWeaponChoice && wWeaponChoice !== 'None') {
+      const wpPreset = WEAPON_PRESETS[wWeaponChoice];
+      if (wpPreset.ammo) {
+        cargo.push({
+          ClassName: wpPreset.ammo,
+          Include: "",
+          Chance: 1.0,
+          Quantity: { Min: 1.0, Max: 1.0 },
+          Health: [],
+          InventoryAttachments: [],
+          InventoryCargo: [],
+          ConstructionPartsBuilt: [],
+          Sets: []
+        });
+        cargo.push({
+          ClassName: wpPreset.ammo,
+          Include: "",
+          Chance: 0.8,
+          Quantity: { Min: 1.0, Max: 1.0 },
+          Health: [],
+          InventoryAttachments: [],
+          InventoryCargo: [],
+          ConstructionPartsBuilt: [],
+          Sets: []
+        });
+      }
+    }
+
+    if (wFoodChoice) {
+      cargo.push({
+        ClassName: 'BandageDressing',
+        Include: "",
+        Chance: 0.9,
+        Quantity: { Min: 0.0, Max: 0.0 },
+        Health: [],
+        InventoryAttachments: [],
+        InventoryCargo: [],
+        ConstructionPartsBuilt: [],
+        Sets: []
+      });
+      cargo.push({
+        ClassName: 'SodaCan_Cola',
+        Include: "",
+        Chance: 0.8,
+        Quantity: { Min: 0.0, Max: 0.0 },
+        Health: [],
+        InventoryAttachments: [],
+        InventoryCargo: [],
+        ConstructionPartsBuilt: [],
+        Sets: []
+      });
+      cargo.push({
+        ClassName: 'PeachesCan',
+        Include: "",
+        Chance: 0.7,
+        Quantity: { Min: 0.0, Max: 0.0 },
+        Health: [],
+        InventoryAttachments: [],
+        InventoryCargo: [],
+        ConstructionPartsBuilt: [],
+        Sets: []
+      });
+    }
+
+    const loadoutTemplate = {
+      ClassName: "",
+      Include: "",
+      Chance: 1.0,
+      Quantity: { Min: 0.0, Max: 0.0 },
+      Health: [],
+      InventoryAttachments: attachments,
+      InventoryCargo: cargo,
+      ConstructionPartsBuilt: [],
+      Sets: []
+    };
+
+    // 2. Generate LootDrop JSON content
+    const lootDropsContent = wLootItems.map(item => ({
+      ClassName: item.ClassName,
+      Include: "",
+      Chance: Number(item.Chance) || 0.5,
+      Quantity: {
+        Min: Number(item.Min) || 0.0,
+        Max: Number(item.Max) || 0.0
+      },
+      Health: [{ Min: 0.7, Max: 1.0, Zone: "" }],
+      InventoryAttachments: [],
+      InventoryCargo: [],
+      ConstructionPartsBuilt: [],
+      Sets: []
+    }));
+
+    // Create the files
+    onCreateFile(loadoutPath, loadoutTemplate);
+    onCreateFile(lootPath, lootDropsContent);
+
+    // 3. Generate Patrol object
+    const patrolDiff = DIFFICULTY_PRESETS[wDifficulty] || DIFFICULTY_PRESETS.medium;
+    const newPatrol = {
+      Name: wPatrolName.trim(),
+      Persist: 0,
+      Faction: wFaction,
+      Formation: "",
+      FormationScale: 1.5,
+      FormationLooseness: 0.0,
+      Loadout: loadoutName,
+      Units: wUnits.filter(u => u.trim()),
+      NumberOfAI: Number(wNumAI) || 1,
+      NumberOfAIMax: Number(wNumAIMax) || 2,
+      Behaviour: wBehaviour,
+      LootingBehaviour: 'DEFAULT | CLOTHING_BODY | CLOTHING_LEGS | CLOTHING_GLOVES | CLOTHING_FEET | CLOTHING_SIMILAR | UPGRADE',
+      Speed: patrolDiff.Speed || 'JOG',
+      UnderThreatSpeed: patrolDiff.UnderThreatSpeed || 'SPRINT',
+      DefaultStance: patrolDiff.DefaultStance || 'CROUCHED',
+      DefaultLookAngle: 0.0,
+      CanBeLooted: 1,
+      LootDropOnDeath: lootName,
+      UnlimitedReload: 6,
+      SniperProneDistanceThreshold: 0.0,
+      AccuracyMin: patrolDiff.AccuracyMin ?? -1.0,
+      AccuracyMax: patrolDiff.AccuracyMax ?? -1.0,
+      ThreatDistanceLimit: patrolDiff.ThreatDistanceLimit ?? -1.0,
+      NoiseInvestigationDistanceLimit: patrolDiff.NoiseInvestigationDistanceLimit ?? -1.0,
+      MaxFlankingDistance: -1.0,
+      EnableFlankingOutsideCombat: -1,
+      DamageMultiplier: patrolDiff.DamageMultiplier ?? -1.0,
+      DamageReceivedMultiplier: patrolDiff.DamageReceivedMultiplier ?? -1.0,
+      HeadshotResistance: patrolDiff.HeadshotResistance ?? 0.0,
+      ShoryukenChance: 0.0,
+      ShoryukenDamageMultiplier: 0.0,
+      CanSpawnInContaminatedArea: 0,
+      CanBeTriggeredByAI: 0,
+      MinDistRadius: -1.0,
+      MaxDistRadius: -1.0,
+      DespawnRadius: -1.0,
+      MinSpreadRadius: 10.0,
+      MaxSpreadRadius: 20.0,
+      Chance: 0.5,
+      DespawnTime: -1.0,
+      RespawnTime: -2.0,
+      LoadBalancingCategory: 'Patrol',
+      ObjectClassName: '',
+      WaypointInterpolation: '',
+      UseRandomWaypointAsStartPoint: 0,
+      Waypoints: [wCoords]
+    };
+
+    // Update AIPatrolSettings
+    const updatedPatrols = [...patrols, newPatrol];
+    onChangeField(patrolConfigPath, ['Patrols'], updatedPatrols);
+    setSelectedPatrolIdx(updatedPatrols.length - 1);
+
+    // Reset wizard
+    setShowPatrolWizard(false);
+    setWizardStep(1);
+    setWPatrolName('');
   };
 
   const togglePatrolSelection = (idx, e) => {
@@ -872,9 +1241,12 @@ export default function AIBotsEditor({
 
               {activeSubTab === 'patrols' ? (
                 <>
-                  <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'center' }}>
-                    <button className="btn btn-accent" onClick={handleAddPatrol} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}>
-                      {t('ai_btn_create_patrol')}
+                  <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button className="btn" onClick={handleAddPatrol} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}>
+                      + {lang === 'ru' ? 'Быстрый патруль' : 'Quick Patrol'}
+                    </button>
+                    <button className="btn btn-accent" onClick={() => { setShowPatrolWizard(true); setWizardStep(1); }} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}>
+                      🧙‍♂️ {lang === 'ru' ? 'Конструктор патрулей' : 'Patrol Builder'}
                     </button>
                   </div>
                   <div style={{ 
@@ -2685,6 +3057,435 @@ export default function AIBotsEditor({
             </div>
           </>
         )}
+      {/* ── Patrol Wizard Modal ───────────────────────────────── */}
+      {showPatrolWizard && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
+          <div style={{ width: '640px', height: '640px', display: 'flex', flexDirection: 'column', background: 'var(--bg-secondary)', border: '1px solid var(--border-glow)', borderRadius: '4px', padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}>
+            
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px' }}>// PATROL_WIZARD_STEP_{wizardStep}_OF_4</div>
+                <h3 style={{ margin: '4px 0 0 0', fontSize: '16px', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)' }}>
+                  {lang === 'ru' ? 'Конструктор ИИ-патрулей' : 'Patrol Builder'}
+                </h3>
+              </div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[1, 2, 3, 4].map(s => (
+                  <div key={s} style={{
+                    width: '24px', height: '6px', borderRadius: '1px',
+                    background: s === wizardStep ? 'var(--text-glow)' : s < wizardStep ? 'var(--accent-color)' : 'var(--border-color)'
+                  }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Content Body */}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', paddingRight: '4px' }}>
+              
+              {/* STEP 1: Patrol Basics */}
+              {wizardStep === 1 && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Шаг 1: Укажите имя, фракцию, сложность патруля и добавьте вейпоинт.' : 'Step 1: Set patrol name, faction, difficulty preset, and starting waypoint.'}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Имя патруля *' : 'Patrol Name *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={wPatrolName}
+                      onChange={e => {
+                        const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
+                        setWPatrolName(val);
+                        setWLoadoutName(val ? val + '_Loadout' : '');
+                        setWLootName(val ? val + '_Loot' : '');
+                      }}
+                      placeholder="e.g. Mil_Barracks_North"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {lang === 'ru' ? 'Фракция' : 'Faction'}
+                      </label>
+                      <select value={wFaction} onChange={e => handleWizardFactionChange(e.target.value)}>
+                        {FACTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {lang === 'ru' ? 'Сложность ИИ' : 'AI Difficulty'}
+                      </label>
+                      <select value={wDifficulty} onChange={e => setWDifficulty(e.target.value)}>
+                        <option value="easy">{lang === 'ru' ? 'Легкая (Easy)' : 'Easy'}</option>
+                        <option value="medium">{lang === 'ru' ? 'Средняя (Medium)' : 'Medium'}</option>
+                        <option value="hard">{lang === 'ru' ? 'Сложная (Hard)' : 'Hard'}</option>
+                        <option value="sniper">{lang === 'ru' ? 'Снайпер (Sniper)' : 'Sniper'}</option>
+                        <option value="boss">{lang === 'ru' ? 'Босс (Boss)' : 'Boss'}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {lang === 'ru' ? 'Количество ботов (Мин)' : 'Bot Count (Min)'}
+                      </label>
+                      <input type="number" min={1} value={wNumAI} onChange={e => setWNumAI(Math.max(1, Number(e.target.value)))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        {lang === 'ru' ? 'Количество ботов (Макс)' : 'Bot Count (Max)'}
+                      </label>
+                      <input type="number" min={1} value={wNumAIMax} onChange={e => setWNumAIMax(Math.max(1, Number(e.target.value)))} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Поведение' : 'Behaviour'}
+                    </label>
+                    <select value={wBehaviour} onChange={e => setWBehaviour(e.target.value)}>
+                      {BEHAVIOURS.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Начальные координаты вейпоинта (X, Y, Z)' : 'Starting Waypoint Coords (X, Y, Z)'}
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-dark)' }}>X</span>
+                        <input type="number" step="any" value={wCoords[0]} onChange={e => setWCoords([Number(e.target.value), wCoords[1], wCoords[2]])} style={{ padding: '4px' }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-dark)' }}>Y</span>
+                        <input type="number" step="any" value={wCoords[1]} onChange={e => setWCoords([wCoords[0], Number(e.target.value), wCoords[2]])} style={{ padding: '4px' }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-dark)' }}>Z</span>
+                        <input type="number" step="any" value={wCoords[2]} onChange={e => setWCoords([wCoords[0], wCoords[1], Number(e.target.value)])} style={{ padding: '4px' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Units list editor */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Класснеймы ботов в патруле' : 'Bot Classnames in Patrol'}
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+                      {wUnits.map((u, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>{u}</span>
+                          <span onClick={() => setWUnits(prev => prev.filter((_, idx) => idx !== i))} style={{ color: 'var(--text-dark)', cursor: 'pointer', fontSize: '13px', padding: '0 4px' }}>×</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input
+                        type="text"
+                        placeholder="ExpansionHardlineAIBot..."
+                        id="patrol-wizard-unit-input"
+                        list="wizard-bot-suggestions"
+                        style={{ flex: 1 }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && e.target.value.trim()) {
+                            setWUnits(prev => [...prev, e.target.value.trim()]);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      <button className="btn btn-accent" onClick={() => {
+                        const input = document.getElementById('patrol-wizard-unit-input');
+                        if (input && input.value.trim()) {
+                          setWUnits(prev => [...prev, input.value.trim()]);
+                          input.value = '';
+                        }
+                      }}>+</button>
+                      <datalist id="wizard-bot-suggestions">
+                        <option value="ExpansionHardlineAIBotCivMale" />
+                        <option value="ExpansionHardlineAIBotCivFemale" />
+                        <option value="ExpansionHardlineAIBotWestMale" />
+                        <option value="ExpansionHardlineAIBotWestFemale" />
+                        <option value="ExpansionHardlineAIBotEastMale" />
+                        <option value="ExpansionHardlineAIBotEastFemale" />
+                        <option value="ExpansionHardlineAIBotGuardsMale" />
+                        <option value="ExpansionHardlineAIBotGuardsFemale" />
+                      </datalist>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* STEP 2: Loadouts */}
+              {wizardStep === 2 && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Шаг 2: Укажите имя профиля снаряжения и выберите комплекты одежды и оружия.' : 'Step 2: Set loadout file name and choose clothing/weapon templates.'}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Имя файла снаряжения *' : 'Loadout File Name *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={wLoadoutName}
+                      onChange={e => setWLoadoutName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                      placeholder="e.g. Military_Barracks_Loadout"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    />
+                  </div>
+
+                  {/* Clothing presets */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                      {lang === 'ru' ? 'Комплект одежды' : 'Clothing Style Preset'}
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                      {Object.keys(CLOTHING_PRESETS).map(key => (
+                        <button
+                          key={key}
+                          className="btn"
+                          onClick={() => setWClothingPreset(key)}
+                          style={{
+                            padding: '10px 4px', fontSize: '11px', textTransform: 'none', letterSpacing: 'normal',
+                            background: wClothingPreset === key ? 'rgba(149,192,149,0.12)' : 'var(--bg-primary)',
+                            border: wClothingPreset === key ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                            color: wClothingPreset === key ? 'var(--text-glow)' : 'var(--text-secondary)'
+                          }}
+                        >
+                          {key}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Weapon presets */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                      {lang === 'ru' ? 'Вооружение (Оружие)' : 'Primary Weapon Preset'}
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                      {Object.keys(WEAPON_PRESETS).map(key => (
+                        <button
+                          key={key}
+                          className="btn"
+                          onClick={() => setWWeaponChoice(key)}
+                          style={{
+                            padding: '8px 4px', fontSize: '11px', textTransform: 'none', letterSpacing: 'normal',
+                            background: wWeaponChoice === key ? 'rgba(149,192,149,0.12)' : 'var(--bg-primary)',
+                            border: wWeaponChoice === key ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                            color: wWeaponChoice === key ? 'var(--text-glow)' : 'var(--text-secondary)'
+                          }}
+                        >
+                          {key}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Food checkbox */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0' }}>
+                    <input
+                      type="checkbox"
+                      id="wizard-food-choice"
+                      checked={wFoodChoice}
+                      onChange={e => setWFoodChoice(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <label htmlFor="wizard-food-choice" style={{ cursor: 'pointer', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                      {lang === 'ru' ? 'Выдать боту медикаменты и еду в инвентарь' : 'Give bot medical supplies and food in cargo'}
+                    </label>
+                  </div>
+                </>
+              )}
+
+              {/* STEP 3: Loot Drops */}
+              {wizardStep === 3 && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Шаг 3: Настройте имя таблицы лута, выберите шаблон или наполните список предметов.' : 'Step 3: Set loot drops file name, choose a template preset, or add custom drops.'}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                      {lang === 'ru' ? 'Имя файла таблицы лута *' : 'Loot Drop File Name *'}
+                    </label>
+                    <input
+                      type="text"
+                      value={wLootName}
+                      onChange={e => setWLootName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                      placeholder="e.g. Military_Barracks_Loot"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    />
+                  </div>
+
+                  {/* Loot drop templates */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                      {lang === 'ru' ? 'Быстрое наполнение шаблоном' : 'Quick Fill Preset'}
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                      {Object.keys(LOOT_PRESETS).map(key => (
+                        <button
+                          key={key}
+                          className="btn"
+                          onClick={() => handleWizardPresetLootSelect(key)}
+                          style={{
+                            padding: '8px 4px', fontSize: '10px', textTransform: 'none', letterSpacing: 'normal',
+                            background: wLootPreset === key ? 'rgba(149,192,149,0.12)' : 'var(--bg-primary)',
+                            border: wLootPreset === key ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                            color: wLootPreset === key ? 'var(--text-glow)' : 'var(--text-secondary)'
+                          }}
+                        >
+                          {key}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Loot Items list */}
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                      {lang === 'ru' ? 'Список предметов лута при смерти' : 'Death Loot Drops Items List'}
+                    </label>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto', marginBottom: '10px' }}>
+                      {wLootItems.length === 0 ? (
+                        <div style={{ padding: '16px', border: '1px dashed var(--border-color)', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                          {lang === 'ru' ? 'Список пуст. Боты не будут оставлять лут при смерти.' : 'List empty. Bots will not drop extra loot.'}
+                        </div>
+                      ) : (
+                        wLootItems.map((item, idx) => (
+                          <div key={idx} style={{ display: 'grid', gridTemplateColumns: '3fr 1.5fr 1fr 1fr auto', gap: '8px', alignItems: 'center', background: 'var(--bg-primary)', padding: '6px 8px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.ClassName}>{item.ClassName}</span>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>Chance</span>
+                              <input type="number" step="any" min={0} max={1} value={item.Chance} onChange={e => {
+                                const newL = [...wLootItems];
+                                newL[idx].Chance = Number(e.target.value);
+                                setWLootItems(newL);
+                              }} style={{ padding: '2px', fontSize: '10px' }} />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>Min</span>
+                              <input type="number" value={item.Min ?? 0} onChange={e => {
+                                const newL = [...wLootItems];
+                                newL[idx].Min = Number(e.target.value);
+                                setWLootItems(newL);
+                              }} style={{ padding: '2px', fontSize: '10px' }} />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>Max</span>
+                              <input type="number" value={item.Max ?? 0} onChange={e => {
+                                const newL = [...wLootItems];
+                                newL[idx].Max = Number(e.target.value);
+                                setWLootItems(newL);
+                              }} style={{ padding: '2px', fontSize: '10px' }} />
+                            </div>
+                            <span onClick={() => setWLootItems(prev => prev.filter((_, i) => i !== idx))} style={{ color: 'var(--text-dark)', cursor: 'pointer', fontSize: '14px', padding: '0 4px' }}>×</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <AutocompleteInput
+                        suggestions={itemSuggestions}
+                        placeholder={lang === 'ru' ? 'Добавить предмет...' : 'Add item classname...'}
+                        onSelect={(name) => {
+                          if (name.trim()) {
+                            setWLootItems(prev => [...prev, { ClassName: name.trim(), Chance: 0.5, Min: 1, Max: 1 }]);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* STEP 4: Summary */}
+              {wizardStep === 4 && (
+                <>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Шаг 4: Подтвердите создание следующих файлов и настроек.' : 'Step 4: Confirm generation of the following configurations.'}
+                  </div>
+
+                  <div className="card-hud" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--text-glow)', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      {lang === 'ru' ? '📦 Новый патруль ИИ' : '📦 New AI Patrol'}
+                    </div>
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                      <strong>{lang === 'ru' ? 'Имя' : 'Name'}:</strong> {wPatrolName}<br />
+                      <strong>{lang === 'ru' ? 'Фракция' : 'Faction'}:</strong> {wFaction}<br />
+                      <strong>{lang === 'ru' ? 'Сложность' : 'Difficulty'}:</strong> {wDifficulty}<br />
+                      <strong>{lang === 'ru' ? 'Количество ботов' : 'Quantity'}:</strong> {wNumAI} - {wNumAIMax}<br />
+                      <strong>{lang === 'ru' ? 'Вейпоинт' : 'Waypoint'}:</strong> [{wCoords.join(', ')}]
+                    </div>
+                  </div>
+
+                  <div className="card-hud" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--text-glow)', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      {lang === 'ru' ? '📄 Файл снаряжения (Loadout)' : '📄 Loadout File'}
+                    </div>
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                      <strong>{lang === 'ru' ? 'Путь' : 'Path'}:</strong> ExpansionMod/Loadouts/{wLoadoutName || `${wPatrolName}_Loadout`}.json<br />
+                      <strong>{lang === 'ru' ? 'Стиль одежды' : 'Clothing style'}:</strong> {wClothingPreset}<br />
+                      <strong>{lang === 'ru' ? 'Оружие' : 'Primary weapon'}:</strong> {wWeaponChoice}<br />
+                      <strong>{lang === 'ru' ? 'Стартовый лут в карманах' : 'Starter cargo'}:</strong> {wFoodChoice ? (lang === 'ru' ? 'Еда/Аптечки включены' : 'Food/Medics included') : (lang === 'ru' ? 'Пусто' : 'Empty')}
+                    </div>
+                  </div>
+
+                  <div className="card-hud" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--text-glow)', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
+                      {lang === 'ru' ? '📄 Файл лута при смерти (Loot Drops)' : '📄 Loot Drops File'}
+                    </div>
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                      <strong>{lang === 'ru' ? 'Путь' : 'Path'}:</strong> ExpansionMod/AI/LootDrops/{wLootName || `${wPatrolName}_Loot`}.json<br />
+                      <strong>{lang === 'ru' ? 'Количество позиций лута' : 'Item positions'}:</strong> {wLootItems.length}
+                    </div>
+                  </div>
+                </>
+              )}
+
+            </div>
+
+            {/* Footer Buttons */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '14px', marginTop: '14px' }}>
+              <button className="btn" onClick={() => { setShowPatrolWizard(false); setWizardStep(1); }}>
+                {lang === 'ru' ? 'Отмена' : 'Cancel'}
+              </button>
+              {wizardStep > 1 && (
+                <button className="btn" onClick={() => setWizardStep(prev => prev - 1)}>
+                  {lang === 'ru' ? 'Назад' : 'Back'}
+                </button>
+              )}
+              {wizardStep < 4 ? (
+                <button
+                  className="btn btn-accent"
+                  disabled={wizardStep === 1 && !wPatrolName.trim()}
+                  onClick={() => setWizardStep(prev => prev + 1)}
+                >
+                  {lang === 'ru' ? 'Далее' : 'Next'}
+                </button>
+              ) : (
+                <button className="btn btn-accent" onClick={handlePatrolWizardGenerate}>
+                  {lang === 'ru' ? 'Создать патруль' : 'Generate Patrol'}
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
       </div>
 
