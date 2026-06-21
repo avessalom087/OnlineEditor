@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import FormCard from './shared/FormCard';
 import HelpIcon from './HelpIcon';
@@ -351,8 +351,15 @@ export default function MPGSpawnerEditor({
     });
   }, [configs]);
 
+  const lastNavigatedRef = useRef(null);
+
   // Reset selected trigger index when switching point config files
   useEffect(() => {
+    if (lastNavigatedRef.current && lastNavigatedRef.current.filePath === selectedPointPath) {
+      setSelectedTriggerIdx(lastNavigatedRef.current.triggerIdx);
+      lastNavigatedRef.current = null;
+      return;
+    }
     setSelectedTriggerIdx(null);
   }, [selectedPointPath]);
 
@@ -366,6 +373,10 @@ export default function MPGSpawnerEditor({
   // Sync state when navigated from Tactical Map
   useEffect(() => {
     if (selectedSpawnerFilePath) {
+      lastNavigatedRef.current = {
+        filePath: selectedSpawnerFilePath,
+        triggerIdx: selectedSpawnerTriggerIdx
+      };
       setSelectedPointPath(selectedSpawnerFilePath);
       if (selectedSpawnerTriggerIdx !== null && selectedSpawnerTriggerIdx !== undefined) {
         setSelectedTriggerIdx(selectedSpawnerTriggerIdx);
@@ -1265,7 +1276,7 @@ export default function MPGSpawnerEditor({
                     </div>
                     <div>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-                        {t('spawner_trigger_debug_color')}
+                        <span className="label-with-help">{t('spawner_trigger_debug_color')}<HelpIcon tipKey="tip_mpg_debug_color" /></span>
                       </label>
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', height: '34px' }}>
                         {[
@@ -1339,7 +1350,7 @@ export default function MPGSpawnerEditor({
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
                       <div>
                         <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                          {t('spawner_trigger_radius')}
+                          <span className="label-with-help">{t('spawner_trigger_radius')}<HelpIcon tipKey="tip_mpg_radius" /></span>
                         </label>
                         <input
                           type="text"
@@ -1350,7 +1361,7 @@ export default function MPGSpawnerEditor({
                       </div>
                       <div>
                         <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                          {t('spawner_trigger_height')}
+                          <span className="label-with-help">{t('spawner_trigger_height')}<HelpIcon tipKey="tip_mpg_height" /></span>
                         </label>
                         <input
                           type="text"
@@ -1361,7 +1372,7 @@ export default function MPGSpawnerEditor({
                       </div>
                       <div>
                         <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                          {t('spawner_trigger_width_x')}
+                          <span className="label-with-help">{t('spawner_trigger_width_x')}<HelpIcon tipKey="tip_mpg_width_x" /></span>
                         </label>
                         <input
                           type="text"
@@ -1372,7 +1383,7 @@ export default function MPGSpawnerEditor({
                       </div>
                       <div>
                         <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                          {t('spawner_trigger_width_y')}
+                          <span className="label-with-help">{t('spawner_trigger_width_y')}<HelpIcon tipKey="tip_mpg_width_y" /></span>
                         </label>
                         <input
                           type="text"

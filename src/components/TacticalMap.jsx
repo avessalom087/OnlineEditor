@@ -37,13 +37,13 @@ function getObjectiveFilePath(typeId, id, configs = {}) {
   return `${prefix}Quests/Objectives/${info.folder}/Objective_${info.prefix}_${id}.json`;
 }
 
-function updateCoordsInString(oldStr, newX, newZ) {
+function updateCoordsInString(oldStr, newX, newZ, newY) {
   const parts = oldStr.split('|');
   const coordParts = parts[0].trim().split(/\s+/);
-  const y = coordParts[1] || "0.0";
+  const y = newY !== undefined ? parseFloat(Number(newY).toFixed(3)) : (coordParts[1] || "0.0");
   
-  const formattedX = parseFloat(newX.toFixed(3));
-  const formattedZ = parseFloat(newZ.toFixed(3));
+  const formattedX = parseFloat(Number(newX).toFixed(3));
+  const formattedZ = parseFloat(Number(newZ).toFixed(3));
   
   coordParts[0] = formattedX;
   coordParts[1] = y;
@@ -273,22 +273,23 @@ export default function TacticalMap({
     const numVal = Number(val);
     if (isNaN(numVal)) return;
     
-    const { filePath, x, z } = selectedEntity;
+    const { filePath, x, y, z } = selectedEntity;
     const newX = coordName === 'x' ? numVal : x;
+    const newY = coordName === 'y' ? numVal : (y !== undefined ? y : 0.0);
     const newZ = coordName === 'z' ? numVal : z;
 
     if (selectedEntity.type === 'spawner_trigger') {
       const trigger = configs[filePath]?.content?.[selectedEntity.triggerIdx];
       if (trigger) {
         const oldPos = trigger.triggerPosition || "0.0 0.0 0.0";
-        const newPos = updateCoordsInString(oldPos, newX, newZ);
+        const newPos = updateCoordsInString(oldPos, newX, newZ, newY);
         onChangeField(filePath, [selectedEntity.triggerIdx, 'triggerPosition'], newPos);
       }
     } else if (selectedEntity.type === 'spawner_spawn_point') {
       const trigger = configs[filePath]?.content?.[selectedEntity.triggerIdx];
       if (trigger && Array.isArray(trigger.spawnPositions)) {
         const oldPos = trigger.spawnPositions[selectedEntity.spawnIdx] || "0.0 0.0 0.0";
-        const newPos = updateCoordsInString(oldPos, newX, newZ);
+        const newPos = updateCoordsInString(oldPos, newX, newZ, newY);
         onChangeField(filePath, [selectedEntity.triggerIdx, 'spawnPositions', selectedEntity.spawnIdx], newPos);
       }
     } else if (selectedEntity.type === 'bookmark') {
@@ -315,8 +316,12 @@ export default function TacticalMap({
         return b;
       }));
     } else {
-      const { xPath, zPath } = selectedEntity;
-      const targetPath = coordName === 'x' ? xPath : zPath;
+      const { xPath, yPath, zPath } = selectedEntity;
+      let targetPath = null;
+      if (coordName === 'x') targetPath = xPath;
+      if (coordName === 'y') targetPath = yPath;
+      if (coordName === 'z') targetPath = zPath;
+      
       if (filePath && targetPath) {
         onChangeField(filePath, targetPath, numVal);
       }
@@ -553,6 +558,10 @@ export default function TacticalMap({
         const radStr = String(val).split('-')[0];
         updated.radius = parseFloat(radStr) || 20;
       }
+      if (fieldName === 'notificationTitle') {
+        updated.notificationTitle = val;
+        updated.name = val || `Trigger #${prev.pointId}`;
+      }
       return updated;
     });
 
@@ -566,6 +575,10 @@ export default function TacticalMap({
               updated.triggerRadius = val;
               const radStr = String(val).split('-')[0];
               updated.radius = parseFloat(radStr) || 20;
+            }
+            if (fieldName === 'notificationTitle') {
+              updated.notificationTitle = val;
+              updated.name = val || `Trigger #${item.pointId}`;
             }
             return updated;
           }
@@ -872,9 +885,11 @@ export default function TacticalMap({
           filePath,
           name: content.NPCName || `NPC ${content.ID}`,
           x: content.Position[0],
+          y: content.Position[1],
           z: content.Position[2],
           type: 'npc',
           xPath: ['Position', 0],
+          yPath: ['Position', 1],
           zPath: ['Position', 2]
         });
       }
@@ -1051,6 +1066,7 @@ export default function TacticalMap({
         
         if (Array.isArray(content.Position) && content.Position.length >= 3) {
           const x = content.Position[0];
+          const y = content.Position[1];
           const z = content.Position[2];
           
           if (questRefs.length > 0) {
@@ -1060,6 +1076,7 @@ export default function TacticalMap({
                 filePath,
                 name: content.ObjectiveText || `Objective ${content.ID}`,
                 x,
+                y,
                 z,
                 radius: content.MaxDistance > 0 ? content.MaxDistance : 50,
                 type: 'quest_objective',
@@ -1067,6 +1084,7 @@ export default function TacticalMap({
                 questTitle: qRef.questTitle,
                 objectiveType: content.ObjectiveType,
                 xPath: ['Position', 0],
+                yPath: ['Position', 1],
                 zPath: ['Position', 2]
               });
             });
@@ -1076,6 +1094,7 @@ export default function TacticalMap({
               filePath,
               name: content.ObjectiveText || `Objective ${content.ID}`,
               x,
+              y,
               z,
               radius: content.MaxDistance > 0 ? content.MaxDistance : 50,
               type: 'quest_objective',
@@ -1083,6 +1102,7 @@ export default function TacticalMap({
               questTitle: 'Orphaned Objective',
               objectiveType: content.ObjectiveType,
               xPath: ['Position', 0],
+              yPath: ['Position', 1],
               zPath: ['Position', 2]
             });
           }
@@ -1090,6 +1110,7 @@ export default function TacticalMap({
           content.Positions.forEach((pos, pIdx) => {
             if (Array.isArray(pos) && pos.length >= 3) {
               const x = pos[0];
+              const y = pos[1];
               const z = pos[2];
               if (questRefs.length > 0) {
                 questRefs.forEach((qRef, qIdx) => {
@@ -1098,6 +1119,7 @@ export default function TacticalMap({
                     filePath,
                     name: `${content.ObjectiveText || `Objective ${content.ID}`} (Point #${pIdx + 1})`,
                     x,
+                    y,
                     z,
                     radius: content.MaxDistance > 0 ? content.MaxDistance : 50,
                     type: 'quest_objective',
@@ -1105,6 +1127,7 @@ export default function TacticalMap({
                     questTitle: qRef.questTitle,
                     objectiveType: content.ObjectiveType,
                     xPath: ['Positions', pIdx, 0],
+                    yPath: ['Positions', pIdx, 1],
                     zPath: ['Positions', pIdx, 2]
                   });
                 });
@@ -1114,6 +1137,7 @@ export default function TacticalMap({
                   filePath,
                   name: `${content.ObjectiveText || `Objective ${content.ID}`} (Point #${pIdx + 1})`,
                   x,
+                  y,
                   z,
                   radius: content.MaxDistance > 0 ? content.MaxDistance : 50,
                   type: 'quest_objective',
@@ -1121,6 +1145,7 @@ export default function TacticalMap({
                   questTitle: 'Orphaned Objective',
                   objectiveType: content.ObjectiveType,
                   xPath: ['Positions', pIdx, 0],
+                  yPath: ['Positions', pIdx, 1],
                   zPath: ['Positions', pIdx, 2]
                 });
               }
@@ -1138,6 +1163,7 @@ export default function TacticalMap({
             const posParts = posStr.split('|');
             const coordParts = posParts[0].trim().split(/\s+/);
             const x = parseFloat(coordParts[0]);
+            const y = parseFloat(coordParts[1]) || 0.0;
             const z = parseFloat(coordParts[2]);
             const rotY = posParts[1] ? parseFloat(posParts[1].trim().split(/\s+/)[0]) : 0.0;
 
@@ -1153,6 +1179,7 @@ export default function TacticalMap({
                 triggerIdx,
                 name: trigger.notificationTitle || `Trigger #${trigger.pointId}`,
                 x,
+                y,
                 z,
                 rotY,
                 radius,
@@ -1179,6 +1206,7 @@ export default function TacticalMap({
               const spawnParts = spawnStr.split('|');
               const spawnCoordParts = spawnParts[0].trim().split(/\s+/);
               const x = parseFloat(spawnCoordParts[0]);
+              const y = parseFloat(spawnCoordParts[1]) || 0.0;
               const z = parseFloat(spawnCoordParts[2]);
               const rotY = spawnParts[1] ? parseFloat(spawnParts[1].trim().split(/\s+/)[0]) : 0.0;
 
@@ -1190,11 +1218,13 @@ export default function TacticalMap({
                   spawnIdx,
                   name: `Spawn Point #${spawnIdx + 1} of Trigger #${trigger.pointId}`,
                   x,
+                  y,
                   z,
                   rotY,
                   type: 'spawner_spawn_point',
                   triggerName: trigger.notificationTitle || `Trigger #${trigger.pointId}`,
-                  triggerId: trigger.pointId
+                  triggerId: trigger.pointId,
+                  spawnList: trigger.spawnList || []
                 });
               }
             });
@@ -1910,13 +1940,27 @@ export default function TacticalMap({
           // Connecting line to parent trigger
           const parentTrig = triggerByIdxLookup[`${sp.filePath}_${sp.triggerIdx}`];
           if (parentTrig) {
+            const isSelected = selectedEntity && (selectedEntity.id === sp.id || selectedEntity.id === parentTrig.id);
+            const isHovered = hoveredEntity && (hoveredEntity.id === sp.id || hoveredEntity.id === parentTrig.id);
+
             const parentPos = gameToPixels(parentTrig.x, parentTrig.z);
             ctx.beginPath();
             ctx.moveTo(pos.x, pos.y);
             ctx.lineTo(parentPos.x, parentPos.y);
-            ctx.strokeStyle = 'rgba(255, 94, 87, 0.4)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([2, 2]);
+            
+            if (isSelected) {
+              ctx.strokeStyle = '#ff9f43';
+              ctx.lineWidth = 1.5;
+              ctx.setLineDash([4, 2]);
+            } else if (isHovered) {
+              ctx.strokeStyle = 'rgba(255, 159, 67, 0.7)';
+              ctx.lineWidth = 1.2;
+              ctx.setLineDash([3, 3]);
+            } else {
+              ctx.strokeStyle = 'rgba(255, 94, 87, 0.2)';
+              ctx.lineWidth = 0.8;
+              ctx.setLineDash([2, 4]);
+            }
             ctx.stroke();
           }
           ctx.restore();
@@ -5002,7 +5046,7 @@ export default function TacticalMap({
             </div>
 
              {/* Manual Coordinates inputs */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: selectedEntity.y !== undefined ? '1fr 1fr 1fr' : '1fr 1fr', gap: '8px' }}>
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={{ fontSize: '9px' }}>{t('map_x_coord')}</label>
                 <input 
@@ -5013,6 +5057,18 @@ export default function TacticalMap({
                   style={{ padding: '4px', fontSize: '11px', textAlign: 'center' }}
                 />
               </div>
+              {selectedEntity.y !== undefined && (
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '9px' }}>{t('map_y_coord') || "Y"}</label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    value={selectedEntity.y} 
+                    onChange={e => handleUpdateSelectedCoord('y', e.target.value)} 
+                    style={{ padding: '4px', fontSize: '11px', textAlign: 'center' }}
+                  />
+                </div>
+              )}
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={{ fontSize: '9px' }}>{t('map_z_coord')}</label>
                 <input 
@@ -5028,7 +5084,8 @@ export default function TacticalMap({
             {/* Copy Vector Button */}
             <button 
               onClick={() => {
-                const vecStr = `[${Number(selectedEntity.x).toFixed(1)}, 0.0, ${Number(selectedEntity.z).toFixed(1)}]`;
+                const yVal = selectedEntity.y !== undefined ? selectedEntity.y : 0.0;
+                const vecStr = `[${Number(selectedEntity.x).toFixed(1)}, ${Number(yVal).toFixed(1)}, ${Number(selectedEntity.z).toFixed(1)}]`;
                 navigator.clipboard.writeText(vecStr)
                   .then(() => alert(`Copied DayZ Vector ${vecStr} to clipboard!`))
                   .catch(err => console.error("Clipboard copy failed", err));
@@ -5102,6 +5159,15 @@ export default function TacticalMap({
             {selectedEntity.type === 'spawner_trigger' && (
               <>
                 <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '9px' }}>{lang === 'ru' ? 'Название триггера (Заголовок)' : 'Trigger Title'}</label>
+                  <input 
+                    type="text" 
+                    value={selectedEntity.notificationTitle || selectedEntity.name || ''} 
+                    onChange={e => handleUpdateSpawnerField('notificationTitle', e.target.value)}
+                    style={{ padding: '4px 6px', fontSize: '11px' }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
                   <label style={{ fontSize: '9px' }}>{t('spawner_trigger_radius') || "Radius (meters)"}</label>
                   <input 
                     type="text" 
@@ -5122,8 +5188,51 @@ export default function TacticalMap({
             )}
 
             {selectedEntity.type === 'spawner_spawn_point' && (
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                {lang === 'ru' ? 'Родительский триггер' : 'Parent Trigger'}: <span style={{ color: 'var(--text-primary)' }}>{selectedEntity.triggerName}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  {lang === 'ru' ? 'Родительский триггер' : 'Parent Trigger'}: <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>{selectedEntity.triggerName}</span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  {lang === 'ru' ? 'Список спавна триггера:' : 'Trigger Spawn List:'}
+                </div>
+                <div style={{ 
+                  background: 'var(--bg-primary)', 
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: '3px',
+                  padding: '8px', 
+                  maxHeight: '180px', 
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}>
+                  {!selectedEntity.spawnList || selectedEntity.spawnList.length === 0 ? (
+                    <div style={{ fontSize: '10px', color: 'var(--text-dark)', fontStyle: 'italic', textAlign: 'center' }}>
+                      {lang === 'ru' ? 'Список спавна пуст' : 'Spawn list is empty'}
+                    </div>
+                  ) : (
+                    selectedEntity.spawnList.map((rawItem, idx) => {
+                      const item = typeof rawItem === 'string' ? { className: rawItem } : rawItem;
+                      const name = item.className || item.ClassName || t('spawner_unknown_item') || 'Unknown Item';
+                      return (
+                        <div 
+                          key={idx} 
+                          style={{ 
+                            fontSize: '11px', 
+                            fontFamily: 'var(--font-mono)', 
+                            color: 'var(--text-primary)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                          title={name}
+                        >
+                          ⚔️ {name} {item.amount ? `(x${item.amount})` : ''} {item.chance ? `(${Math.round(item.chance * 100)}%)` : ''}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
 
@@ -5142,7 +5251,11 @@ export default function TacticalMap({
                   } else if (selectedEntity.type === 'patrol_waypoint') {
                     setActiveTab('aibots');
                   } else if (selectedEntity.type === 'spawner_trigger' || selectedEntity.type === 'spawner_spawn_point') {
-                    setActiveTab('spawner');
+                    if (onNavigateToSpawner) {
+                      onNavigateToSpawner(selectedEntity.filePath, selectedEntity.triggerIdx);
+                    } else {
+                      setActiveTab('spawner');
+                    }
                   } else if (selectedEntity.filePath) {
                     onOpenFile(selectedEntity.filePath);
                   }
