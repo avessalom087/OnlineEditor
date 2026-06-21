@@ -220,7 +220,8 @@ export default function TacticalMap({
   
   // Entity Search query inside Map Sidebar
   const [searchQuery, setSearchQuery] = useState('');
-  const [mapPing, setMapPing] = useState(null); // { x, z, startTick, color }
+  const [mapPing, setMapPing] = useState(null); // { x, z, color }
+  const [pingProgress, setPingProgress] = useState(0); // 0 to 1
 
   // AI Patrol Route drawing & merging states
   const [activePatrolDrawIndex, setActivePatrolDrawIndex] = useState(-1); // -1 = disabled
@@ -2289,14 +2290,12 @@ export default function TacticalMap({
       ctx.textBaseline = 'alphabetic'; // Restore
     }
 
-    // Draw map ping animation if active
-    if (mapPing && animationTick - mapPing.startTick < 30) {
-      const elapsed = animationTick - mapPing.startTick;
-      const progress = elapsed / 30; // 0 to 1
+    // Draw map ping animation if active (buttery smooth 60fps)
+    if (mapPing && pingProgress > 0 && pingProgress < 1) {
       const pos = gameToPixels(mapPing.x, mapPing.z);
-      const maxPingRad = 60 * scale; // max radius of ping ring on screen
-      const currentRad = progress * maxPingRad;
-      const opacity = 1 - progress;
+      const maxPingRad = 80 * scale; // max radius of ping ring on screen
+      const currentRad = pingProgress * maxPingRad;
+      const opacity = 1 - pingProgress;
 
       ctx.save();
       ctx.beginPath();
@@ -2306,11 +2305,19 @@ export default function TacticalMap({
       ctx.lineWidth = 3;
       ctx.stroke();
       
-      // Also draw a smaller concentric circle for extra juice
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, currentRad * 0.5, 0, 2 * Math.PI);
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+      // Secondary echo ring
+      if (pingProgress > 0.2) {
+        const secondaryProgress = (pingProgress - 0.2) / 0.8;
+        const secondaryRad = secondaryProgress * maxPingRad;
+        const secondaryOpacity = (1 - secondaryProgress) * 0.7;
+
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, secondaryRad, 0, 2 * Math.PI);
+        ctx.strokeStyle = mapPing.color || '#ffffff';
+        ctx.globalAlpha = secondaryOpacity;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
@@ -2325,7 +2332,7 @@ export default function TacticalMap({
       ctx.strokeRect(dragSelectRect.x, dragSelectRect.y, dragSelectRect.w, dragSelectRect.h);
       ctx.restore();
     }
-  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, selectedEntityIds, dragSelectRect, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius, animationTick, mapPing]);
+  }, [offset, scale, entities, layers, hoveredEntity, selectedEntity, selectedEntityIds, dragSelectRect, imageLoaded, mapImage, mapSize, isRulerActive, rulerPoints, isSafezoneDrawing, safezoneDrawCenter, safezoneDrawRadius, activePatrolDrawIndex, isDrawModeActive, batchPoints, coordinatePicker, isResizingRadius, animationTick, mapPing, pingProgress]);
 
 
 
@@ -3536,9 +3543,26 @@ export default function TacticalMap({
     setMapPing({
       x: entity.x,
       z: entity.z,
-      startTick: animationTick,
       color: pingColor
     });
+
+    const pingDuration = 1200; // ms
+    const pingStartTime = performance.now();
+
+    const animatePing = (now) => {
+      const elapsed = now - pingStartTime;
+      const progress = Math.min(elapsed / pingDuration, 1);
+      
+      setPingProgress(progress);
+
+      if (progress < 1) {
+        requestAnimationFrame(animatePing);
+      } else {
+        setMapPing(null);
+        setPingProgress(0);
+      }
+    };
+    requestAnimationFrame(animatePing);
   };
 
   // Gather and filter all list items for map sidebar index
