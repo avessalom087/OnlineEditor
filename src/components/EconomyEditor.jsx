@@ -147,6 +147,13 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
   const activeCategoryConfig = selectedCategoryPath ? configs[selectedCategoryPath] : null;
   const activeTraderConfig   = selectedTraderPath   ? configs[selectedTraderPath]   : null;
 
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    return Number(localStorage.getItem('dayz_editor_economy_items_per_page')) || 100;
+  });
+
   // ─ Search / filter ─────────────────────────────────────────────────────────
   const [itemQuery,       setItemQuery]       = useState('');
   const [traderItemQuery, setTraderItemQuery] = useState('');
@@ -155,6 +162,10 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
   // ─ Sorting (B2) ───────────────────────────────────────────────────────────
   const [sortField, setSortField] = useState(null);
   const [sortDir,   setSortDir]   = useState('asc');
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategoryPath, itemQuery, sortField]);
 
   // ─ Selection for bulk ops (B3) ────────────────────────────────────────────
   const [selectedItems, setSelectedItems] = useState(new Set()); // Set of originalIndex
@@ -272,6 +283,19 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
     paths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
     return paths;
   }, [configs]);
+
+  const filteredCategoryPaths = useMemo(() => {
+    if (!sidebarSearch.trim()) return categoryPaths;
+    const lower = sidebarSearch.toLowerCase();
+    return categoryPaths.filter(p => p.split('/').pop().toLowerCase().includes(lower));
+  }, [categoryPaths, sidebarSearch]);
+
+  const filteredTraderPaths = useMemo(() => {
+    if (!sidebarSearch.trim()) return traderPaths;
+    const lower = sidebarSearch.toLowerCase();
+    return traderPaths.filter(p => p.split('/').pop().toLowerCase().includes(lower));
+  }, [traderPaths, sidebarSearch]);
+
 
   const questsList = useMemo(() => {
     const list = [];
@@ -475,6 +499,13 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
     }
     return items;
   }, [rawItems, itemQuery, sortField, sortDir, searchAllMode]);
+
+  const paginatedItems = useMemo(() => {
+    if (itemsPerPage === -1) return filteredItems;
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredItems.slice(start, start + itemsPerPage);
+  }, [filteredItems, currentPage, itemsPerPage]);
+
 
   // ─ Cross-category search results (B4) ────────────────────────────────────
   const crossCatResults = useMemo(() => {
@@ -704,6 +735,16 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
         <button className={`btn ${subTab === 'traders' ? 'btn-accent' : ''}`} onClick={() => setSubTab('traders')} style={{ padding: '6px 16px', fontSize: '11px', letterSpacing: '1px', fontWeight: 'bold' }}>
           {t('econ_tab_traders', { count: traderPaths.length })}
         </button>
+        {subTab !== 'overview' && (
+          <button 
+            className="btn"
+            onClick={() => setIsSidebarCollapsed(p => !p)}
+            style={{ padding: '6px 12px', fontSize: '11px', letterSpacing: '0.5px' }}
+            title={lang === 'ru' ? 'Скрыть/Показать боковую панель' : 'Toggle Sidebar'}
+          >
+            {isSidebarCollapsed ? '▶' : '◀'} {lang === 'ru' ? 'Панель' : 'Sidebar'}
+          </button>
+        )}
         <button 
           className="btn" 
           onClick={() => setShowHelpModal(true)} 
@@ -718,7 +759,17 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
 
         {/* ── SIDEBAR ────────────────────────────────────────────────────── */}
         {subTab !== 'overview' && (
-          <div style={{ width: '240px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', userSelect: 'none' }}>
+          <div style={{ 
+            width: isSidebarCollapsed ? '0px' : '240px', 
+            minWidth: isSidebarCollapsed ? '0px' : '240px', 
+            background: 'var(--bg-secondary)', 
+            borderRight: isSidebarCollapsed ? 'none' : '1px solid var(--border-color)', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            userSelect: 'none',
+            overflow: 'hidden',
+            transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}>
             <div style={{ padding: '12px 16px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold' }}>
@@ -732,7 +783,29 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                     : (lang === 'ru' ? `ВСЕГО: ${traderPaths.length} ТОРГОВЦЕВ` : `TOTAL: ${traderPaths.length} TRADERS`)}
                 </div>
               </div>
+            </div>
 
+            {/* Sidebar Search Filter */}
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={sidebarSearch}
+                onChange={e => setSidebarSearch(e.target.value)}
+                placeholder={lang === 'ru' ? 'Поиск файлов...' : 'Search files...'}
+                style={{ fontSize: '11px', padding: '5px 24px 5px 8px', width: '100%', height: '28px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)' }}
+              />
+              {sidebarSearch && (
+                <button
+                  onClick={() => setSidebarSearch('')}
+                  style={{
+                    position: 'absolute', right: '20px', top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer',
+                    fontSize: '12px', padding: '4px'
+                  }}
+                >
+                  ×
+                </button>
+              )}
             </div>
 
             {subTab === 'traders' && (
@@ -762,7 +835,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
             )}
 
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              {(subTab === 'categories' ? categoryPaths : traderPaths).map(path => {
+              {(subTab === 'categories' ? filteredCategoryPaths : filteredTraderPaths).map(path => {
                 const isSelected = path === (subTab === 'categories' ? selectedCategoryPath : selectedTraderPath);
                 const file = configs[path];
                 const hasUnsaved = file && JSON.stringify(file.content) !== JSON.stringify(file.originalContent);
@@ -1305,7 +1378,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                               {itemQuery ? t('econ_no_items_match') : t('econ_no_items_add')}
                             </td></tr>
                           ) : (
-                            filteredItems.map((item) => {
+                            paginatedItems.map((item) => {
                               const origItems   = activeCategoryConfig.originalContent?.Items || [];
                               const origItem    = origItems[item.originalIndex] || {};
                               const isDup       = isDuplicate(item.ClassName);
@@ -1521,6 +1594,93 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                       </table>
                     </div>
                   )}
+
+                  {/* Pagination Controls */}
+                  {filteredItems.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap', gap: '12px', padding: '12px 16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {lang === 'ru' ? 'Показано ' : 'Showing '}
+                        <strong style={{ color: 'var(--text-glow)' }}>
+                          {itemsPerPage === -1 ? 1 : (currentPage - 1) * itemsPerPage + 1}
+                        </strong>
+                        {lang === 'ru' ? ' - ' : ' to '}
+                        <strong style={{ color: 'var(--text-glow)' }}>
+                          {itemsPerPage === -1 ? filteredItems.length : Math.min(filteredItems.length, currentPage * itemsPerPage)}
+                        </strong>
+                        {lang === 'ru' ? ' из ' : ' of '}
+                        <strong style={{ color: 'var(--text-glow)' }}>{filteredItems.length}</strong>
+                        {lang === 'ru' ? ' предметов' : ' items'}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        {/* Page navigation */}
+                        {itemsPerPage !== -1 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <button
+                              className="btn"
+                              disabled={currentPage === 1}
+                              onClick={() => setCurrentPage(1)}
+                              style={{ padding: '4px 8px', fontSize: '11px', opacity: currentPage === 1 ? 0.5 : 1, cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
+                            >
+                              «
+                            </button>
+                            <button
+                              className="btn"
+                              disabled={currentPage === 1}
+                              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                              style={{ padding: '4px 8px', fontSize: '11px', opacity: currentPage === 1 ? 0.5 : 1, cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
+                            >
+                              ‹
+                            </button>
+                            <span style={{ fontSize: '12px', color: 'var(--text-primary)', margin: '0 8px', fontFamily: 'var(--font-mono)' }}>
+                              {lang === 'ru' ? 'Стр. ' : 'Page '}
+                              <strong style={{ color: 'var(--text-glow)' }}>{currentPage}</strong>
+                              {lang === 'ru' ? ' из ' : ' of '}
+                              <strong style={{ color: 'var(--text-glow)' }}>{Math.ceil(filteredItems.length / itemsPerPage)}</strong>
+                            </span>
+                            <button
+                              className="btn"
+                              disabled={currentPage >= Math.ceil(filteredItems.length / itemsPerPage)}
+                              onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredItems.length / itemsPerPage), p + 1))}
+                              style={{ padding: '4px 8px', fontSize: '11px', opacity: currentPage >= Math.ceil(filteredItems.length / itemsPerPage) ? 0.5 : 1, cursor: currentPage >= Math.ceil(filteredItems.length / itemsPerPage) ? 'not-allowed' : 'pointer' }}
+                            >
+                              ›
+                            </button>
+                            <button
+                              className="btn"
+                              disabled={currentPage >= Math.ceil(filteredItems.length / itemsPerPage)}
+                              onClick={() => setCurrentPage(Math.ceil(filteredItems.length / itemsPerPage))}
+                              style={{ padding: '4px 8px', fontSize: '11px', opacity: currentPage >= Math.ceil(filteredItems.length / itemsPerPage) ? 0.5 : 1, cursor: currentPage >= Math.ceil(filteredItems.length / itemsPerPage) ? 'not-allowed' : 'pointer' }}
+                            >
+                              »
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Page size selector */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            {lang === 'ru' ? 'Размер страницы:' : 'Page size:'}
+                          </span>
+                          <select
+                            value={itemsPerPage}
+                            onChange={e => {
+                              const val = Number(e.target.value);
+                              setItemsPerPage(val);
+                              localStorage.setItem('dayz_editor_economy_items_per_page', String(val));
+                              setCurrentPage(1);
+                            }}
+                            style={{ padding: '3px 8px', fontSize: '11px', width: '90px', height: '24px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)' }}
+                          >
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value={200}>200</option>
+                            <option value={-1}>{lang === 'ru' ? 'Все' : 'Show All'}</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -1545,7 +1705,7 @@ export default function EconomyEditor({ configs, onChangeField, onSaveFile, onCr
                 </div>
 
                 {/* Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', alignItems: 'start' }}>
+                <div className="trader-grid-responsive">
 
                   {/* General settings */}
                   <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '12px' }}>

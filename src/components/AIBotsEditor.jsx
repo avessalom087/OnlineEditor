@@ -14,6 +14,33 @@ const CLOTHING_SLOTS = ['Body', 'Legs', 'Feet', 'Vest', 'Headgear', 'Gloves', 'B
 const LOCATION_TYPES = ['Village', 'City', 'Military', 'Industrial', 'Custom'];
 
 
+function ConfigListRow({
+  className,
+  isMissing,
+  missingTooltip,
+  fields,
+  onRemove
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: '10px', alignItems: 'center', background: 'var(--bg-primary)', padding: '10px', border: '1px solid var(--border-color)' }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {className}
+        {isMissing && (
+          <span title={missingTooltip} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
+        )}
+      </div>
+      {fields.map((f, idx) => (
+        <div key={idx} className="form-group" style={{ margin: 0 }}>
+          <label style={{ fontSize: '11px' }}>{f.label}</label>
+          <input type="number" step={f.step || '1'} value={f.value} onChange={f.onChange} style={{ padding: '2px' }} />
+        </div>
+      ))}
+      <button className="btn btn-danger" onClick={onRemove} style={{ padding: '6px 10px', fontSize: '12px', marginTop: '12px' }}>×</button>
+    </div>
+  );
+}
+
+
 export default function AIBotsEditor({ 
   configs, 
   onChangeField, 
@@ -2362,27 +2389,18 @@ export default function AIBotsEditor({
                               const minH = item.Health?.[0]?.Min ?? 0.7;
                               const maxH = item.Health?.[0]?.Max ?? 1.0;
                               return (
-                                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: '10px', alignItems: 'center', background: 'var(--bg-primary)', padding: '10px', border: '1px solid var(--border-color)' }}>
-                                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    {item.ClassName}
-                                    {isItemMissing(item.ClassName) && (
-                                      <span title={t('ai_tooltip_item_missing')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
-                                    )}
-                                  </div>
-                                  <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '11px' }}>{t('ai_label_chance')}</label>
-                                    <input type="number" step="any" value={item.Chance ?? 1.0} onChange={e => handleUpdateClothingItemField(selectedSlot, idx, 'Chance', e.target.value)} style={{ padding: '2px' }} />
-                                  </div>
-                                  <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '11px' }}>{t('ai_label_min_health')}</label>
-                                    <input type="number" step="any" value={minH} onChange={e => handleUpdateClothingItemField(selectedSlot, idx, 'MinHealth', e.target.value)} style={{ padding: '2px' }} />
-                                  </div>
-                                  <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '11px' }}>{t('ai_label_max_health')}</label>
-                                    <input type="number" step="any" value={maxH} onChange={e => handleUpdateClothingItemField(selectedSlot, idx, 'MaxHealth', e.target.value)} style={{ padding: '2px' }} />
-                                  </div>
-                                  <button className="btn btn-danger" onClick={() => handleRemoveClothingItem(selectedSlot, idx)} style={{ padding: '6px 10px', fontSize: '12px', marginTop: '12px' }}>×</button>
-                                </div>
+                                <ConfigListRow
+                                  key={idx}
+                                  className={item.ClassName}
+                                  isMissing={isItemMissing(item.ClassName)}
+                                  missingTooltip={t('ai_tooltip_item_missing')}
+                                  onRemove={() => handleRemoveClothingItem(selectedSlot, idx)}
+                                  fields={[
+                                    { label: t('ai_label_chance'), value: item.Chance ?? 1.0, step: 'any', onChange: e => handleUpdateClothingItemField(selectedSlot, idx, 'Chance', e.target.value) },
+                                    { label: t('ai_label_min_health'), value: minH, step: 'any', onChange: e => handleUpdateClothingItemField(selectedSlot, idx, 'MinHealth', e.target.value) },
+                                    { label: t('ai_label_max_health'), value: maxH, step: 'any', onChange: e => handleUpdateClothingItemField(selectedSlot, idx, 'MaxHealth', e.target.value) }
+                                  ]}
+                                />
                               );
                             })
                           )}
@@ -2413,27 +2431,18 @@ export default function AIBotsEditor({
                               const minQ = item.Quantity?.Min ?? 1;
                               const maxQ = item.Quantity?.Max ?? 1;
                               return (
-                                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: '10px', alignItems: 'center', background: 'var(--bg-primary)', padding: '10px', border: '1px solid var(--border-color)' }}>
-                                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    {item.ClassName}
-                                    {isItemMissing(item.ClassName) && (
-                                      <span title={t('ai_tooltip_cargo_missing')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>
-                                    )}
-                                  </div>
-                                  <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '11px' }}>{t('ai_label_spawn_chance')}</label>
-                                    <input type="number" step="any" value={item.Chance ?? 1.0} onChange={e => handleUpdateCargoItemField(idx, 'Chance', e.target.value)} style={{ padding: '2px' }} />
-                                  </div>
-                                  <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '11px' }}>{t('ai_label_min_qty')}</label>
-                                    <input type="number" value={minQ} onChange={e => handleUpdateCargoItemField(idx, 'MinQty', e.target.value)} style={{ padding: '2px' }} />
-                                  </div>
-                                  <div className="form-group" style={{ margin: 0 }}>
-                                    <label style={{ fontSize: '11px' }}>{t('ai_label_max_qty')}</label>
-                                    <input type="number" value={maxQ} onChange={e => handleUpdateCargoItemField(idx, 'MaxQty', e.target.value)} style={{ padding: '2px' }} />
-                                  </div>
-                                  <button className="btn btn-danger" onClick={() => handleRemoveCargoItem(idx)} style={{ padding: '6px 10px', fontSize: '12px', marginTop: '12px' }}>×</button>
-                                </div>
+                                <ConfigListRow
+                                  key={idx}
+                                  className={item.ClassName}
+                                  isMissing={isItemMissing(item.ClassName)}
+                                  missingTooltip={t('ai_tooltip_cargo_missing')}
+                                  onRemove={() => handleRemoveCargoItem(idx)}
+                                  fields={[
+                                    { label: t('ai_label_spawn_chance'), value: item.Chance ?? 1.0, step: 'any', onChange: e => handleUpdateCargoItemField(idx, 'Chance', e.target.value) },
+                                    { label: t('ai_label_min_qty'), value: minQ, step: '1', onChange: e => handleUpdateCargoItemField(idx, 'MinQty', e.target.value) },
+                                    { label: t('ai_label_max_qty'), value: maxQ, step: '1', onChange: e => handleUpdateCargoItemField(idx, 'MaxQty', e.target.value) }
+                                  ]}
+                                />
                               );
                             })
                           )}

@@ -77,7 +77,7 @@ async function scanDir(dirHandle, pathArray = [], configs = {}) {
     } else if (entry.kind === 'file') {
       const relPath = currentPath.join('/');
       const rootLower = currentPath[0].toLowerCase();
-      const isConfigPath = rootLower === 'expansion' || rootLower === 'expansionmod' || rootLower === 'mpg_spawner';
+      const isConfigPath = rootLower === 'expansion' || rootLower === 'expansionmod' || rootLower === 'mpg_spawner' || rootLower === 'searchforloot';
       
       if (isConfigPath && entry.name.toLowerCase().endsWith('.json')) {
         try {
@@ -129,6 +129,7 @@ export async function getConfigs() {
   let hasExpansion = false;
   let hasExpansionMod = false;
   let hasMpgSpawner = false;
+  let hasSearchForLoot = false;
 
   for await (const entry of activeDirHandle.values()) {
     if (entry.kind === 'directory') {
@@ -141,6 +142,9 @@ export async function getConfigs() {
       } else if (entry.name.toLowerCase() === 'mpg_spawner') {
         hasMpgSpawner = true;
         await scanDir(entry, ['MPG_Spawner'], configs);
+      } else if (entry.name.toLowerCase() === 'searchforloot') {
+        hasSearchForLoot = true;
+        await scanDir(entry, ['SearchForLoot'], configs);
       }
     }
   }
@@ -150,7 +154,7 @@ export async function getConfigs() {
     // Check if the current folder itself looks like a mod folder directly (has settings/traders or Quests/AI)
     let looksLikeModDir = false;
     for await (const entry of activeDirHandle.values()) {
-      if (entry.kind === 'directory' && ['settings', 'traders', 'quests', 'ai', 'market', 'loadouts', 'points'].includes(entry.name.toLowerCase())) {
+      if (entry.kind === 'directory' && ['settings', 'traders', 'quests', 'ai', 'market', 'loadouts', 'points', 'searchforloot'].includes(entry.name.toLowerCase())) {
         looksLikeModDir = true;
         break;
       }

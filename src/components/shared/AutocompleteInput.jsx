@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AutocompleteWorkerWrapper } from '../../utils/autocompleteWorker';
 
+import { useTranslation } from '../../utils/localization';
+
 function highlightMatch(text, query) {
   if (!query) return text;
   const parts = text.split(new RegExp(`(${query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'));
@@ -26,10 +28,12 @@ export default function AutocompleteInput({
   value,
   onChange,
   style = {},
-  buttonLabel = 'ADD',
+  buttonLabel,
   layout = 'horizontal',
   showButton = true
 }) {
+  const { t } = useTranslation();
+  const actualButtonLabel = buttonLabel || t('map_add_btn');
   const isControlled = value !== undefined && onChange !== undefined;
   const [internalValue, setInternalValue] = useState('');
   const [filtered, setFiltered] = useState([]);
@@ -202,7 +206,7 @@ export default function AutocompleteInput({
             onClick={handleAdd}
             style={{ padding: '8px 12px', justifyContent: 'center', width: layout === 'vertical' ? '100%' : 'auto' }}
           >
-            {buttonLabel}
+            {actualButtonLabel}
           </button>
         )}
       </div>

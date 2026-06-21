@@ -29,6 +29,7 @@ const AIBotsEditor     = lazy(() => import('./components/AIBotsEditor'));
 const SettingsEditor   = lazy(() => import('./components/SettingsEditor'));
 const TacticalMap      = lazy(() => import('./components/TacticalMap'));
 const MPGSpawnerEditor = lazy(() => import('./components/MPGSpawnerEditor'));
+const SearchForLootEditor = lazy(() => import('./components/SearchForLootEditor'));
 const RawJsonEditor    = lazy(() => import('./components/RawJsonEditor'));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -466,6 +467,7 @@ function AppContent() {
   const [isSaveBarMinimized, setIsSaveBarMinimized] = useState(false);
   const [confirmDialog, setConfirmDialog]       = useState(null);
   const [dashboardSubTab, setDashboardSubTab]   = useState('status');
+  const [isMoreOpen, setIsMoreOpen]             = useState(false);
 
   // ── Hotkeys — registered after handleSaveAll is defined ──────────────────
   // handleSaveAll is passed via ref so the listener never captures a stale closure.
@@ -1096,6 +1098,7 @@ function AppContent() {
   const dirtyAiBots   = dirtyFilesArr.filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
   const dirtySettings = dirtyFilesArr.filter(p => p.includes('settings')).length;
   const dirtySpawner  = dirtyFilesArr.filter(p => p.toLowerCase().includes('mpg_spawner/') || p.toLowerCase().includes('points/')).length;
+  const dirtySearchForLoot = dirtyFilesArr.filter(p => p.toLowerCase().includes('searchforloot/')).length;
 
   // ─── Count tab-specific syntax errors (files failing to parse) ───────────
   const errorFilesArr = Object.keys(configs).filter(p => !configs[p].success);
@@ -1104,6 +1107,7 @@ function AppContent() {
   const errorAiBots   = errorFilesArr.filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
   const errorSettings = errorFilesArr.filter(p => p.includes('settings')).length;
   const errorSpawner  = errorFilesArr.filter(p => p.toLowerCase().includes('mpg_spawner/') || p.toLowerCase().includes('points/')).length;
+  const errorSearchForLoot = errorFilesArr.filter(p => p.toLowerCase().includes('searchforloot/')).length;
 
   // ── Password Auth Gate ────────────────────────────────────────────────────
   if (!isAuthenticated) {
@@ -1162,7 +1166,6 @@ function AppContent() {
       <header className="header" style={{ flexShrink: 0 }}>
         <div className="header-left">
           <div className="header-title">
-            <div className="header-title-sub">{t('header_station')}</div>
             <h1 className="header-title-main">
               {t('header_control_center')}
               <span className="header-title-version">v1.2.0 (ONLINE)</span>
@@ -1189,13 +1192,68 @@ function AppContent() {
         {/* Navigation tabs */}
         <nav className="header-nav-tabs">
           <TabBtn id="dashboard"  label={t('tab_dashboard')}                               activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabBtn id="map"        label={t('tab_map')}                                     activeTab={activeTab} setActiveTab={setActiveTab} />
           <TabBtn id="economy"    label={t('tab_economy')}    badge={dirtyEconomy}   errorCount={errorEconomy}  activeTab={activeTab} setActiveTab={setActiveTab} />
           <TabBtn id="quests"     label={t('tab_quests')}     badge={dirtyQuests}    errorCount={errorQuests}   activeTab={activeTab} setActiveTab={setActiveTab} />
           <TabBtn id="aibots"     label={t('tab_aibots')}     badge={dirtyAiBots}    errorCount={errorAiBots}   activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings}  errorCount={errorSettings} activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="map"        label={t('tab_map')}                                     activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="spawner"    label={t('tab_spawner')}    badge={dirtySpawner}   errorCount={errorSpawner}  activeTab={activeTab} setActiveTab={setActiveTab} />
-          <TabBtn id="raw_editor" label={t('tab_raw_editor')}                               activeTab={activeTab} setActiveTab={setActiveTab} />
+
+          {/* Consolidated "More" Dropdown Menu */}
+          {(() => {
+            const moreBadge = dirtySettings + dirtySpawner + dirtySearchForLoot;
+            const moreErrors = errorSettings + errorSpawner + errorSearchForLoot;
+            const isMoreActive = ['settings', 'spawner', 'searchforloot', 'raw_editor'].includes(activeTab);
+
+            return (
+              <div 
+                className="dropdown-tabs-wrapper"
+                onMouseEnter={() => setIsMoreOpen(true)}
+                onMouseLeave={() => setIsMoreOpen(false)}
+              >
+                <button 
+                  className={`nav-tab ${isMoreActive ? 'active' : ''}`}
+                  onClick={() => setIsMoreOpen(prev => !prev)}
+                  style={{ 
+                    position: 'relative', 
+                    paddingRight: (moreBadge > 0 && moreErrors > 0) ? '54px' : (moreBadge > 0 || moreErrors > 0) ? '32px' : '16px' 
+                  }}
+                >
+                  {t('tab_more')} ▾
+                  {moreBadge > 0 && (
+                    <span style={{
+                      position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: moreErrors > 0 ? '32px' : '4px',
+                      fontSize: '9px', fontFamily: 'var(--font-mono)',
+                      color: 'var(--warning-color)', background: 'rgba(235,214,103,0.15)',
+                      border: '1px solid rgba(235,214,103,0.3)', borderRadius: '8px',
+                      padding: '0 5px', lineHeight: '14px', fontWeight: 'bold'
+                    }}>
+                      {moreBadge}
+                    </span>
+                  )}
+                  {moreErrors > 0 && (
+                    <span style={{
+                      position: 'absolute', top: '50%', transform: 'translateY(-50%)', right: '4px',
+                      fontSize: '9px', fontFamily: 'var(--font-mono)',
+                      color: '#ff4d4d', background: 'rgba(255,77,77,0.15)',
+                      border: '1px solid rgba(255,77,77,0.3)', borderRadius: '8px',
+                      padding: '0 5px', lineHeight: '14px', fontWeight: 'bold',
+                      boxShadow: '0 0 6px rgba(255,77,77,0.2)'
+                    }}>
+                      ⚠ {moreErrors}
+                    </span>
+                  )}
+                </button>
+                
+                {isMoreOpen && (
+                  <div className="dropdown-tabs-menu" onClick={() => setIsMoreOpen(false)}>
+                    <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings}  errorCount={errorSettings} activeTab={activeTab} setActiveTab={setActiveTab} />
+                    <TabBtn id="spawner"    label={t('tab_spawner')}    badge={dirtySpawner}   errorCount={errorSpawner}  activeTab={activeTab} setActiveTab={setActiveTab} />
+                    <TabBtn id="searchforloot" label={t('tab_searchforloot')} badge={dirtySearchForLoot} errorCount={errorSearchForLoot} activeTab={activeTab} setActiveTab={setActiveTab} />
+                    <TabBtn id="raw_editor" label={t('tab_raw_editor')}                               activeTab={activeTab} setActiveTab={setActiveTab} />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </nav>
 
         {/* Actions row */}
@@ -1356,6 +1414,15 @@ function AppContent() {
                         setSelectedSpawnerFilePath(null);
                         setSelectedSpawnerTriggerIdx(null);
                       }}
+                    />
+                  </ErrorBoundary>
+                )}
+
+                {activeTab === 'searchforloot' && (
+                  <ErrorBoundary key="searchforloot">
+                    <SearchForLootEditor
+                      configs={configs} onChangeField={handleChangeField}
+                      xmlItems={xmlItems}
                     />
                   </ErrorBoundary>
                 )}
