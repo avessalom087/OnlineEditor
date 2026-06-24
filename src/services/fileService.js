@@ -262,21 +262,6 @@ async function rotateBackups(rootDirHandle) {
  * @returns {object} sanitized content (new object, original not mutated)
  */
 function sanitizeContent(filePath, content) {
-  const lp = filePath.toLowerCase();
-  // Only quest files have Objectives[]
-  if (lp.includes('quests/quests/') && Array.isArray(content?.Objectives)) {
-    return {
-      ...content,
-      Objectives: content.Objectives.map(obj => {
-        // Remove ObjectiveName if present (editor-only label)
-        if ('ObjectiveName' in obj) {
-          const { ObjectiveName, ...rest } = obj;
-          return rest;
-        }
-        return obj;
-      })
-    };
-  }
   return content;
 }
 

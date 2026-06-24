@@ -369,6 +369,7 @@ export default function QuestGraph({
   onOpenFile, 
   onCreateFile, 
   onDeleteFile,
+  onSaveFile,
   onNavigateToMap,
   selectedQuestId,
   onSelectQuest,
@@ -4781,45 +4782,43 @@ export default function QuestGraph({
                         <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('quest_no_stash_locations') || 'No positions set. Add at least one position!'}</div>
                       ) : (
                         (editingObjective.objective.Positions || []).map((pos, pIdx) => (
-                          <div key={pIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', gap: '6px' }}>
-                            <span>[{pos.join(', ')}]</span>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button 
-                                className="btn"
-                                onClick={() => {
-                                  setActiveTab('map');
-                                  setCoordinatePicker({
-                                    active: true,
-                                    returnTab: 'quests',
-                                    callback: ({ x, z }) => {
-                                      const currentY = editingObjective.objective.Positions?.[pIdx]?.[1] ?? 0.0;
-                                      const updatedList = [...editingObjective.objective.Positions];
-                                      updatedList[pIdx] = [Number(x.toFixed(2)), Number(currentY.toFixed(2)), Number(z.toFixed(2))];
-                                      const updated = { ...editingObjective.objective, Positions: updatedList };
-                                      setEditingObjective({ ...editingObjective, objective: updated });
-                                      onChangeField(editingObjective.filePath, ['Positions'], updatedList);
-                                    }
-                                  });
-                                }}
-                                style={{ padding: '1px 6px', fontSize: '9px' }}
-                              >
-                                🗺️
-                              </button>
-                              <button 
-                                className="btn btn-danger" 
-                                onClick={() => {
-                                  const list = [...(editingObjective.objective.Positions || [])];
-                                  list.splice(pIdx, 1);
-                                  const updated = { ...editingObjective.objective, Positions: list };
+                          <CoordinatesInput
+                            key={pIdx}
+                            layout="row"
+                            indexLabel={`#${pIdx + 1}`}
+                            position={pos}
+                            onChange={(newPos) => {
+                              const updatedList = [...editingObjective.objective.Positions];
+                              updatedList[pIdx] = [Number(newPos[0]), Number(newPos[1]), Number(newPos[2])];
+                              const updated = { ...editingObjective.objective, Positions: updatedList };
+                              setEditingObjective({ ...editingObjective, objective: updated });
+                              onChangeField(editingObjective.filePath, ['Positions'], updatedList);
+                            }}
+                            onPickFromMap={() => {
+                              setActiveTab('map');
+                              setCoordinatePicker({
+                                active: true,
+                                returnTab: 'quests',
+                                callback: ({ x, z }) => {
+                                  const currentY = editingObjective.objective.Positions?.[pIdx]?.[1] ?? 0.0;
+                                  const updatedList = [...editingObjective.objective.Positions];
+                                  updatedList[pIdx] = [Number(x.toFixed(2)), Number(currentY.toFixed(2)), Number(z.toFixed(2))];
+                                  const updated = { ...editingObjective.objective, Positions: updatedList };
                                   setEditingObjective({ ...editingObjective, objective: updated });
-                                  onChangeField(editingObjective.filePath, ['Positions'], list);
-                                }}
-                                style={{ padding: '1px 6px', fontSize: '9px' }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          </div>
+                                  onChangeField(editingObjective.filePath, ['Positions'], updatedList);
+                                }
+                              });
+                            }}
+                            onDelete={() => {
+                              const list = [...(editingObjective.objective.Positions || [])];
+                              list.splice(pIdx, 1);
+                              const updated = { ...editingObjective.objective, Positions: list };
+                              setEditingObjective({ ...editingObjective, objective: updated });
+                              onChangeField(editingObjective.filePath, ['Positions'], list);
+                            }}
+                            inputStyle={{ border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                            style={{ background: 'transparent', border: 'none', padding: '0', flex: 1 }}
+                          />
                         ))
                       )}
                     </div>
@@ -5004,11 +5003,11 @@ export default function QuestGraph({
 
             {/* Modal Footer */}
             <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button 
+               <button 
                 className="btn btn-warning" 
                 onClick={() => {
                   onSaveFile(editingObjective.filePath);
-                  alert("Objective file saved successfully!");
+                  setEditingObjective(null);
                 }}
               >
                 {t('quest_btn_save_objective')}

@@ -1345,7 +1345,8 @@ function AppContent() {
                     <QuestGraph
                       configs={configs} onChangeField={handleChangeField}
                       onOpenFile={handleOpenFile} onCreateFile={handleCreateFile}
-                      onDeleteFile={handleDeleteFile} selectedQuestId={selectedQuestId}
+                      onDeleteFile={handleDeleteFile} onSaveFile={handleSaveFile}
+                      selectedQuestId={selectedQuestId}
                       onSelectQuest={setSelectedQuestId} onNavigateToMap={handleNavigateToMap}
                       xmlItems={xmlItems} highlightedQuestIds={highlightedQuestIds}
                       setCoordinatePicker={setCoordinatePicker} setActiveTab={setActiveTab}
