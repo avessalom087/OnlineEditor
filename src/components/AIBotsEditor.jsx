@@ -1,3 +1,4 @@
+import { Icon } from './common/Icons';
 import React, { useState, useEffect } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import CoordinatesInput from './shared/CoordinatesInput';
@@ -1242,11 +1243,13 @@ export default function AIBotsEditor({
               {activeSubTab === 'patrols' ? (
                 <>
                   <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <button className="btn" onClick={handleAddPatrol} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}>
-                      + {lang === 'ru' ? 'Быстрый патруль' : 'Quick Patrol'}
+                    <button className="btn" onClick={handleAddPatrol} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Icon.Plus size={12} />
+                      <span>{lang === 'ru' ? 'Быстрый патруль' : 'Quick Patrol'}</span>
                     </button>
-                    <button className="btn btn-accent" onClick={() => { setShowPatrolWizard(true); setWizardStep(1); }} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2' }}>
-                      🧙‍♂️ {lang === 'ru' ? 'Конструктор патрулей' : 'Patrol Builder'}
+                    <button className="btn btn-accent" onClick={() => { setShowPatrolWizard(true); setWizardStep(1); }} style={{ width: '100%', justifyContent: 'center', fontSize: '11px', letterSpacing: '0.5px', padding: '6px 8px', whiteSpace: 'normal', textAlign: 'center', lineHeight: '1.2', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Icon.Zap size={12} />
+                      <span>{lang === 'ru' ? 'Конструктор патрулей' : 'Patrol Builder'}</span>
                     </button>
                   </div>
                   <div style={{ 

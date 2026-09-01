@@ -1,9 +1,11 @@
+import { Icon } from './common/Icons';
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from './ToastManager';
 import { useTranslation } from '../utils/localization';
 import * as fileService from '../services/fileService';
 import * as idb from '../utils/indexedDB';
 import { getExpansionPrefix, getExpansionModPrefix, getMpgSpawnerPrefix } from '../utils/pathUtils';
+
 
 const MAP_PRESETS = [
   { name: '10km Grid (10000m)', size: 10000 },
@@ -3637,7 +3639,7 @@ export default function TacticalMap({
           )}
 
           <label className="btn btn-accent" style={{ display: 'inline-flex', width: '100%', padding: '8px 12px', fontSize: '11px', justifyContent: 'center', cursor: 'pointer', marginBottom: '12px', textAlign: 'center' }}>
-            {t('map_load_custom')}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}><Icon.Map size={12} /><span>{t('map_load_custom')}</span></span>
             <input 
               type="file" 
               accept="image/*" 
@@ -3667,7 +3669,7 @@ export default function TacticalMap({
                   color: isRulerActive ? '#2ebd59' : 'var(--text-primary)'
                 }}
               >
-                📏 {isRulerActive ? t('map_measure_on') : t('map_measure_btn')}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Ruler size={12} color={isRulerActive ? '#2ebd59' : 'currentColor'} /><span>{isRulerActive ? t('map_measure_on') : t('map_measure_btn')}</span></span>
               </button>
               {isRulerActive && rulerPoints && (
                 <button 
@@ -3700,7 +3702,7 @@ export default function TacticalMap({
                   color: isSafezoneDrawing ? '#559655' : 'var(--text-primary)'
                 }}
               >
-                🛡️ {isSafezoneDrawing ? t('map_draw_safezone_mode') + " (ON)" : t('map_draw_safezone_mode')}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Shield size={12} color={isSafezoneDrawing ? '#559655' : 'currentColor'} /><span>{isSafezoneDrawing ? t('map_draw_safezone_mode') + " (ON)" : t('map_draw_safezone_mode')}</span></span>
               </button>
               {isSafezoneDrawing && safezoneDrawCenter && (
                 <button
@@ -3760,7 +3762,7 @@ export default function TacticalMap({
                       color: isDrawModeActive ? '#00cec9' : 'var(--text-primary)'
                     }}
                   >
-                    {isDrawModeActive ? '✍️ ' + t('map_draw_wp_active') : '✍️ ' + t('map_draw_wp')}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Navigation size={12} color={isDrawModeActive ? '#00cec9' : 'currentColor'} /><span>{isDrawModeActive ? t('map_draw_wp_active') : t('map_draw_wp')}</span></span>
                   </button>
 
                   <div style={{ borderTop: '1px dashed rgba(255,255,255,0.08)', marginTop: '4px', paddingTop: '8px' }}>
@@ -3817,7 +3819,7 @@ export default function TacticalMap({
               transition: 'all 0.15s ease-in-out'
             }}
           >
-            📁 {lang === 'ru' ? 'Объекты' : 'Entities'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><Icon.Folder size={12} /><span>{lang === 'ru' ? 'Объекты' : 'Entities'}</span></span>
           </button>
           <button
             type="button"
@@ -3836,7 +3838,7 @@ export default function TacticalMap({
               transition: 'all 0.15s ease-in-out'
             }}
           >
-            ⭐ {lang === 'ru' ? 'Избранное' : 'Bookmarks'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}><Icon.Star size={12} fill={sidebarTab === 'bookmarks' ? '#f1c40f' : 'none'} color={sidebarTab === 'bookmarks' ? '#f1c40f' : 'currentColor'} /><span>{lang === 'ru' ? 'Избранное' : 'Bookmarks'}</span></span>
           </button>
         </div>
 
@@ -3871,7 +3873,7 @@ export default function TacticalMap({
                     letterSpacing: '1px'
                   }}
                 >
-                  <span>📁 {t('map_excluded_buildings')} ({configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings?.length || 0})</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Ban size={12} /><span>{t('map_excluded_buildings')} ({configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings?.length || 0})</span></span>
                   <span>{excludeCollapse ? '▼' : '►'}</span>
                 </div>
                 
@@ -4102,7 +4104,7 @@ export default function TacticalMap({
                 }}
                 style={{ padding: '4px 8px', fontSize: '10px', justifyContent: 'center' }}
               >
-                📍 {lang === 'ru' ? 'Захватить центр экрана' : 'Capture Center View'}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.MapPin size={12} /><span>{lang === 'ru' ? 'Захватить центр экрана' : 'Capture Center View'}</span></span>
               </button>
 
               {/* Color selection dots */}
@@ -4169,7 +4171,7 @@ export default function TacticalMap({
                 }}
                 style={{ padding: '6px 12px', fontSize: '11px', justifyContent: 'center', fontWeight: 'bold' }}
               >
-                💾 {lang === 'ru' ? 'СОХРАНИТЬ ЗАКЛАДКУ' : 'SAVE BOOKMARK'}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Save size={12} /><span>{lang === 'ru' ? 'СОХРАНИТЬ ЗАКЛАДКУ' : 'SAVE BOOKMARK'}</span></span>
               </button>
             </div>
 
@@ -4307,7 +4309,7 @@ export default function TacticalMap({
           }}>
             {coordinatePicker.mode === 'batch' ? (
               <>
-                <span>🎯 {lang === 'ru' ? `ПАКЕТНАЯ РАССТАНОВКА ТОЧЕК: Кликайте по карте для добавления (всего: ${batchPoints.length}) / Esc для отмены` : `BATCH PLACEMENT ACTIVE: Click map to place points (total: ${batchPoints.length}) / Esc to cancel`}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Crosshair size={12} /><span>{lang === 'ru' ? `ПАКЕТНАЯ РАССТАНОВКА ТОЧЕК: Кликайте по карте для добавления (всего: ${batchPoints.length}) / Esc для отмены` : `BATCH PLACEMENT ACTIVE: Click map to place points (total: ${batchPoints.length}) / Esc to cancel`}</span></span>
                 <button
                   type="button"
                   onClick={() => {
@@ -4331,7 +4333,7 @@ export default function TacticalMap({
               </>
             ) : (
               <>
-                <span>🎯 {lang === 'ru' ? 'РЕЖИМ ВЫБОРА КООРДИНАТ: Кликните по карте для выбора / Esc для отмены' : 'COORDINATE PICK MODE: CLICK ON MAP TO SELECT / ESC TO CANCEL'}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Crosshair size={12} /><span>{lang === 'ru' ? 'РЕЖИМ ВЫБОРА КООРДИНАТ: Кликните по карте для выбора / Esc для отмены' : 'COORDINATE PICK MODE: CLICK ON MAP TO SELECT / ESC TO CANCEL'}</span></span>
                 <button
                   type="button"
                   onClick={() => {
@@ -4466,23 +4468,27 @@ export default function TacticalMap({
               position: 'fixed',
               top: contextMenu.py,
               left: contextMenu.px,
-              zIndex: 9999,
-              background: 'rgba(7,9,7,0.97)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '3px',
-              boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
-              overflow: 'hidden',
-              minWidth: '210px',
+              zIndex: 99999,
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-glow)',
+              borderRadius: '4px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.85)',
+              padding: '4px 0',
+              minWidth: '240px',
+              fontFamily: 'var(--font-heading)',
+              fontSize: '12px',
+              letterSpacing: '0.4px',
+              backdropFilter: 'blur(4px)',
               pointerEvents: 'auto',
             }}
           >
             {/* Header */}
-            <div style={{ padding: '4px 10px', fontSize: '9px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', borderBottom: '1px solid var(--border-color)', letterSpacing: '0.08em' }}>
-              {contextMenu.entity ? `// ENTITY: ${contextMenu.entity.type.toUpperCase()}` : '// CONTEXT_MENU'}
+            <div style={{ padding: '8px 14px', fontSize: '11px', color: 'var(--text-glow)', letterSpacing: '0.8px', fontWeight: 'bold', fontFamily: 'var(--font-heading)', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
+              {contextMenu.entity ? `// ENTITY: ${contextMenu.entity.type.toUpperCase()}` : '// TACTICAL MAP ACTIONS'}
             </div>
 
             {/* Coords display */}
-            <div style={{ padding: '5px 12px', fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ padding: '6px 14px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               {contextMenu.x}, 0.0, {contextMenu.z}
             </div>
 
@@ -4502,11 +4508,11 @@ export default function TacticalMap({
                       handleDeleteEntity(selectedEntity);
                       setContextMenu(null);
                     }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.12)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    🗑 {ru ? `Удалить выделенные (${selectedEntityIds.size})` : `Delete Selected (${selectedEntityIds.size})`}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Trash size={12} color="#ff6b6b" /><span>{ru ? `Удалить выделенные (${selectedEntityIds.size})` : `Delete Selected (${selectedEntityIds.size})`}</span></span>
                   </button>
                 </>
               );
@@ -4528,11 +4534,11 @@ export default function TacticalMap({
                         .catch(() => toast.error(ru ? 'Не удалось скопировать.' : 'Failed to copy.'));
                       setContextMenu(null);
                     }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    📋 {ru ? 'Копировать имя объекта' : 'Copy Object Name'}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Clipboard size={12} /><span>{ru ? 'Копировать имя объекта' : 'Copy Object Name'}</span></span>
                   </button>
 
                   {/* Copy coords */}
@@ -4544,11 +4550,11 @@ export default function TacticalMap({
                         .catch(() => toast.error(ru ? 'Не удалось скопировать.' : 'Failed to copy.'));
                       setContextMenu(null);
                     }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    📋 {ru ? 'Копировать координаты' : 'Copy Coordinates'}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Clipboard size={12} /><span>{ru ? 'Копировать координаты' : 'Copy Coordinates'}</span></span>
                   </button>
 
                   {/* Bookmark toggle or Unlink options */}
@@ -4575,11 +4581,11 @@ export default function TacticalMap({
                             toast.success(ru ? 'Закладка отвязана от объекта' : 'Bookmark unlinked from object');
                             setContextMenu(null);
                           }}
-                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                          🔗 {ru ? 'Отвязать от объекта' : 'Unlink from object'}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Unlink size={12} /><span>{ru ? 'Отвязать от объекта' : 'Unlink from object'}</span></span>
                         </button>
                       )}
                       <button
@@ -4591,11 +4597,11 @@ export default function TacticalMap({
                           }
                           setContextMenu(null);
                         }}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.12)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                       >
-                        🗑 {ru ? 'Удалить закладку' : 'Delete Bookmark'}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Trash size={12} color="#ff6b6b" /><span>{ru ? 'Удалить закладку' : 'Delete Bookmark'}</span></span>
                       </button>
                     </>
                   ) : (() => {
@@ -4630,11 +4636,11 @@ export default function TacticalMap({
                           }
                           setContextMenu(null);
                         }}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                       >
-                        ⭐ {isBookmarked ? (ru ? 'Убрать из избранного' : 'Remove Bookmark') : (ru ? 'Добавить в избранное' : 'Add to Bookmarks')}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Star size={12} fill={isBookmarked ? '#f1c40f' : 'none'} color={isBookmarked ? '#f1c40f' : 'currentColor'} /><span>{isBookmarked ? (ru ? 'Убрать из избранного' : 'Remove Bookmark') : (ru ? 'Добавить в избранное' : 'Add to Bookmarks')}</span></span>
                       </button>
                     );
                   })()}
@@ -4655,11 +4661,11 @@ export default function TacticalMap({
                         }
                         setContextMenu(null);
                       }}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      📍 {ru ? 'Добавить точку спавна' : 'Add Spawn Point'}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.MapPin size={12} /><span>{ru ? 'Добавить точку спавна' : 'Add Spawn Point'}</span></span>
                     </button>
                   )}
 
@@ -4679,11 +4685,11 @@ export default function TacticalMap({
                         }
                         setContextMenu(null);
                       }}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      📂 {ru ? 'ДОП. НАСТРОЙКИ' : 'OPEN SETTINGS'}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Folder size={12} /><span>{ru ? 'ДОП. НАСТРОЙКИ' : 'OPEN SETTINGS'}</span></span>
                     </button>
                   )}
 
@@ -4691,11 +4697,11 @@ export default function TacticalMap({
                   {ent.type !== 'quest_objective' && ent.type !== 'bookmark' && (
                     <button
                       onClick={() => { handleDeleteEntity(ent); setContextMenu(null); }}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.12)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      🗑 {getDeleteLabel(ent.type, ru)}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Trash size={12} color="#ff6b6b" /><span>{getDeleteLabel(ent.type, ru)}</span></span>
                     </button>
                   )}
                 </>
@@ -4828,11 +4834,11 @@ export default function TacticalMap({
                       navigator.clipboard.writeText(text).then(() => toast.success(t('toast_coords_copied'))).catch(() => toast.error(ru ? 'Не удалось.' : 'Failed.'));
                       setContextMenu(null);
                     }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    📋 {ru ? 'Копировать координаты' : 'Copy Coordinates'}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Clipboard size={12} /><span>{ru ? 'Копировать координаты' : 'Copy Coordinates'}</span></span>
                   </button>
 
                   <div style={{ height: '1px', background: 'var(--border-color)', opacity: 0.4, margin: '2px 0' }} />
@@ -4915,11 +4921,11 @@ export default function TacticalMap({
                   ) : (
                     <button
                       onClick={() => setContextMenu(prev => ({ ...prev, showBookmark: true, bkmNameInput: '', bkmColorInput: '#74b9ff' }))}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      ⭐ {ru ? 'Создать закладку' : 'Create Bookmark'}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Star size={12} /><span>{ru ? 'Создать закладку' : 'Create Bookmark'}</span></span>
                     </button>
                   )}
 
@@ -4935,21 +4941,21 @@ export default function TacticalMap({
                             toast.success(ru ? `Вейпойнт #${wps.length + 1} добавлен в ${p.Name || `Патруль #${activePatrolDrawIndex + 1}`}` : `Waypoint #${wps.length + 1} added`);
                             setContextMenu(null);
                           }}
-                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                          📌 {ru ? `Добавить вейпойнт → ${patrols[activePatrolDrawIndex].Name || `Патруль #${activePatrolDrawIndex + 1}`}` : `Add Waypoint → ${patrols[activePatrolDrawIndex].Name || `Patrol #${activePatrolDrawIndex + 1}`}`}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Navigation size={12} /><span>{ru ? `Добавить вейпойнт → ${patrols[activePatrolDrawIndex].Name || `Патруль #${activePatrolDrawIndex + 1}`}` : `Add Waypoint → ${patrols[activePatrolDrawIndex].Name || `Patrol #${activePatrolDrawIndex + 1}`}`}</span></span>
                         </button>
                       ) : (
                         <>
                           <button
                             onClick={() => setContextMenu(prev => ({ ...prev, showPatrols: !prev.showPatrols, showSpawnerTriggers: false, showSpawn: false }))}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                           >
-                            <span>📌 {ru ? 'Добавить вейпойнт' : 'Add Waypoint'}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Navigation size={12} /><span>{ru ? 'Добавить вейпойнт' : 'Add Waypoint'}</span></span>
                             <span style={{ opacity: 0.5, fontSize: '10px' }}>{contextMenu.showPatrols ? '▲' : '▶'}</span>
                           </button>
                           {contextMenu.showPatrols && (
@@ -4997,22 +5003,22 @@ export default function TacticalMap({
                         }
                         setContextMenu(null);
                       }}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      📍 {ru ? `Добавить точку спавна в: ${selectedEntity.name}` : `Add spawn point to: ${selectedEntity.name}`}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.MapPin size={12} /><span>{ru ? `Добавить точку спавна в: ${selectedEntity.name}` : `Add spawn point to: ${selectedEntity.name}`}</span></span>
                     </button>
                   ) : (
                     allTriggers.length > 0 && (
                       <>
                         <button
                           onClick={() => setContextMenu(prev => ({ ...prev, showSpawnerTriggers: !prev.showSpawnerTriggers, showPatrols: false, showSpawn: false }))}
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                          <span>📍 {t('map_add_spawner_point') || 'Add MPG Spawn Point'}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.MapPin size={12} /><span>{t('map_add_spawner_point') || 'Add MPG Spawn Point'}</span></span>
                           <span style={{ opacity: 0.5, fontSize: '10px' }}>{contextMenu.showSpawnerTriggers ? '▲' : '▶'}</span>
                         </button>
                         {contextMenu.showSpawnerTriggers && (
@@ -5051,11 +5057,11 @@ export default function TacticalMap({
                   {/* Quick Spawn */}
                   <button
                     onClick={() => setContextMenu(prev => ({ ...prev, showSpawn: !prev.showSpawn, showPatrols: false, showSpawnerTriggers: false, spawnType: null, spawnName: '', spawnRadius: 150 }))}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'transparent', border: 'none', color: 'var(--text-glow)', cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    <span>⚡ {ru ? 'Быстрый спавн' : 'Quick Spawn'}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Icon.Zap size={12} /><span>{ru ? 'Быстрый спавн' : 'Quick Spawn'}</span></span>
                     <span style={{ opacity: 0.5, fontSize: '10px' }}>{contextMenu.showSpawn ? '▲' : '▶'}</span>
                   </button>
 
@@ -5064,18 +5070,19 @@ export default function TacticalMap({
                       {!contextMenu.spawnType ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {[
-                            { type: 'safezone', label: ru ? '🛡 Безопасная зона' : '🛡 Safezone', color: '#6ecb8a' },
-                            { type: 'roaming_location', label: ru ? '🌍 Roaming Location' : '🌍 Roaming Location', color: '#82b4f5' },
-                            { type: 'nogo_area', label: ru ? '🚫 NoGo Area' : '🚫 NoGo Area', color: '#f08080' },
-                            { type: 'spawner_trigger', label: ru ? '👾 Триггер спавнера MPG' : '👾 MPG Spawner Trigger', color: '#ff7675' }
-                          ].map(({ type, label, color }) => (
+                            { type: 'safezone', label: ru ? 'Безопасная зона (Safezone)' : 'Safezone', IconComp: Icon.Shield, color: '#6ecb8a' },
+                            { type: 'roaming_location', label: 'Roaming Location', IconComp: Icon.Globe, color: '#82b4f5' },
+                            { type: 'nogo_area', label: 'NoGo Area', IconComp: Icon.Ban, color: '#f08080' },
+                            { type: 'spawner_trigger', label: ru ? 'Триггер спавнера MPG' : 'MPG Spawner Trigger', IconComp: Icon.Bot, color: '#ff7675' }
+                          ].map(({ type, label, IconComp, color }) => (
                             <button key={type}
                               onClick={() => setContextMenu(prev => ({ ...prev, spawnType: type, spawnName: '', spawnRadius: 150, spawnFile: spawnerFiles[0] || '' }))}
-                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 8px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '2px', color, cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-mono)', transition: 'background 0.1s' }}
+                              style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '2px', color, cursor: 'pointer', fontSize: '11px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.09)'}
                               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
                             >
-                              {label}
+                              <IconComp size={12} color={color} />
+                              <span>{label}</span>
                             </button>
                           ))}
                         </div>
@@ -5243,7 +5250,7 @@ export default function TacticalMap({
                 marginTop: '2px'
               }}
             >
-              📋 {t('map_copy_vector')}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Clipboard size={12} /><span>{t('map_copy_vector')}</span></span>
             </button>
 
             {/* Roaming Specific Fields */}
@@ -5446,130 +5453,145 @@ export default function TacticalMap({
         {/* Spawn Modal Overlay */}
         {showSpawnModal && (
           <div style={{
-            position: 'absolute',
+            position: 'fixed',
             top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'rgba(0,0,0,0.85)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999
+            zIndex: 99999,
+            backdropFilter: 'blur(3px)',
           }}>
-            <form 
-              onSubmit={handleSpawnSubmit}
-              style={{
-                background: 'var(--bg-secondary)',
-                border: '2px solid var(--border-color)',
-                borderRadius: '2px',
-                padding: '24px',
-                width: '380px',
-                boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '16px'
-              }}
-            >
-              <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                <div style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '2px' }}>// {t('map_spawn_new_entity')}</div>
-                <h3 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)' }}>{t('map_create_map_point')}</h3>
+            <div style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-glow)',
+              borderRadius: '4px',
+              width: '480px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.8)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}>
+              <div style={{ padding: '14px 20px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '1px', fontFamily: 'var(--font-mono)' }}>// {t('map_spawn_new_entity')}</div>
+                  <div style={{ margin: '2px 0 0 0', fontFamily: 'var(--font-heading)', color: 'var(--text-glow)', fontWeight: 'bold', fontSize: '13px' }}>{t('map_create_map_point')}</div>
+                </div>
+                <button onClick={() => setShowSpawnModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>×</button>
               </div>
 
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                COORDINATES: X = {spawnCoords.x}, Z = {spawnCoords.z}
-              </div>
+              <form 
+                onSubmit={handleSpawnSubmit}
+                style={{
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px'
+                }}
+              >
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', background: 'var(--bg-primary)', padding: '6px 10px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
+                  📍 COORDINATES: X = <strong style={{ color: 'var(--text-glow)' }}>{spawnCoords.x}</strong>, Z = <strong style={{ color: 'var(--text-glow)' }}>{spawnCoords.z}</strong>
+                </div>
 
-              <div className="form-group">
-                <label>{t('map_spawn_modal_type')}</label>
-                <select 
-                  value={spawnType} 
-                  onChange={e => {
-                    const newType = e.target.value;
-                    setSpawnType(newType);
-                    if (newType === 'spawner_trigger') {
-                      const paths = Object.keys(configs).filter(p => {
-                        const lower = p.toLowerCase();
-                        return lower.endsWith('.json') && (lower.includes('mpg_spawner/points/') || lower.startsWith('points/') || lower.includes('/points/'));
-                      }).sort();
-                      if (paths.length > 0 && !targetPointsFilePath) {
-                        setTargetPointsFilePath(paths[0]);
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('map_spawn_modal_type')}</label>
+                  <select 
+                    value={spawnType} 
+                    onChange={e => {
+                      const newType = e.target.value;
+                      setSpawnType(newType);
+                      if (newType === 'spawner_trigger') {
+                        const paths = Object.keys(configs).filter(p => {
+                          const lower = p.toLowerCase();
+                          return lower.endsWith('.json') && (lower.includes('mpg_spawner/points/') || lower.startsWith('points/') || lower.includes('/points/'));
+                        }).sort();
+                        if (paths.length > 0 && !targetPointsFilePath) {
+                          setTargetPointsFilePath(paths[0]);
+                        }
                       }
-                    }
-                  }}
-                >
-                  <option value="airdrop">{t('map_opt_airdrop')}</option>
-                  <option value="npc">{t('map_opt_npc')}</option>
-                  <option value="safezone">{t('map_opt_safezone')}</option>
-                  <option value="traderzone">{t('map_opt_trader')}</option>
-                  <option value="nogo_area">{t('map_opt_nogo')}</option>
-                  <option value="roaming_location">{t('map_opt_roaming')}</option>
-                  <option value="spawner_trigger">{t('map_opt_spawner') || "MPG SPAWNER TRIGGER"}</option>
-                </select>
-              </div>
-
-              {spawnType === 'spawner_trigger' && (
-                <div className="form-group">
-                  <label>{lang === 'ru' ? 'Целевой файл точек' : 'Target Points File'}</label>
-                  <select
-                    value={targetPointsFilePath}
-                    onChange={e => setTargetPointsFilePath(e.target.value)}
-                    required
+                    }}
+                    style={{ width: '100%', padding: '8px 10px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-glow)' }}
                   >
-                    {Object.keys(configs)
-                      .filter(p => {
-                        const lower = p.toLowerCase();
-                        return lower.endsWith('.json') && (lower.includes('mpg_spawner/points/') || lower.startsWith('points/') || lower.includes('/points/'));
-                      })
-                      .sort()
-                      .map(path => {
-                        const name = path.split('/').pop();
-                        return (
-                          <option key={path} value={path}>
-                            {name}
-                          </option>
-                        );
-                      })}
+                    <option value="airdrop">{t('map_opt_airdrop')}</option>
+                    <option value="npc">{t('map_opt_npc')}</option>
+                    <option value="safezone">{t('map_opt_safezone')}</option>
+                    <option value="traderzone">{t('map_opt_trader')}</option>
+                    <option value="nogo_area">{t('map_opt_nogo')}</option>
+                    <option value="roaming_location">{t('map_opt_roaming')}</option>
+                    <option value="spawner_trigger">{t('map_opt_spawner') || "MPG SPAWNER TRIGGER"}</option>
                   </select>
                 </div>
-              )}
 
-              <div className="form-group">
-                <label>{t('map_spawn_modal_name')}</label>
-                <input
-                  type="text"
-                  required
-                  value={spawnName}
-                  onChange={e => setSpawnName(e.target.value)}
-                  placeholder="ENTER UNIQUE NAME..."
-                />
-              </div>
+                {spawnType === 'spawner_trigger' && (
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{lang === 'ru' ? 'Целевой файл точек' : 'Target Points File'}</label>
+                    <select
+                      value={targetPointsFilePath}
+                      onChange={e => setTargetPointsFilePath(e.target.value)}
+                      required
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-glow)' }}
+                    >
+                      {Object.keys(configs)
+                        .filter(p => {
+                          const lower = p.toLowerCase();
+                          return lower.endsWith('.json') && (lower.includes('mpg_spawner/points/') || lower.startsWith('points/') || lower.includes('/points/'));
+                        })
+                        .sort()
+                        .map(path => {
+                          const name = path.split('/').pop();
+                          return (
+                            <option key={path} value={path}>
+                              {name}
+                            </option>
+                          );
+                        })}
+                    </select>
+                  </div>
+                )}
 
-              {spawnType === 'npc' ? (
-                <div className="form-group">
-                  <label>{t('map_spawn_modal_npc_class')}</label>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('map_spawn_modal_name')}</label>
                   <input
                     type="text"
                     required
-                    value={npcClassName}
-                    onChange={e => setNpcClassName(e.target.value)}
-                    placeholder="e.g. ExpansionQuestNPCDenis"
+                    value={spawnName}
+                    onChange={e => setSpawnName(e.target.value)}
+                    placeholder="ENTER UNIQUE NAME..."
+                    style={{ width: '100%', padding: '8px 10px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-glow)' }}
                   />
                 </div>
-              ) : (
-                <div className="form-group">
-                  <label>{t('map_spawn_modal_radius')}</label>
-                  <input
-                    type="number"
-                    required
-                    value={spawnRadius}
-                    onChange={e => setSpawnRadius(e.target.value)}
-                  />
-                </div>
-              )}
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                <button type="submit" className="btn btn-accent" style={{ flex: 1, justifyContent: 'center' }}>{t('map_spawn_modal_btn')}</button>
-                <button type="button" className="btn" onClick={() => setShowSpawnModal(false)} style={{ flex: 1, justifyContent: 'center' }}>{t('modal_confirm_cancel')}</button>
-              </div>
-            </form>
+                {spawnType === 'npc' ? (
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('map_spawn_modal_npc_class')}</label>
+                    <input
+                      type="text"
+                      required
+                      value={npcClassName}
+                      onChange={e => setNpcClassName(e.target.value)}
+                      placeholder="e.g. ExpansionQuestNPCDenis"
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-glow)' }}
+                    />
+                  </div>
+                ) : (
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('map_spawn_modal_radius')}</label>
+                    <input
+                      type="number"
+                      required
+                      value={spawnRadius}
+                      onChange={e => setSpawnRadius(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-glow)' }}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px', justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn" onClick={() => setShowSpawnModal(false)} style={{ padding: '6px 14px', fontSize: '11px' }}>{t('modal_confirm_cancel')}</button>
+                  <button type="submit" className="btn btn-accent" style={{ padding: '6px 18px', fontSize: '11px', fontWeight: 'bold' }}>✓ {t('map_spawn_modal_btn')}</button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>

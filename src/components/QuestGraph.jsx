@@ -1,3 +1,4 @@
+import { Icon } from './common/Icons';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import FormCard from './shared/FormCard';
@@ -1930,10 +1931,11 @@ export default function QuestGraph({
         flexShrink: 0
       }}>
         {[
-          { id: 'graph', label: t('quest_tab_flow') || "Quest Graph", icon: "🗺️" },
-          { id: 'npcs', label: t('quest_tab_npcs') || "Quest NPCs", icon: "👤" }
+          { id: 'graph', label: t('quest_tab_flow') || "Quest Graph", IconComp: Icon.Map },
+          { id: 'npcs', label: t('quest_tab_npcs') || "Quest NPCs", IconComp: Icon.User }
         ].map(tab => {
           const isActive = activeSubTab === tab.id;
+          const IconComp = tab.IconComp;
           return (
             <button
               key={tab.id}
@@ -1953,12 +1955,12 @@ export default function QuestGraph({
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: '8px',
                 height: '100%',
                 transition: 'all 0.15s ease'
               }}
             >
-              <span>{tab.icon}</span>
+              <IconComp size={14} color={isActive ? 'var(--text-glow)' : 'currentColor'} />
               <span>{tab.label}</span>
             </button>
           );
@@ -2447,10 +2449,10 @@ export default function QuestGraph({
           alignItems: 'center'
         }}>
           <button className="btn" onClick={handleCreateQuest} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }}>
-            + {lang === 'ru' ? 'Быстрый квест' : 'Quick Quest'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Plus size={12} /><span>{lang === 'ru' ? 'Быстрый квест' : 'Quick Quest'}</span></span>
           </button>
           <button className="btn btn-accent" onClick={() => { setShowQuestWizard(true); setWizardStep(1); }} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }}>
-            🧙‍♂️ {lang === 'ru' ? 'Конструктор квестов' : 'Quest Builder'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Zap size={12} /><span>{lang === 'ru' ? 'Конструктор квестов' : 'Quest Builder'}</span></span>
           </button>
           <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
           <button className="btn" onClick={() => setZoom(prev => Math.min(prev * 1.2, 3))} style={{ padding: '4px 8px', fontSize: '12px' }}>+</button>
@@ -2474,13 +2476,13 @@ export default function QuestGraph({
                 onClick={handleLinkSelectedSequentially} 
                 style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 'bold' }}
               >
-                🔗 {t('quest_btn_link_selected') || "Link Selected"}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Link size={12} /><span>{t('quest_btn_link_selected') || "Link Selected"}</span></span>
               </button>
             </>
           )}
           <div style={{ width: '1px', height: '16px', background: 'var(--border-color)' }} />
           <button className="btn btn-danger" onClick={runQuestAudit} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }} title="Run circular references, orphan objectives, and link validations">
-            {t('quest_audit_btn') || "🛠️ DIAGNOSTICS"}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Wrench size={12} /><span>{t('quest_audit_btn') || "DIAGNOSTICS"}</span></span>
           </button>
         </div>
 
@@ -2495,38 +2497,44 @@ export default function QuestGraph({
               top: questCtxMenu.py,
               left: questCtxMenu.px,
               zIndex: 99999,
-              background: 'rgba(7,9,7,0.97)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '3px',
-              boxShadow: '0 4px 24px rgba(0,0,0,0.7)',
-              overflow: 'hidden',
-              minWidth: '220px',
-              fontFamily: 'var(--font-mono)',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-glow)',
+              borderRadius: '4px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.85)',
+              padding: '4px 0',
+              minWidth: '240px',
+              fontFamily: 'var(--font-heading)',
+              fontSize: '12px',
+              letterSpacing: '0.4px',
+              backdropFilter: 'blur(4px)',
               pointerEvents: 'auto',
             }}
           >
             {/* Header label */}
-            <div style={{ padding: '4px 10px', fontSize: '9px', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)', letterSpacing: '0.08em' }}>
+            <div style={{ padding: '8px 14px', fontSize: '11px', color: 'var(--text-glow)', letterSpacing: '0.8px', fontWeight: 'bold', fontFamily: 'var(--font-heading)', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
               {questCtxMenu.type === 'node' && `// QUEST_NODE: ID ${questCtxMenu.node.id}`}
               {questCtxMenu.type === 'connection' && `// CONNECTION: ${questCtxMenu.connType.toUpperCase()}`}
-              {questCtxMenu.type === 'canvas' && '// QUEST_GRAPH'}
+              {questCtxMenu.type === 'canvas' && '// QUEST_GRAPH ACTIONS'}
             </div>
 
             {/* ── NODE CONTEXT ── */}
             {questCtxMenu.type === 'node' && (() => {
               const ru = lang === 'ru';
               const n = questCtxMenu.node;
-              const BTN = (onClick, color, label) => (
+              const BTN = (onClick, color, label, IconComp) => (
                 <button
                   onClick={onClick}
-                  style={{ display:'block', width:'100%', textAlign:'left', padding:'7px 12px', background:'transparent', border:'none', color: color || 'var(--text-glow)', cursor:'pointer', fontSize:'11px', fontFamily:'var(--font-mono)', transition:'background 0.1s' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: color || 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', transition: 'background 0.1s' }}
                   onMouseEnter={e => e.currentTarget.style.background = color === '#ff6b6b' ? 'rgba(255,80,80,0.12)' : 'rgba(255,255,255,0.07)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >{label}</button>
+                >
+                  {IconComp && <IconComp size={12} color={color || 'currentColor'} />}
+                  <span>{label}</span>
+                </button>
               );
               return (
                 <>
-                  <div style={{ padding:'5px 12px', fontSize:'10px', color:'var(--text-secondary)', borderBottom:'1px solid rgba(255,255,255,0.05)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  <div style={{ padding: '6px 14px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-heading)', borderBottom: '1px solid rgba(255,255,255,0.05)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {n.title}
                   </div>
 
@@ -2536,12 +2544,12 @@ export default function QuestGraph({
                     const full = positionedNodes.find(pn => pn.id === n.id);
                     if (full) zoomToNode(full);
                     setQuestCtxMenu(null);
-                  }, null, `🔍 ${ru ? 'Выбрать и приблизить' : 'Select & Zoom To'}`)}
+                  }, null, ru ? 'Выбрать и приблизить' : 'Select & Zoom To', Icon.Search)}
 
                   {BTN(() => {
                     if (onOpenFile) onOpenFile(n.filePath);
                     setQuestCtxMenu(null);
-                  }, null, `📂 ${ru ? 'Открыть в редакторе' : 'Open in Editor'}`)}
+                  }, null, ru ? 'Открыть в редакторе' : 'Open in Editor', Icon.Folder)}
 
                   <div style={{ height:'1px', background:'var(--border-color)', opacity:0.4, margin:'4px 0' }} />
 
@@ -2549,12 +2557,12 @@ export default function QuestGraph({
                     const text = String(n.id);
                     navigator.clipboard.writeText(text).catch(() => {});
                     setQuestCtxMenu(null);
-                  }, null, `📋 ${ru ? 'Копировать ID' : 'Copy Quest ID'}`)}
+                  }, null, ru ? 'Копировать ID' : 'Copy Quest ID', Icon.Clipboard)}
 
                   {BTN(() => {
                     navigator.clipboard.writeText(n.title).catch(() => {});
                     setQuestCtxMenu(null);
-                  }, null, `📋 ${ru ? 'Копировать название' : 'Copy Quest Title'}`)}
+                  }, null, ru ? 'Копировать название' : 'Copy Quest Title', Icon.Clipboard)}
 
                   <div style={{ height:'1px', background:'var(--border-color)', opacity:0.4, margin:'4px 0' }} />
 
@@ -2569,13 +2577,13 @@ export default function QuestGraph({
                     }
                     setQuestCtxMenu(null);
                     setTimeout(() => handleDuplicateQuest(), 50);
-                  }, null, `👯 ${ru ? 'Дублировать квест' : 'Duplicate Quest'}`)}
+                  }, null, ru ? 'Дублировать квест' : 'Duplicate Quest', Icon.Duplicate)}
 
                   {BTN(() => {
                     handleSeverAllConnections(n.id);
-                  }, '#ff6b6b', `✂️ ${ru ? 'Разорвать все связи' : 'Sever All Connections'}`)}
+                  }, '#ff6b6b', ru ? 'Разорвать все связи' : 'Sever All Connections', Icon.Scissors)}
 
-                  {BTN(() => { if (!selectedQuestIdsRef.current.has(n.id)) { const ns = new Set([n.id]); selectedQuestIdsRef.current = ns; setSelectedQuestIds(new Set(ns)); setSelectedQuest(n); setPrevSelectedQuestId(n.id); if (onSelectQuest) onSelectQuest(n.id); } setQuestCtxMenu(null); setTimeout(() => handleDeleteQuest(n), 50); }, '#ff6b6b', ru ? (selectedQuestIds.has(n.id) && selectedQuestIds.size > 1 ? `\u0423\u0434\u0430\u043b\u0438\u0442\u044c ${selectedQuestIds.size} \u043a\u0432\u0435\u0441\u0442\u0430` : '\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u043a\u0432\u0435\u0441\u0442') : (selectedQuestIds.has(n.id) && selectedQuestIds.size > 1 ? `Delete ${selectedQuestIds.size} Quests` : 'Delete Quest'))}
+                  {BTN(() => { if (!selectedQuestIdsRef.current.has(n.id)) { const ns = new Set([n.id]); selectedQuestIdsRef.current = ns; setSelectedQuestIds(new Set(ns)); setSelectedQuest(n); setPrevSelectedQuestId(n.id); if (onSelectQuest) onSelectQuest(n.id); } setQuestCtxMenu(null); setTimeout(() => handleDeleteQuest(n), 50); }, '#ff6b6b', ru ? (selectedQuestIds.has(n.id) && selectedQuestIds.size > 1 ? `Удалить ${selectedQuestIds.size} квеста` : 'Удалить квест') : (selectedQuestIds.has(n.id) && selectedQuestIds.size > 1 ? `Delete ${selectedQuestIds.size} Quests` : 'Delete Quest'), Icon.Trash)}
                 </>
               );
             })()}

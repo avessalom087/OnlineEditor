@@ -1,3 +1,5 @@
+import { parseClassnamesFromText } from '../utils/classnamesParser';
+import { Icon } from './common/Icons';
 import React, { useMemo, useState, useEffect } from 'react';
 import { validateConfig, cleanJsonComments } from '../utils/diagnostics';
 import { useToast } from './ToastManager';
@@ -73,6 +75,9 @@ export default function Dashboard({
   };
   const [backups, setBackups] = useState([]);
   const [isParsingXml, setIsParsingXml] = useState(false);
+  const [showDbImportModal, setShowDbImportModal] = useState(false);
+  const [dbImportText, setDbImportText] = useState('');
+  const [dbImportSource, setDbImportSource] = useState('');
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [errorBackups, setErrorBackups] = useState(null);
   const [expandedBackups, setExpandedBackups] = useState({});
@@ -315,11 +320,11 @@ export default function Dashboard({
       {/* Sub-Tabs Navigation */}
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
         {[
-          { id: 'status', label: t('dash_sub_status'), icon: '🖥️' },
-          { id: 'changelog', label: t('dash_sub_changelog'), icon: '📊', count: dirtyFiles.length },
-          { id: 'backups', label: t('dash_sub_backups'), icon: '📂' },
-          { id: 'validator', label: t('tab_validator'), icon: '🔍' },
-          { id: 'analytics', label: t('dash_sub_analytics') || 'SERVER ANALYTICS', icon: '📈' }
+          { id: 'status', label: t('dash_sub_status'), IconComp: Icon.Terminal },
+          { id: 'changelog', label: t('dash_sub_changelog'), IconComp: Icon.Chart, count: dirtyFiles.length },
+          { id: 'backups', label: t('dash_sub_backups'), IconComp: Icon.Folder },
+          { id: 'validator', label: t('tab_validator'), IconComp: Icon.Search },
+          { id: 'analytics', label: t('dash_sub_analytics') || 'SERVER ANALYTICS', IconComp: Icon.Pricing }
         ].map(tab => (
           <button
             key={tab.id}
@@ -341,7 +346,7 @@ export default function Dashboard({
               borderRadius: '2px',
             }}
           >
-            <span>{tab.icon}</span>
+            <tab.IconComp size={14} />
             <span>{tab.label}</span>
             {tab.count !== undefined && tab.count > 0 && (
               <span style={{
@@ -609,55 +614,14 @@ export default function Dashboard({
 
           </div>
 
-          {/* Server Item Database (types.xml uploader) */}
+          {/* Server Item Database (types.xml / universal uploader) */}
           <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', position: 'relative' }}>
-            {isParsingXml && (
-              <div style={{
-                position: 'absolute',
-                top: 0, left: 0, right: 0, bottom: 0,
-                background: 'rgba(7, 9, 7, 0.75)',
-                backdropFilter: 'blur(4px)',
-                WebkitBackdropFilter: 'blur(4px)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '12px',
-                zIndex: 10,
-                borderRadius: '2px'
-              }}>
-                <style dangerouslySetInnerHTML={{__html: `
-                  @keyframes spin-xml {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                  }
-                `}} />
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  border: '3px solid rgba(255,255,255,0.08)',
-                  borderTop: '3px solid var(--accent-primary)',
-                  borderRadius: '50%',
-                  animation: 'spin-xml 0.8s linear infinite'
-                }} />
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
-                  color: 'var(--text-glow)',
-                  fontWeight: 'bold',
-                  letterSpacing: '1px',
-                  textShadow: '0 0 8px var(--accent-glow)'
-                }}>
-                  {lang === 'ru' ? 'ПАРСИНГ БАЗЫ ДАННЫХ...' : 'PARSING DATABASE...'}
-                </div>
-              </div>
-            )}
-
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', fontWeight: 'bold' }}>{t('db_title')}</div>
                 <h2 style={{ margin: '4px 0 0 0', fontFamily: 'var(--font-heading)', fontSize: '18px', color: 'var(--text-glow)', display: 'flex', alignItems: 'center', gap: '6px' }} className="label-with-help">
-                  {t('db_header')}
+                  <Icon.Boxes size={18} />
+                  <span>{lang === 'ru' ? 'БАЗА ПРЕДМЕТОВ СЕРВЕРА (TYPES.XML / МОДЫ)' : 'SERVER ITEMS DATABASE (TYPES.XML / MODS)'}</span>
                   <HelpIcon tipKey="tip_dash_xml_db" />
                 </h2>
               </div>
@@ -668,179 +632,60 @@ export default function Dashboard({
                     if (window.confirm(t('db_clear_confirm'))) {
                       localStorage.removeItem('dayz_editor_xml_items');
                       onUpdateXmlItems([]);
+                      toast.success(lang === 'ru' ? 'База предметов очищена' : 'Items database cleared');
                     }
                   }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 >
-                  {t('db_clear_btn')}
+                  <Icon.Trash size={12} />
+                  <span>{t('db_clear_btn')}</span>
                 </button>
               )}
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.5' }}>
-                {t('db_desc')}
+                {lang === 'ru'
+                  ? 'Загрузите файл types.xml вашего сервера, модовые списки предметов или вставьте текст/логи. База используется для автодополнения и валидации во всех редакторах проекта.'
+                  : 'Upload your server types.xml, modded item files, or paste raw text. The database powers autocomplete and validation across all editors.'}
               </p>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px' }}>
-                <label className="btn btn-accent" style={{ display: 'inline-block', cursor: 'pointer', padding: '10px 16px', margin: 0 }}>
-                  {t('db_choose_btn')}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
+                <label className="btn btn-accent" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '9px 16px', margin: 0 }}>
+                  <Icon.Import size={13} />
+                  <span>{lang === 'ru' ? 'ВЫБРАТЬ ФАЙЛ (.XML, .TXT, .JSON, .LOG)' : 'CHOOSE FILE (.XML, .TXT, .JSON, .LOG)'}</span>
                   <input 
                     type="file" 
-                    accept=".xml" 
-                    onChange={(event) => {
-                      const file = event.target.files[0];
+                    accept=".xml,.txt,.json,.csv,.log" 
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
                       if (!file) return;
-
-                      const mergeChoice = Array.isArray(xmlItems) && xmlItems.length > 0
-                        ? window.confirm(t('db_merge_confirm', { count: xmlItems.length }))
-                        : false;
-
-                      setIsParsingXml(true);
-
                       const reader = new FileReader();
-                      reader.onload = (e) => {
-                        try {
-                          const text = e.target.result;
-
-                          // Inline Web Worker from blob
-                          const workerCode = `
-                            self.onmessage = function(e) {
-                              try {
-                                const { text, xmlItems, mergeChoice } = e.data;
-                                
-                                // Clean comments
-                                const cleanText = text.replace(/<!--[\\s\\S]*?-->/g, '');
-                                
-                                // Fast regex parser
-                                const regex = /<type\\s+name=["']([^"']+)["']/g;
-                                const newItems = [];
-                                let fileDuplicatesCount = 0;
-                                const seenInFile = new Set();
-                                
-                                let match;
-                                while ((match = regex.exec(cleanText)) !== null) {
-                                  const name = match[1];
-                                  if (name) {
-                                    if (seenInFile.has(name)) {
-                                      fileDuplicatesCount++;
-                                    } else {
-                                      seenInFile.add(name);
-                                      newItems.push(name);
-                                    }
-                                  }
-                                }
-                                
-                                if (newItems.length === 0) {
-                                  self.postMessage({ success: false, error: 'no_tags' });
-                                  return;
-                                }
-                                
-                                let finalItems = [];
-                                let mergeCount = 0;
-                                let databaseDuplicatesCount = 0;
-                                let mergedMode = false;
-                                
-                                if (mergeChoice && xmlItems && xmlItems.length > 0) {
-                                  mergedMode = true;
-                                  const existingSet = new Set(xmlItems);
-                                  newItems.forEach(item => {
-                                    if (existingSet.has(item)) {
-                                      databaseDuplicatesCount++;
-                                    } else {
-                                      existingSet.add(item);
-                                      mergeCount++;
-                                    }
-                                  });
-                                  finalItems = Array.from(existingSet);
-                                } else {
-                                  finalItems = newItems;
-                                }
-                                
-                                self.postMessage({
-                                  success: true,
-                                  finalItems,
-                                  newItemsLength: newItems.length,
-                                  fileDuplicatesCount,
-                                  mergeCount,
-                                  databaseDuplicatesCount,
-                                  mergedMode
-                                });
-                              } catch (err) {
-                                self.postMessage({ success: false, error: err.message });
-                              }
-                            };
-                          `;
-
-                          const blob = new Blob([workerCode], { type: 'application/javascript' });
-                          const worker = new Worker(URL.createObjectURL(blob));
-
-                          worker.onmessage = (evt) => {
-                            const data = evt.data;
-                            setIsParsingXml(false);
-                            worker.terminate();
-
-                            if (data.success) {
-                              const {
-                                finalItems,
-                                newItemsLength,
-                                fileDuplicatesCount,
-                                mergeCount,
-                                databaseDuplicatesCount,
-                                mergedMode
-                              } = data;
-
-                              onUpdateXmlItems(finalItems);
-
-                              if (mergedMode) {
-                                alert(
-                                  t('db_import_completed_merge', {
-                                    file: file.name,
-                                    parsed: newItemsLength,
-                                    internal: fileDuplicatesCount,
-                                    merged: mergeCount,
-                                    dbDupes: databaseDuplicatesCount,
-                                    total: finalItems.length
-                                  })
-                                );
-                              } else {
-                                alert(
-                                  t('db_import_completed_overwrite', {
-                                    file: file.name,
-                                    parsed: newItemsLength,
-                                    internal: fileDuplicatesCount,
-                                    total: finalItems.length
-                                  })
-                                );
-                              }
-                            } else {
-                              if (data.error === 'no_tags') {
-                                alert(t('db_no_tags'));
-                              } else {
-                                alert(t('db_parse_failed', { error: data.error }));
-                              }
-                            }
-                            event.target.value = '';
-                          };
-
-                          worker.onerror = (err) => {
-                            setIsParsingXml(false);
-                            worker.terminate();
-                            alert(t('db_parse_failed', { error: err.message }));
-                            event.target.value = '';
-                          };
-
-                          worker.postMessage({ text, xmlItems, mergeChoice });
-                        } catch (err) {
-                          setIsParsingXml(false);
-                          alert(t('db_parse_failed', { error: err.message }));
-                          event.target.value = '';
-                        }
+                      reader.onload = (event) => {
+                        const text = event.target.result || '';
+                        setDbImportText(text);
+                        setDbImportSource(file.name);
+                        setShowDbImportModal(true);
                       };
                       reader.readAsText(file);
+                      e.target.value = '';
                     }} 
                     style={{ display: 'none' }} 
                   />
                 </label>
+
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setDbImportText('');
+                    setDbImportSource('Direct Paste');
+                    setShowDbImportModal(true);
+                  }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px' }}
+                >
+                  <Icon.Clipboard size={13} />
+                  <span>{lang === 'ru' ? 'ВСТАВИТЬ СПИСКОМ / ТЕКСТОМ' : 'PASTE CLASSNAMES / TEXT'}</span>
+                </button>
 
                 <div style={{ fontSize: '13px', color: (Array.isArray(xmlItems) && xmlItems.length > 0) ? '#a6f5a6' : 'var(--text-secondary)' }}>
                   {(Array.isArray(xmlItems) && xmlItems.length > 0) ? (
@@ -852,6 +697,199 @@ export default function Dashboard({
               </div>
             </div>
           </div>
+
+          {/* 📦 Universal DB Import / Preview Modal */}
+          {showDbImportModal && (() => {
+            const existingSet = new Set((xmlItems || []).map(i => i.toLowerCase()));
+            const parsedItems = parseClassnamesFromText(dbImportText);
+            const newItems = parsedItems.filter(i => !existingSet.has(i.toLowerCase()));
+            const dupeItems = parsedItems.filter(i => existingSet.has(i.toLowerCase()));
+
+            const handleRemoveItem = (clsToRemove) => {
+              const regex = new RegExp(`\\b${clsToRemove}\\b`, 'gi');
+              setDbImportText(prev => prev.replace(regex, '').replace(/^[\r\n,;\s]+|[\r\n,;\s]+$/g, ''));
+            };
+
+            const handleAppendToDb = () => {
+              if (newItems.length === 0) return;
+              const merged = [...(xmlItems || []), ...newItems];
+              onUpdateXmlItems(merged);
+              setShowDbImportModal(false);
+              toast.success(lang === 'ru' ? `База пополнена: +${newItems.length} новых предметов (Всего: ${merged.length})` : `Database updated: +${newItems.length} items (Total: ${merged.length})`);
+            };
+
+            const handleOverwriteDb = () => {
+              if (parsedItems.length === 0) return;
+              onUpdateXmlItems(parsedItems);
+              setShowDbImportModal(false);
+              toast.success(lang === 'ru' ? `База перезаписана: ${parsedItems.length} предметов` : `Database overwritten: ${parsedItems.length} items`);
+            };
+
+            return (
+              <div style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(0,0,0,0.85)', zIndex: 99996,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backdropFilter: 'blur(3px)',
+              }}>
+                <div style={{
+                  width: '720px',
+                  maxWidth: '92vw',
+                  maxHeight: '90vh',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-glow)',
+                  borderRadius: '4px',
+                  boxShadow: '0 8px 40px rgba(0,0,0,0.8)',
+                  display: 'flex', flexDirection: 'column', overflow: 'hidden'
+                }}>
+                  {/* Header */}
+                  <div style={{ padding: '14px 20px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                        // {dbImportSource || 'Input'}
+                      </div>
+                      <div style={{ fontSize: '14px', color: 'var(--text-glow)', fontWeight: 'bold', fontFamily: 'var(--font-heading)', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Icon.Boxes size={16} />
+                        <span>{lang === 'ru' ? 'ПРЕДПРОСМОТР И ИМПОРТ В БАЗУ ПРЕДМЕТОВ СЕРВЕРА' : 'SERVER ITEMS DATABASE IMPORT & PREVIEW'}</span>
+                      </div>
+                    </div>
+                    <button onClick={() => setShowDbImportModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>×</button>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          {lang === 'ru' ? 'Текст / XML / Список класснеймов:' : 'Text / XML / Classnames list:'}
+                        </label>
+                        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: parsedItems.length > 0 ? '#4ade80' : 'var(--text-secondary)' }}>
+                          {lang === 'ru' ? `Распознано: ${parsedItems.length} (Новых: ${newItems.length})` : `Parsed: ${parsedItems.length} (New: ${newItems.length})`}
+                        </span>
+                      </div>
+                      <textarea
+                        rows={5}
+                        value={dbImportText}
+                        onChange={e => setDbImportText(e.target.value)}
+                        placeholder={`<type name="M4A1">\n<type name="AKM">\nor\nASMOND_AK74\nPlateCarrierVest`}
+                        style={{
+                          width: '100%',
+                          padding: '10px',
+                          background: 'var(--bg-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '3px',
+                          color: 'var(--text-glow)',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '12px',
+                          boxSizing: 'border-box'
+                        }}
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* Preview Cards */}
+                    {parsedItems.length > 0 && (
+                      <div style={{ background: 'var(--bg-primary)', padding: '12px 14px', borderRadius: '3px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Icon.Eye size={12} />
+                            <span>{lang === 'ru' ? 'РАСПОЗНАННЫЕ КЛАССНЕЙМЫ ДЛЯ БАЗЫ:' : 'PARSED CLASSNAMES:'}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '12px', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+                            <span style={{ color: '#4ade80' }}>
+                              ✓ {lang === 'ru' ? `Новых: ${newItems.length}` : `New: ${newItems.length}`}
+                            </span>
+                            {dupeItems.length > 0 && (
+                              <span style={{ color: '#fbbf24' }}>
+                                ⚠ {lang === 'ru' ? `Уже в базе: ${dupeItems.length}` : `Already in DB: ${dupeItems.length}`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '160px', overflowY: 'auto', padding: '4px 0' }}>
+                          {parsedItems.map(cls => {
+                            const isDupe = existingSet.has(cls.toLowerCase());
+                            return (
+                              <span
+                                key={cls}
+                                title={isDupe ? (lang === 'ru' ? 'Уже есть в базе данных' : 'Already in database') : (lang === 'ru' ? 'Новый уникальный предмет' : 'New unique item')}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '3px 8px',
+                                  background: isDupe ? 'rgba(251, 191, 36, 0.10)' : 'rgba(74, 222, 128, 0.12)',
+                                  border: isDupe ? '1px solid #fbbf24' : '1px solid #4ade80',
+                                  borderRadius: '2px',
+                                  fontSize: '11px',
+                                  fontFamily: 'var(--font-mono)',
+                                  color: isDupe ? 'var(--text-secondary)' : '#4ade80'
+                                }}
+                              >
+                                <span>{cls}</span>
+                                {isDupe && <span style={{ fontSize: '9px', opacity: 0.8 }}>({lang === 'ru' ? 'в базе' : 'in db'})</span>}
+                                <button
+                                  onClick={() => handleRemoveItem(cls)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'currentColor',
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                    fontSize: '12px',
+                                    opacity: 0.7,
+                                    lineHeight: 1
+                                  }}
+                                  title={lang === 'ru' ? 'Удалить из списка' : 'Remove from list'}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ padding: '14px 20px', background: 'var(--bg-tertiary)', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <button
+                      className="btn"
+                      onClick={() => setShowDbImportModal(false)}
+                      style={{ padding: '8px 16px' }}
+                    >
+                      {lang === 'ru' ? 'ОТМЕНА' : 'CANCEL'}
+                    </button>
+                    
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      {xmlItems && xmlItems.length > 0 && newItems.length > 0 && (
+                        <button
+                          className="btn btn-accent"
+                          onClick={handleAppendToDb}
+                          style={{ padding: '8px 18px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <Icon.Plus size={12} />
+                          <span>{lang === 'ru' ? `ДОПОЛНИТЬ БАЗУ (+${newItems.length})` : `APPEND TO DB (+${newItems.length})`}</span>
+                        </button>
+                      )}
+                      
+                      <button
+                        className="btn"
+                        disabled={parsedItems.length === 0}
+                        onClick={handleOverwriteDb}
+                        style={{ padding: '8px 18px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '6px', borderColor: 'var(--border-color)' }}
+                      >
+                        <Icon.Refresh size={12} />
+                        <span>{lang === 'ru' ? `ПЕРЕЗАПИСАТЬ БАЗУ (${parsedItems.length})` : `OVERWRITE DB (${parsedItems.length})`}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Console output HUD */}
           <div style={{ 

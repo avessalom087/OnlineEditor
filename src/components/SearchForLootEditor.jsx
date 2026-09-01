@@ -1,3 +1,4 @@
+import { Icon } from './common/Icons';
 import React, { useState, useMemo, useRef } from 'react';
 import { useTranslation } from '../utils/localization';
 import AutocompleteInput from './shared/AutocompleteInput';
@@ -1506,8 +1507,9 @@ export default function SearchForLootEditor({
                   {lang === 'ru' ? 'Далее >' : 'Next >'}
                 </button>
               ) : (
-                <button className="btn btn-accent" onClick={handleWizardGenerate}>
-                  {lang === 'ru' ? 'Создать связь! 🧙‍♂️' : 'Generate Relation! 🧙‍♂️'}
+                <button className="btn btn-accent" onClick={handleWizardGenerate} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <Icon.Zap size={12} />
+                  <span>{lang === 'ru' ? 'Создать связь' : 'Generate Relation'}</span>
                 </button>
               )}
             </div>
@@ -1593,7 +1595,7 @@ export default function SearchForLootEditor({
               style={{ padding: '2px 8px', fontSize: '9px', height: '18px', textTransform: 'none', letterSpacing: 'normal' }}
               onClick={handleRemoveDeadLoot}
             >
-              🗑️ {lang === 'ru' ? 'Удалить несуществующий лут' : 'Remove dead loot'}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Trash size={12} /><span>{lang === 'ru' ? 'Удалить несуществующий лут' : 'Remove dead loot'}</span></span>
             </button>
           )}
           <span style={{ color: 'var(--border-color)', opacity: 0.5 }}>|</span>
@@ -1639,7 +1641,7 @@ export default function SearchForLootEditor({
             onClick={handleAutoCleanup}
             title={lang === 'ru' ? 'Удалить пустые и неиспользуемые категории' : 'Prune empty and unused categories'}
           >
-            🧹 {lang === 'ru' ? 'Очистить' : 'Cleanup'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Refresh size={12} /><span>{lang === 'ru' ? 'Очистить' : 'Cleanup'}</span></span>
           </button>
         </div>
       )}
@@ -2238,7 +2240,7 @@ export default function SearchForLootEditor({
                   style={{ marginLeft: 'auto', fontSize: '11px', padding: '5px 12px' }}
                   onClick={() => { setShowWizard(true); setWizardStep(1); }}
                 >
-                  🧙‍♂️ {lang === 'ru' ? 'Конструктор лута' : 'Loot Builder'}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Zap size={12} /><span>{lang === 'ru' ? 'Конструктор лута' : 'Loot Builder'}</span></span>
                 </button>
                 {(() => {
                   const allExpanded = filtered.length > 0 && filtered.every(r => mapExpanded.has(r.id));
@@ -2257,9 +2259,9 @@ export default function SearchForLootEditor({
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1px', fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px', fontWeight: 'bold', padding: '0 4px' }}>
-                <span>🏠 {lang === 'ru' ? 'ЗДАНИЯ' : 'BUILDINGS'}</span>
-                <span>📦 {lang === 'ru' ? 'ЛУТ-КАТЕГОРИИ' : 'LOOT CATEGORIES'}</span>
-                <span>🔧 {lang === 'ru' ? 'ПРОКСИ' : 'ПРОКСИ'}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Building size={12} /><span>{lang === 'ru' ? 'ЗДАНИЯ' : 'BUILDINGS'}</span></span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Boxes size={12} /><span>{lang === 'ru' ? 'ЛУТ-КАТЕГОРИИ' : 'LOOT CATEGORIES'}</span></span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Wrench size={12} /><span>{lang === 'ru' ? 'ПРОКСИ' : 'PROXIES'}</span></span>
               </div>
 
               {filtered.length === 0 && (

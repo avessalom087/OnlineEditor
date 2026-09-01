@@ -1,3 +1,4 @@
+import { Icon } from './common/Icons';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import FormCard from './shared/FormCard';

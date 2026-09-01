@@ -1,3 +1,4 @@
+import { Icon } from './common/Icons';
 import React, { useState } from 'react';
 import { useTranslation } from '../utils/localization';
 
@@ -154,7 +155,7 @@ function FileTreeNode({ node, level, selectedPath, onSelectFile, dirtyFiles }) {
     >
       <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         <span style={{ marginRight: '8px', color: !success ? 'var(--danger-color)' : 'var(--text-secondary)' }}>
-          {!success ? '⚠' : '📄'}
+          {!success ? <Icon.AlertTriangle size={11} color="var(--warning-color)" /> : <Icon.FileText size={11} color="var(--text-secondary)" />}
         </span>
         <span style={{ 
           fontFamily: 'var(--font-mono)', 
@@ -268,7 +269,7 @@ export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirty
           pointerEvents: 'none',
           animation: 'pulseGlow 1.5s infinite alternate'
         }}>
-          <span style={{ fontSize: '32px', marginBottom: '12px' }}>📥</span>
+          <div style={{ marginBottom: '12px', color: 'var(--accent-primary)', display: 'flex', justifyContent: 'center' }}><Icon.Import size={32} /></div>
           <span style={{ fontFamily: 'var(--font-heading)', fontSize: '13px', letterSpacing: '2px', textAlign: 'center', padding: '0 20px', fontWeight: 'bold' }}>
             {lang === 'ru' ? 'ОТПУСТИТЕ JSON ДЛЯ ИМПОРТА' : 'DROP JSON FILE TO IMPORT'}
           </span>
@@ -381,7 +382,7 @@ export default function Sidebar({ configs, selectedFilePath, onSelectFile, dirty
               userSelect: 'none'
             }}
           >
-            <span>💾 {t('sidebar_backups_title')} ({backups.length})</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Save size={12} /><span>{t('sidebar_backups_title')} ({backups.length})</span></span>
             <span>{backupsCollapsed ? '▲' : '▼'}</span>
           </div>
           {!backupsCollapsed && (

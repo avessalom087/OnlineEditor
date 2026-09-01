@@ -1335,6 +1335,8 @@ function AppContent() {
                     <EconomyEditor
                       configs={configs} onChangeField={handleChangeField}
                       onSaveFile={handleSaveFile} onCreateFile={handleCreateFile}
+                      onDeleteFile={handleDeleteFile} onNavigateToMap={handleNavigateToMap}
+                      setCoordinatePicker={setCoordinatePicker} setActiveTab={setActiveTab}
                       xmlItems={xmlItems} onShowConfirm={setConfirmDialog}
                     />
                   </ErrorBoundary>

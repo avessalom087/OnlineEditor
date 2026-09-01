@@ -1,3 +1,4 @@
+import { Icon } from '../common/Icons';
 import React from 'react';
 
 /**
@@ -22,7 +23,7 @@ export default function CoordinatesInput({
   position = [0.0, 0.0, 0.0],
   onChange,
   onPickFromMap,
-  pickLabel = '🎯 Pick from Map',
+  pickLabel = 'Pick from Map',
   step = '0.1',
   layout = 'grid',
   indexLabel,
