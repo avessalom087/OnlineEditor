@@ -3001,14 +3001,14 @@ export default function AIBotsEditor({
 
                   <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                     <div className="card-hud">
-                      <h4>{t('ai_loot_drops_index', { count: configs[selectedLootDropPath].content.length || 0 })}</h4>
+                      <h4>{t('ai_loot_drops_index', { count: configs[selectedLootDropPath]?.content?.length || 0 })}</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
-                        {configs[selectedLootDropPath].content.length === 0 ? (
+                        {!configs[selectedLootDropPath]?.content || configs[selectedLootDropPath].content.length === 0 ? (
                           <div style={{ padding: '20px', border: '1px dashed var(--border-color)', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
                             {t('ai_loot_table_empty')}
                           </div>
                         ) : (
-                          configs[selectedLootDropPath].content.map((item, idx) => {
+                          (Array.isArray(configs[selectedLootDropPath]?.content) ? configs[selectedLootDropPath].content : []).map((item, idx) => {
                             const minH = item.Health?.[0]?.Min ?? 0.7;
                             const maxH = item.Health?.[0]?.Max ?? 1.0;
                             const minQ = item.Quantity?.Min ?? 1;

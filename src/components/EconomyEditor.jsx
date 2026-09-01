@@ -400,13 +400,41 @@ export default function EconomyEditor({
       }
     }
 
-    // 3. Fallback: Try trader zone
-    if (!foundObjectPos) {
-      const zonePath = `${prefix}traderzones/${traderName}_zone.json`;
-      const zoneFile = configs[zonePath];
-      if (zoneFile && zoneFile.success && Array.isArray(zoneFile.content?.Position)) {
-        foundObjectPos = [...zoneFile.content.Position];
+    // 3. Auto-detect SafeZone / TradeZone for this trader
+    let matchedZone = null;
+    const directZonePaths = [
+      `${prefix}traderzones/${traderName}_zone.json`,
+      `${prefix}traderzones/${traderName}.json`,
+      `${prefix}traderzones/trader_${traderName}.json`
+    ];
+    for (const zp of directZonePaths) {
+      if (configs[zp] && configs[zp].success) {
+        matchedZone = zp;
+        break;
       }
+    }
+
+    // Fallback search in all traderzones by trader name or proximity
+    if (!matchedZone) {
+      for (const [zp, zFile] of Object.entries(configs)) {
+        if (zp.toLowerCase().includes('traderzones/') && zFile.success && zFile.content) {
+          const zDisp = (zFile.content.m_DisplayName || '').toLowerCase();
+          const zBase = zp.split('/').pop().toLowerCase().replace('.json', '');
+          if (zDisp.includes(traderName.toLowerCase()) || zBase.includes(traderName.toLowerCase())) {
+            matchedZone = zp;
+            break;
+          }
+        }
+      }
+    }
+
+    if (matchedZone) {
+      setSelectedSafezonePath(matchedZone);
+      if (!foundObjectPos && Array.isArray(configs[matchedZone].content?.Position)) {
+        if (Array.isArray(configs[matchedZone]?.content?.Position)) foundObjectPos = [...configs[matchedZone].content.Position];
+      }
+    } else {
+      setSelectedSafezonePath('');
     }
 
     if (foundObjectPos) {
@@ -780,6 +808,20 @@ export default function EconomyEditor({
   };
 
   // 📦 Move / Copy items to another category
+  const handleMoveSelectedItems = (isCopy = false) => {
+    if (!activeCategoryConfig?.content?.Items) return;
+    const allItems = activeCategoryConfig.content.Items;
+    const itemsArray = Array.from(selectedItems)
+      .filter(idx => idx >= 0 && idx < allItems.length)
+      .map(idx => ({ item: allItems[idx], originalIndex: idx }));
+    
+    if (itemsArray.length === 0) {
+      toast.error(lang === 'ru' ? 'Выберите товары чекбоксами для переноса' : 'Select items with checkboxes to transfer');
+      return;
+    }
+    handleOpenMoveItemsModal(itemsArray, isCopy);
+  };
+
   const handleOpenMoveItemsModal = (itemsArray, isCopy = false) => {
     if (!itemsArray || itemsArray.length === 0) return;
     const otherCats = categoryPaths.filter(p => p !== selectedCategoryPath);
@@ -2496,6 +2538,33 @@ export default function EconomyEditor({
                   <span style={{ fontSize: '10px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
                     {selectedItems.size > 0 ? t('econ_bulk_selected', { count: selectedItems.size }) : t('econ_all_items')}
                   </span>
+
+                  {/* Multi-item Transfer & Copy Buttons */}
+                  {selectedItems.size > 0 && (
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-accent"
+                        onClick={() => handleMoveSelectedItems(false)}
+                        style={{ padding: '3px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}
+                        title={lang === 'ru' ? 'Переместить выбранные товары в другую категорию с удалением из текущей' : 'Move selected items to another category and remove from current'}
+                      >
+                        <Icon.Export size={12} />
+                        <span>{lang === 'ru' ? `Перенести (${selectedItems.size}) в...` : `Move (${selectedItems.size}) to...`}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => handleMoveSelectedItems(true)}
+                        style={{ padding: '3px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                        title={lang === 'ru' ? 'Скопировать выбранные товары в другую категорию без удаления' : 'Copy selected items to another category'}
+                      >
+                        <Icon.Clipboard size={12} />
+                        <span>{lang === 'ru' ? `Копировать (${selectedItems.size}) в...` : `Copy (${selectedItems.size}) to...`}</span>
+                      </button>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <select
                       id="bulk-op"
@@ -3517,12 +3586,17 @@ export default function EconomyEditor({
                   </div>
 
                   {/* SafeZone Row */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         🛡️ {t('econ_trader_safezone_label')}
+                        {selectedSafezonePath && (
+                          <span style={{ fontSize: '10px', color: 'var(--text-glow)', background: 'rgba(74,222,128,0.1)', padding: '2px 6px', borderRadius: '2px' }}>
+                            {selectedSafezonePath.split('/').pop()}
+                          </span>
+                        )}
                       </span>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <select
                           value={selectedSafezonePath}
                           onChange={e => setSelectedSafezonePath(e.target.value)}
@@ -3530,13 +3604,14 @@ export default function EconomyEditor({
                         >
                           <option value="">-- {t('econ_trader_safezone_none')} --</option>
                           {safezonePaths.map(p => (
-                            <option key={p} value={p}>{p.split('/').pop().replace('.json', '')}</option>
+                            <option key={p} value={p}>{configs[p]?.content?.m_DisplayName || p.split('/').pop().replace('.json', '')}</option>
                           ))}
                         </select>
                         {selectedSafezonePath && configs[selectedSafezonePath]?.content?.Position && onNavigateToMap && (
                           <button
+                            type="button"
                             className="btn btn-accent"
-                            onClick={() => onNavigateToMap(configs[selectedSafezonePath].content.Position)}
+                            onClick={() => onNavigateToMap(configs[selectedSafezonePath]?.content?.Position)}
                             style={{ padding: '4px 10px', fontSize: '11px' }}
                             title={t('econ_trader_show_map')}
                           >
@@ -3544,6 +3619,7 @@ export default function EconomyEditor({
                           </button>
                         )}
                         <button
+                          type="button"
                           className="btn"
                           onClick={handleCreateSafezoneForTrader}
                           style={{ padding: '4px 10px', fontSize: '11px' }}
@@ -3552,10 +3628,52 @@ export default function EconomyEditor({
                         </button>
                       </div>
                     </div>
+
+                    {/* Interactive SafeZone Config Panel */}
                     {selectedSafezonePath && configs[selectedSafezonePath]?.content && (
-                      <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
-                        <span>Radius: <strong style={{ color: 'var(--text-glow)' }}>{configs[selectedSafezonePath].content.Radius}m</strong></span>
-                        <span>Pos: <strong style={{ color: 'var(--text-glow)' }}>{JSON.stringify(configs[selectedSafezonePath].content.Position)}</strong></span>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
+                        <div>
+                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                            {lang === 'ru' ? 'Радиус зоны (Radius, м):' : 'Zone Radius (m):'}
+                          </label>
+                          <input
+                            type="number"
+                            step="5"
+                            min="10"
+                            max="5000"
+                            value={configs[selectedSafezonePath]?.content?.Radius ?? 100}
+                            onChange={e => onChangeField(selectedSafezonePath, ['Radius'], Number(e.target.value) || 50)}
+                            style={{ width: '100%', padding: '4px 8px', fontSize: '12px', fontFamily: 'var(--font-mono)' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                            {lang === 'ru' ? 'Имя зоны (Display Name):' : 'Display Name:'}
+                          </label>
+                          <input
+                            type="text"
+                            value={configs[selectedSafezonePath]?.content?.m_DisplayName ?? ''}
+                            onChange={e => onChangeField(selectedSafezonePath, ['m_DisplayName'], e.target.value)}
+                            style={{ width: '100%', padding: '4px 8px', fontSize: '12px' }}
+                            placeholder="SafeZone Name"
+                          />
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-accent"
+                            onClick={() => {
+                              onChangeField(selectedSafezonePath, ['Position'], [...npcCoords]);
+                              toast.success(lang === 'ru' ? 'Координаты зоны синхронизированы с NPC!' : 'Zone coordinates synced with NPC!');
+                            }}
+                            style={{ padding: '6px 10px', fontSize: '11px', width: '100%' }}
+                            title={lang === 'ru' ? 'Установить центр зоны точно в координаты NPC' : 'Set zone center exactly to NPC position'}
+                          >
+                            🎯 {lang === 'ru' ? 'Синхронизировать с NPC' : 'Sync Pos with NPC'}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -6222,26 +6340,38 @@ export default function EconomyEditor({
                 <button
                   onClick={() => {
                     setContextMenu(null);
-                    handleOpenMoveItemsModal([{ item, originalIndex: index }], false);
+                    if (selectedItems.size > 1 && selectedItems.has(index)) {
+                      handleMoveSelectedItems(false);
+                    } else {
+                      handleOpenMoveItemsModal([{ item, originalIndex: index }], false);
+                    }
                   }}
                   style={{ display: 'flex', alignItems: 'center', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', gap: '8px', transition: 'background 0.1s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <Icon.Export size={12} />
-                  <span>{lang === 'ru' ? 'Переместить в категорию...' : 'Move to Category...'}</span>
+                  <span>{selectedItems.size > 1 && selectedItems.has(index)
+                    ? (lang === 'ru' ? `Переместить выбранные (${selectedItems.size}) в категорию...` : `Move selected (${selectedItems.size}) to Category...`)
+                    : (lang === 'ru' ? 'Переместить в категорию...' : 'Move to Category...')}</span>
                 </button>
                 <button
                   onClick={() => {
                     setContextMenu(null);
-                    handleOpenMoveItemsModal([{ item, originalIndex: index }], true);
+                    if (selectedItems.size > 1 && selectedItems.has(index)) {
+                      handleMoveSelectedItems(true);
+                    } else {
+                      handleOpenMoveItemsModal([{ item, originalIndex: index }], true);
+                    }
                   }}
                   style={{ display: 'flex', alignItems: 'center', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', gap: '8px', transition: 'background 0.1s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <Icon.Clipboard size={12} />
-                  <span>{lang === 'ru' ? 'Копировать в категорию...' : 'Copy to Category...'}</span>
+                  <span>{selectedItems.size > 1 && selectedItems.has(index)
+                    ? (lang === 'ru' ? `Копировать выбранные (${selectedItems.size}) в категорию...` : `Copy selected (${selectedItems.size}) to Category...`)
+                    : (lang === 'ru' ? 'Копировать в категорию...' : 'Copy to Category...')}</span>
                 </button>
                 <button
                   onClick={() => {

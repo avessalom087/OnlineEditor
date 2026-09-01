@@ -837,7 +837,7 @@ export default function MPGSpawnerEditor({
             const hasUnsaved = isFileDirty(path);
             const name = path.split('/').pop().replace('.json', '');
             const count = (configs[path] && configs[path].success && Array.isArray(configs[path].content))
-              ? configs[path].content.length
+              ? (configs[path]?.content?.length || 0)
               : 0;
 
             const isActive = globalConfig?.success && Array.isArray(globalConfig.content.pointsConfigs) && globalConfig.content.pointsConfigs.includes(name);
