@@ -203,11 +203,15 @@ export function validateBeforeExport(configs) {
       file.content.Patrols.forEach((patrol, idx) => {
         const name = patrol.Name || `Patrol #${idx + 1}`;
         if (Array.isArray(patrol.Waypoints)) {
-          const hasZero = patrol.Waypoints.some(wp =>
-            Array.isArray(wp.Position) &&
-            wp.Position[0] === 0 &&
-            wp.Position[2] === 0
-          );
+          const hasZero = patrol.Waypoints.some(wp => {
+            if (Array.isArray(wp)) {
+              return wp[0] === 0 && wp[2] === 0;
+            }
+            if (wp && Array.isArray(wp.Position)) {
+              return wp.Position[0] === 0 && wp.Position[2] === 0;
+            }
+            return false;
+          });
           if (hasZero) {
             issues.push({
               filePath: path,
@@ -227,8 +231,8 @@ export function validateBeforeExport(configs) {
         ...(file.content.CylinderZones || []),
       ];
       allZones.forEach((zone, idx) => {
-        if (zone.Position) {
-          const pos = zone.Position;
+        const pos = zone.Center || zone.Position;
+        if (pos) {
           const x = Array.isArray(pos) ? pos[0] : pos.x;
           const z = Array.isArray(pos) ? pos[2] : pos.z;
           if (x === 0 && z === 0) {

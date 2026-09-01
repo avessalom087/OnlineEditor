@@ -1,3 +1,4 @@
+import { parseClassnamesFromText } from '../utils/classnamesParser';
 import { Icon } from './common/Icons';
 import React, { useState, useMemo, useRef } from 'react';
 import { useTranslation } from '../utils/localization';

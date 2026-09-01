@@ -82,9 +82,14 @@ function SortableHeader({ field, label, sortField, sortDir, onSort, style = {}, 
 
 function parseTraderCategory(catStr) {
   if (!catStr || typeof catStr !== 'string') return { name: '', mode: 3 };
-  if (catStr.includes(':')) {
-    const [name, mode] = catStr.split(':');
-    return { name, mode: parseInt(mode, 10) || 0 };
+  // Use lastIndexOf to safely handle category names that might contain ':'
+  const lastColon = catStr.lastIndexOf(':');
+  if (lastColon !== -1) {
+    const possibleMode = parseInt(catStr.slice(lastColon + 1), 10);
+    // Only treat as mode suffix if it's a valid mode integer (0,1,2,3)
+    if (!isNaN(possibleMode) && [0, 1, 2, 3].includes(possibleMode)) {
+      return { name: catStr.slice(0, lastColon), mode: possibleMode };
+    }
   }
   return { name: catStr, mode: 3 };
 }
@@ -312,7 +317,10 @@ export default function EconomyEditor({
   // ─ File lists ─────────────────────────────────────────────────────────────
   const categoryPaths = useMemo(() => {
     if (!configs) return [];
-    const paths = Object.keys(configs).filter(p => p.toLowerCase().includes('market/') && configs[p]?.success);
+    const paths = Object.keys(configs).filter(p => {
+      const lp = p.toLowerCase();
+      return (lp.includes('/market/') || lp.includes('market/')) && configs[p]?.success;
+    });
     paths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
     return paths;
   }, [configs]);
@@ -348,6 +356,65 @@ export default function EconomyEditor({
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState(null);
   const [cloneDialog, setCloneDialog] = useState(null);
 
+  // 📍 Two-way sync: Auto-load NPC coordinates from expansion/objects or traderzones
+  useEffect(() => {
+    if (!selectedTraderPath || !configs) return;
+    const prefix = getExpansionPrefix(configs);
+    const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
+    
+    // 1. Try finding in expansion/objects/
+    const possibleObjectPaths = [
+      `${prefix}objects/${traderName}_npc.json`,
+      `${prefix}objects/${traderName}.json`,
+      `${prefix}objects/trader_${traderName}.json`
+    ];
+
+    let foundObjectPos = null;
+    let foundModel = null;
+    for (const objPath of possibleObjectPaths) {
+      const objFile = configs[objPath];
+      if (objFile && objFile.success && objFile.content?.Objects?.[0]) {
+        const firstObj = objFile.content.Objects[0];
+        if (Array.isArray(firstObj.pos) && firstObj.pos.length === 3) {
+          foundObjectPos = [...firstObj.pos];
+          foundModel = firstObj.name;
+          break;
+        }
+      }
+    }
+
+    // 2. Fallback: Search in all objects files for matching trader name
+    if (!foundObjectPos) {
+      for (const [path, file] of Object.entries(configs)) {
+        if (path.toLowerCase().includes('objects/') && file.success && file.content?.Objects) {
+          const matched = file.content.Objects.find(o => 
+            o.name && (o.name.toLowerCase().includes(traderName.toLowerCase()) || 
+            (path.toLowerCase().includes(traderName.toLowerCase())))
+          );
+          if (matched && Array.isArray(matched.pos) && matched.pos.length === 3) {
+            foundObjectPos = [...matched.pos];
+            foundModel = matched.name;
+            break;
+          }
+        }
+      }
+    }
+
+    // 3. Fallback: Try trader zone
+    if (!foundObjectPos) {
+      const zonePath = `${prefix}traderzones/${traderName}_zone.json`;
+      const zoneFile = configs[zonePath];
+      if (zoneFile && zoneFile.success && Array.isArray(zoneFile.content?.Position)) {
+        foundObjectPos = [...zoneFile.content.Position];
+      }
+    }
+
+    if (foundObjectPos) {
+      setNpcCoords(foundObjectPos);
+      if (foundModel) setNpcModel(foundModel);
+    }
+  }, [selectedTraderPath, configs]);
+
   // Close context menu on global click or Escape key
   useEffect(() => {
     const handleGlobalClick = () => setContextMenu(null);
@@ -369,6 +436,7 @@ export default function EconomyEditor({
   const [showTraderLinksDrawer, setShowTraderLinksDrawer] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
   const [smartAttachmentsModal, setSmartAttachmentsModal] = useState(null);
+  const [moveItemModal, setMoveItemModal] = useState(null); // { items: Array<{ item, originalIndex }>, isCopy: boolean, targetCat: string, search: string }
   const [activeAddSlotKey, setActiveAddSlotKey] = useState(null);
   const [customAttachmentInput, setCustomAttachmentInput] = useState(''); // { weaponName, detected, selected: Set, maxPrice, minPrice, maxStock, minStock, sellPct }
   const [bulkPasteText, setBulkPasteText] = useState('');
@@ -711,6 +779,60 @@ export default function EconomyEditor({
     }
   };
 
+  // 📦 Move / Copy items to another category
+  const handleOpenMoveItemsModal = (itemsArray, isCopy = false) => {
+    if (!itemsArray || itemsArray.length === 0) return;
+    const otherCats = categoryPaths.filter(p => p !== selectedCategoryPath);
+    setMoveItemModal({
+      items: itemsArray,
+      isCopy,
+      targetCat: otherCats[0] || '',
+      search: ''
+    });
+  };
+
+  const handleExecuteMoveItems = () => {
+    if (!moveItemModal || !moveItemModal.targetCat || !selectedCategoryPath) return;
+    const { items, isCopy, targetCat } = moveItemModal;
+    
+    const targetConfig = configs[targetCat];
+    if (!targetConfig || !targetConfig.content) {
+      toast.error(lang === 'ru' ? 'Целевая категория не найдена' : 'Target category not found');
+      return;
+    }
+
+    const targetItems = Array.isArray(targetConfig.content.Items) ? [...targetConfig.content.Items] : [];
+    const targetSet = new Set(targetItems.map(i => i.ClassName?.toLowerCase()));
+
+    let transferredCount = 0;
+    items.forEach(({ item }) => {
+      if (!targetSet.has(item.ClassName?.toLowerCase())) {
+        targetItems.push({ ...item });
+        targetSet.add(item.ClassName?.toLowerCase());
+        transferredCount++;
+      }
+    });
+
+    // Save target category
+    onChangeField(targetCat, ['Items'], targetItems);
+
+    // If Move (not copy), remove from current category
+    if (!isCopy && activeCategoryConfig?.content) {
+      const indicesToRemove = new Set(items.map(i => i.originalIndex));
+      const currentItems = (activeCategoryConfig.content.Items || []).filter((_, idx) => !indicesToRemove.has(idx));
+      onChangeField(selectedCategoryPath, ['Items'], currentItems);
+      setSelectedItems(new Set());
+    }
+
+    const targetCatName = targetCat.split('/').pop().replace('.json', '');
+    setMoveItemModal(null);
+    toast.success(
+      isCopy
+        ? (lang === 'ru' ? `Скопировано ${transferredCount} товаров в ${targetCatName}` : `Copied ${transferredCount} items to ${targetCatName}`)
+        : (lang === 'ru' ? `Перемещено ${transferredCount} товаров в ${targetCatName}` : `Moved ${transferredCount} items to ${targetCatName}`)
+    );
+  };
+
   const handleExecuteBulkPaste = () => {
     if (!selectedCategoryPath || !activeCategoryConfig || !activeCategoryConfig.content) return;
     const classnames = parseClassnamesFromText(bulkPasteText);
@@ -724,8 +846,9 @@ export default function EconomyEditor({
 
     const minP = Number(bulkStaticPrice ? bulkMaxPrice : bulkMinPrice) || 100;
     const maxP = Number(bulkMaxPrice) || 200;
-    const minS = Number(bulkInfiniteStock ? 1 : bulkMinStock) || 1;
-    const maxS = Number(bulkInfiniteStock ? 1 : bulkMaxStock) || 50;
+    // Expansion infinite stock = MinStock = MaxStock = -1
+    const minS = bulkInfiniteStock ? -1 : (Number(bulkMinStock) || 1);
+    const maxS = bulkInfiniteStock ? -1 : (Number(bulkMaxStock) || 50);
     const sellP = Number(bulkSellPct) || -1.0;
 
     let addedCount = 0;
@@ -813,8 +936,12 @@ export default function EconomyEditor({
       return;
     }
     const cleanFilename = newCategoryName.trim().replace(/\.json$/i, '');
-    const prefix = getExpansionPrefix(configs);
-    const path = `${prefix}market/${cleanFilename}.json`;
+    // Prefer ExpansionMod/Market/ (modern) over expansion/market/ (legacy)
+    const modPrefix = getExpansionModPrefix(configs);
+    const expPrefix = getExpansionPrefix(configs);
+    const prefix = modPrefix || expPrefix;
+    const marketDir = modPrefix ? 'Market' : 'market';
+    const path = `${prefix}${marketDir}/${cleanFilename}.json`;
     if (configs[path]) {
       toast.error(lang === 'ru' ? 'Категория с таким именем уже существует' : 'Category already exists');
       return;
@@ -931,11 +1058,12 @@ export default function EconomyEditor({
     if (!file?.success || !file.content) return;
     const currentCats = Array.isArray(file.content.Categories) ? [...file.content.Categories] : [];
     
-    // Cycle order: -1 (off) -> 3 (both) -> 1 (sell) -> 0 (buy) -> -1 (off)
+    // Cycle order: -1 (off) -> 3 (both) -> 1 (buy only) -> 2 (sell only) -> 0 (disabled) -> -1 (off)
     let nextMode = -1;
     if (currentMode === -1) nextMode = 3;
     else if (currentMode === 3) nextMode = 1;
-    else if (currentMode === 1) nextMode = 0;
+    else if (currentMode === 1) nextMode = 2;
+    else if (currentMode === 2) nextMode = 0;
     else nextMode = -1;
 
     let updated = currentCats.filter(c => parseTraderCategory(c).name.toLowerCase() !== catName.toLowerCase());
@@ -1984,7 +2112,7 @@ export default function EconomyEditor({
                               position: 'sticky', left: 0, zIndex: 20,
                               background: isRowHovered ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                               borderRight: '2px solid var(--border-glow)',
-                              borderBottom: '1px solid var(--border-color)',
+                      borderBottom: '1px solid var(--border-color)',
                               padding: '8px 12px',
                               transition: 'background 0.15s'
                             }}>
@@ -2052,21 +2180,24 @@ export default function EconomyEditor({
                                       transition: 'all 0.15s',
                                       border: mode === 3 ? '1px solid rgba(74,222,128,0.5)'
                                             : mode === 1 ? '1px solid rgba(96,165,250,0.5)'
-                                            : mode === 0 ? '1px solid rgba(251,191,36,0.5)'
+                                            : mode === 2 ? '1px solid rgba(249,115,22,0.5)'
+                                            : mode === 0 ? '1px solid rgba(239,68,68,0.5)'
                                             : '1px solid rgba(255,255,255,0.08)',
                                       background: mode === 3 ? 'rgba(74,222,128,0.18)'
                                                 : mode === 1 ? 'rgba(96,165,250,0.18)'
-                                                : mode === 0 ? 'rgba(251,191,36,0.18)'
+                                                : mode === 2 ? 'rgba(249,115,22,0.18)'
+                                                : mode === 0 ? 'rgba(239,68,68,0.18)'
                                                 : 'rgba(255,255,255,0.02)',
                                       color: mode === 3 ? '#4ade80'
                                            : mode === 1 ? '#60a5fa'
-                                           : mode === 0 ? '#fbbf24'
+                                           : mode === 2 ? '#f97316'
+                                           : mode === 0 ? '#ef4444'
                                            : 'var(--text-secondary)',
                                       boxShadow: mode !== -1 ? '0 2px 6px rgba(0,0,0,0.2)' : 'none'
                                     }}
-                                    title={`${catName} ➔ ${traderName}: ${mode === 3 ? 'Both' : mode === 1 ? 'Sell' : mode === 0 ? 'Buy' : 'Off'} (${lang === 'ru' ? 'Клик для изменения' : 'Click to cycle'})`}
+                                    title={`${catName} ➔ ${traderName}: ${mode === 3 ? 'Both' : mode === 1 ? 'Buy Only (:1)' : mode === 2 ? 'Sell Only (:2)' : mode === 0 ? 'Disabled (:0)' : 'Off'} (${lang === 'ru' ? 'Клик для изменения' : 'Click to cycle'})`}
                                   >
-                                    {mode === 3 ? '🛒 Both' : mode === 1 ? '⬇️ Sell' : mode === 0 ? '⬆️ Buy' : '—'}
+                                    {mode === 3 ? '🛒' : mode === 1 ? '⬆️ :1' : mode === 2 ? '⬇️ :2' : mode === 0 ? '⛔' : '—'}
                                   </button>
                                 </td>
                               );
@@ -3455,27 +3586,109 @@ export default function EconomyEditor({
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
                           📍 {t('econ_trader_npc_coords')}
                         </span>
-                        {onNavigateToMap && (
-                          <button
-                            className="btn btn-accent"
-                            onClick={() => onNavigateToMap(npcCoords)}
-                            style={{ padding: '2px 8px', fontSize: '10px' }}
-                          >
-                            📍 {t('econ_trader_show_map')}
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {setCoordinatePicker && setActiveTab && (
+                            <button
+                              type="button"
+                              className="btn btn-accent"
+                              onClick={() => {
+                                setCoordinatePicker({
+                                  active: true,
+                                  returnTab: 'economy',
+                                  callback: ({ x, z }) => {
+                                    const newPos = [Number(x.toFixed(2)), 0.0, Number(z.toFixed(2))];
+                                    setNpcCoords(newPos);
+                                    if (selectedTraderPath && configs) {
+                                      const prefix = getExpansionPrefix(configs);
+                                      const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
+                                      const objectFileName = `${prefix}objects/${traderName}_npc.json`;
+                                      const existingObj = configs[objectFileName];
+                                      if (existingObj && existingObj.success && existingObj.content?.Objects) {
+                                        const updatedObjs = [...existingObj.content.Objects];
+                                        if (updatedObjs.length > 0) {
+                                          updatedObjs[0] = { ...updatedObjs[0], pos: newPos };
+                                        } else {
+                                          updatedObjs.push({ name: npcModel || 'ExpansionTraderSurvivorM', pos: newPos, ypr: [0.0, 0.0, 0.0] });
+                                        }
+                                        onChangeField(objectFileName, ['Objects'], updatedObjs);
+                                      } else {
+                                        onCreateFile(objectFileName, {
+                                          Objects: [
+                                            { name: npcModel || 'ExpansionTraderSurvivorM', pos: newPos, ypr: [0.0, 0.0, 0.0] }
+                                          ]
+                                        });
+                                      }
+                                      toast.success(lang === 'ru' ? `Координаты торговца обновлены: [${newPos[0]}, ${newPos[2]}]` : `Trader position updated: [${newPos[0]}, ${newPos[2]}]`);
+                                    }
+                                  }
+                                });
+                                setActiveTab('map');
+                              }}
+                              style={{ padding: '2px 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              title={lang === 'ru' ? 'Кликнуть по карте для выбора координат спавна NPC' : 'Click on map to pick NPC spawn coordinates'}
+                            >
+                              🗺️ {lang === 'ru' ? 'ЗАДАТЬ НА КАРТЕ' : 'PICK FROM MAP'}
+                            </button>
+                          )}
+                          {onNavigateToMap && (
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => onNavigateToMap(npcCoords)}
+                              style={{ padding: '2px 8px', fontSize: '10px' }}
+                              title={lang === 'ru' ? 'Показать текущую позицию на карте' : 'Show current position on map'}
+                            >
+                              📍 {t('econ_trader_show_map')}
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <CoordinatesInput
                         layout="row"
                         position={npcCoords}
-                        onChange={pos => setNpcCoords(pos)}
+                        onChange={pos => {
+                          setNpcCoords(pos);
+                          // Auto-persist into expansion/objects file
+                          if (selectedTraderPath && configs) {
+                            const prefix = getExpansionPrefix(configs);
+                            const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
+                            const objectFileName = `${prefix}objects/${traderName}_npc.json`;
+                            const existingObj = configs[objectFileName];
+                            if (existingObj && existingObj.success && existingObj.content?.Objects) {
+                              const updatedObjs = [...existingObj.content.Objects];
+                              if (updatedObjs.length > 0) {
+                                updatedObjs[0] = { ...updatedObjs[0], pos: [...pos] };
+                              } else {
+                                updatedObjs.push({ name: npcModel || 'ExpansionTraderSurvivorM', pos: [...pos], ypr: [0.0, 0.0, 0.0] });
+                              }
+                              onChangeField(objectFileName, ['Objects'], updatedObjs);
+                            } else {
+                              onCreateFile(objectFileName, {
+                                Objects: [
+                                  { name: npcModel || 'ExpansionTraderSurvivorM', pos: [...pos], ypr: [0.0, 0.0, 0.0] }
+                                ]
+                              });
+                            }
+                          }
+                        }}
                         onPickFromMap={() => {
                           if (setCoordinatePicker && setActiveTab) {
                             setCoordinatePicker({
                               active: true,
                               returnTab: 'economy',
                               callback: ({ x, z }) => {
-                                setNpcCoords([Number(x.toFixed(2)), 0.0, Number(z.toFixed(2))]);
+                                const newPos = [Number(x.toFixed(2)), 0.0, Number(z.toFixed(2))];
+                                setNpcCoords(newPos);
+                                if (selectedTraderPath && configs) {
+                                  const prefix = getExpansionPrefix(configs);
+                                  const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
+                                  const objectFileName = `${prefix}objects/${traderName}_npc.json`;
+                                  onCreateFile(objectFileName, {
+                                    Objects: [
+                                      { name: npcModel || 'ExpansionTraderSurvivorM', pos: newPos, ypr: [0.0, 0.0, 0.0] }
+                                    ]
+                                  });
+                                }
                               }
                             });
                             setActiveTab('map');
@@ -5287,6 +5500,132 @@ export default function EconomyEditor({
         );
       })()}
 
+      {/* 📦 Move / Copy Item to Category Modal */}
+      {moveItemModal && (() => {
+        const { items, isCopy, targetCat, search } = moveItemModal;
+        const otherCats = categoryPaths.filter(p => p !== selectedCategoryPath);
+        const filteredOtherCats = otherCats.filter(p => 
+          p.split('/').pop().toLowerCase().includes(search.toLowerCase())
+        );
+
+        return (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.85)', zIndex: 99999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)',
+          }}>
+            <div style={{
+              width: '540px',
+              maxWidth: '92vw',
+              maxHeight: '85vh',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-glow)',
+              borderRadius: '4px',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.85)',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden'
+            }}>
+              {/* Header */}
+              <div style={{ padding: '14px 20px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                    // {selectedCategoryPath ? selectedCategoryPath.split('/').pop() : 'Category'}
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-glow)', fontWeight: 'bold', fontFamily: 'var(--font-heading)', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Icon.Export size={14} />
+                    <span>{isCopy 
+                      ? (lang === 'ru' ? `КОПИРОВАТЬ В ДРУГУЮ КАТЕГОРИЮ (${items.length} шт.)` : `COPY TO CATEGORY (${items.length} items)`)
+                      : (lang === 'ru' ? `ПЕРЕМЕСТИТЬ В ДРУГУЮ КАТЕГОРИЮ (${items.length} шт.)` : `MOVE TO CATEGORY (${items.length} items)`)}</span>
+                  </div>
+                </div>
+                <button onClick={() => setMoveItemModal(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>×</button>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    {lang === 'ru' ? 'Выбранные для переноса товары:' : 'Items to transfer:'}
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '100px', overflowY: 'auto', padding: '6px', background: 'var(--bg-primary)', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
+                    {items.map(({ item }) => (
+                      <span key={item.ClassName} style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid #4ade80', padding: '2px 6px', borderRadius: '2px' }}>
+                        {item.ClassName}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                    {lang === 'ru' ? 'Выберите целевую категорию:' : 'Select target category:'}
+                  </label>
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={e => setMoveItemModal(prev => ({ ...prev, search: e.target.value }))}
+                    placeholder={lang === 'ru' ? 'Поиск по категориям...' : 'Filter categories...'}
+                    style={{ width: '100%', padding: '7px 10px', fontSize: '11px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-glow)', marginBottom: '8px', boxSizing: 'border-box' }}
+                    autoFocus
+                  />
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '3px', border: '1px solid var(--border-color)', borderRadius: '3px', padding: '4px', background: 'var(--bg-primary)' }}>
+                    {filteredOtherCats.length === 0 ? (
+                      <div style={{ padding: '10px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {lang === 'ru' ? 'Категории не найдены' : 'No categories found'}
+                      </div>
+                    ) : (
+                      filteredOtherCats.map(catPath => {
+                        const catFileName = catPath.split('/').pop();
+                        const isTarget = targetCat === catPath;
+                        return (
+                          <div
+                            key={catPath}
+                            onClick={() => setMoveItemModal(prev => ({ ...prev, targetCat: catPath }))}
+                            style={{
+                              padding: '7px 10px',
+                              borderRadius: '2px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              background: isTarget ? 'rgba(74,222,128,0.15)' : 'transparent',
+                              border: isTarget ? '1px solid #4ade80' : '1px solid transparent',
+                              color: isTarget ? '#4ade80' : 'var(--text-primary)',
+                              fontSize: '12px',
+                              fontFamily: 'var(--font-heading)'
+                            }}
+                          >
+                            <span>{catFileName}</span>
+                            {isTarget && <span style={{ fontSize: '10px', color: '#4ade80' }}>✓</span>}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '14px 20px', background: 'var(--bg-tertiary)', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button className="btn" onClick={() => setMoveItemModal(null)} style={{ padding: '8px 16px' }}>
+                  {lang === 'ru' ? 'ОТМЕНА' : 'CANCEL'}
+                </button>
+                <button
+                  className="btn btn-accent"
+                  disabled={!targetCat}
+                  onClick={handleExecuteMoveItems}
+                  style={{ padding: '8px 20px', fontWeight: 'bold' }}
+                >
+                  {isCopy 
+                    ? (lang === 'ru' ? 'СКОПИРОВАТЬ' : 'COPY') 
+                    : (lang === 'ru' ? 'ПЕРЕМЕСТИТЬ' : 'MOVE')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 📋 Bulk Paste by Classnames Modal */}
       {showBulkPasteModal && (() => {
         const parsedItems = parseClassnamesFromText(bulkPasteText);
@@ -5880,6 +6219,30 @@ export default function EconomyEditor({
                     </button>
                   </>
                 )}
+                <button
+                  onClick={() => {
+                    setContextMenu(null);
+                    handleOpenMoveItemsModal([{ item, originalIndex: index }], false);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', gap: '8px', transition: 'background 0.1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <Icon.Export size={12} />
+                  <span>{lang === 'ru' ? 'Переместить в категорию...' : 'Move to Category...'}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setContextMenu(null);
+                    handleOpenMoveItemsModal([{ item, originalIndex: index }], true);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-heading)', gap: '8px', transition: 'background 0.1s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <Icon.Clipboard size={12} />
+                  <span>{lang === 'ru' ? 'Копировать в категорию...' : 'Copy to Category...'}</span>
+                </button>
                 <button
                   onClick={() => {
                     handleCopyItem(item);

@@ -1,5 +1,5 @@
 import { Icon } from './common/Icons';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AutocompleteInput from './shared/AutocompleteInput';
 import CoordinatesInput from './shared/CoordinatesInput';
 import HelpIcon from './HelpIcon';
@@ -239,13 +239,19 @@ export default function AIBotsEditor({
   const [wLootPreset, setWLootPreset] = useState('Military Ammo');
   const [wLootItems, setWLootItems] = useState([]);
 
-  const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
+  const patrolConfigPath = useMemo(() => {
+    return Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/aipatrolsettings.json')) || `${getExpansionPrefix(configs)}settings/AIPatrolSettings.json`;
+  }, [configs]);
   const patrolFile = configs[patrolConfigPath];
 
-  const locationConfigPath = 'expansion/settings/AILocationSettings.json';
+  const locationConfigPath = useMemo(() => {
+    return Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/ailocationsettings.json')) || `${getExpansionPrefix(configs)}settings/AILocationSettings.json`;
+  }, [configs]);
   const locationFile = configs[locationConfigPath];
 
-  const aiSettingsPath = 'ExpansionMod/Settings/AISettings.json';
+  const aiSettingsPath = useMemo(() => {
+    return Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/aisettings.json')) || `${getExpansionPrefix(configs)}settings/AISettings.json`;
+  }, [configs]);
   const aiSettingsFile = configs[aiSettingsPath];
 
   // Dynamic autocompletes

@@ -1,5 +1,5 @@
 import { Icon } from './common/Icons';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useToast } from './ToastManager';
 import { useTranslation } from '../utils/localization';
 import * as fileService from '../services/fileService';
@@ -128,6 +128,12 @@ export default function TacticalMap({
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const toast = useToast();
+  const dynamicPatrolPath = useMemo(() => {
+    return Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/aipatrolsettings.json')) || `${getExpansionPrefix(configs)}settings/AIPatrolSettings.json`;
+  }, [configs]);
+  const dynamicLocationPath = useMemo(() => {
+    return Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/ailocationsettings.json')) || `${getExpansionPrefix(configs)}settings/AILocationSettings.json`;
+  }, [configs]);
   const dragStartCoordsRef = useRef(null);
   
   // Map dimensions configuration
@@ -198,6 +204,7 @@ export default function TacticalMap({
   const [draggedEntity, setDraggedEntity] = useState(null);
   const [isRotating, setIsRotating]       = useState(false);
   const [hoveredEntity, setHoveredEntity] = useState(null);
+  const [focusedBeacon, setFocusedBeacon] = useState(null); // { x, z, name, time }
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [selectedEntityIds, setSelectedEntityIds] = useState(new Set());
   const [dragSelectRect, setDragSelectRect] = useState(null); // { x, y, w, h } in container-local coords
@@ -790,23 +797,36 @@ export default function TacticalMap({
     setBatchPoints([]);
   }, [coordinatePicker]);
 
-  // Center coordinate focused via Form Editor
+  // Center coordinate focused via Form Editor with resilient RAF retry
   useEffect(() => {
-    if (focusedCoordinate) {
-      const { x, z } = focusedCoordinate;
+    if (!focusedCoordinate) return;
+    const { x, z } = focusedCoordinate;
+    if (x === undefined || z === undefined || isNaN(Number(x)) || isNaN(Number(z))) {
+      onClearFocus();
+      return;
+    }
+
+    let frameId;
+    let attempts = 0;
+
+    const applyFocus = () => {
+      const container = containerRef.current;
       const canvas = canvasRef.current;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
+      const rect = container ? container.getBoundingClientRect() : (canvas ? canvas.getBoundingClientRect() : null);
+
+      if (rect && rect.width > 50 && rect.height > 50) {
         const canvasCenterX = rect.width / 2;
         const canvasCenterY = rect.height / 2;
 
         const mapPxSize = 1024;
-        const normX = x / mapSize;
-        const normY = 1 - (z / mapSize);
+        const numX = Number(x);
+        const numZ = Number(z);
+        const normX = numX / mapSize;
+        const normY = 1 - (numZ / mapSize);
         const mapPxX = normX * mapPxSize;
         const mapPxY = normY * mapPxSize;
 
-        const newScale = 2.0;
+        const newScale = 2.5;
         setScale(newScale);
 
         setOffset({
@@ -814,17 +834,32 @@ export default function TacticalMap({
           y: canvasCenterY - mapPxY * newScale
         });
 
-        setHoveredEntity({
-          id: 'focus-target',
-          type: 'focused',
-          name: 'Focus Position',
-          x,
-          z
+        setFocusedBeacon({
+          x: numX,
+          z: numZ,
+          name: `${numX.toFixed(1)}, ${numZ.toFixed(1)}`,
+          time: Date.now()
         });
+
+        toast.success(
+          lang === 'ru'
+            ? `📍 Точка на карте: X=${numX.toFixed(1)}, Z=${numZ.toFixed(1)}`
+            : `📍 Map target: X=${numX.toFixed(1)}, Z=${numZ.toFixed(1)}`
+        );
+        onClearFocus();
+      } else if (attempts < 40) {
+        attempts++;
+        frameId = requestAnimationFrame(applyFocus);
+      } else {
+        onClearFocus();
       }
-      onClearFocus();
-    }
-  }, [focusedCoordinate, mapSize, onClearFocus]);
+    };
+
+    frameId = requestAnimationFrame(applyFocus);
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+    };
+  }, [focusedCoordinate, mapSize, onClearFocus, lang]);
 
   // Update entities list dynamically when configs change
   useEffect(() => {
@@ -882,12 +917,12 @@ export default function TacticalMap({
         });
       }
 
-      // 2. NPCs
+      // 2. NPCs (Quests NPCs + Trader 3D Objects)
       if (filePath.toLowerCase().includes('quests/npcs/') && Array.isArray(content.Position)) {
         npcs.push({
           id: filePath,
           filePath,
-          name: content.NPCName || `NPC ${content.ID}`,
+          name: content.NPCName || `Quest NPC ${content.ID}`,
           x: content.Position[0],
           y: content.Position[1],
           z: content.Position[2],
@@ -898,21 +933,50 @@ export default function TacticalMap({
         });
       }
 
+      // 2b. Trader 3D Objects & Map Objects
+      if (filePath.toLowerCase().includes('objects/') && content && Array.isArray(content.Objects)) {
+        content.Objects.forEach((obj, idx) => {
+          if (obj && Array.isArray(obj.pos) && obj.pos.length === 3) {
+            const shortFileName = filePath.split('/').pop().replace('_npc.json', '').replace('.json', '');
+            const isTrader = (obj.name && obj.name.toLowerCase().includes('trader')) || 
+                             filePath.toLowerCase().includes('trader') || 
+                             filePath.toLowerCase().includes('_npc');
+            npcs.push({
+              id: `${filePath}-obj-${idx}`,
+              filePath,
+              name: isTrader ? `🛒 Trader: ${shortFileName}` : (obj.name || `Object #${idx + 1}`),
+              model: obj.name,
+              x: obj.pos[0],
+              y: obj.pos[1],
+              z: obj.pos[2],
+              type: 'npc',
+              isTrader: Boolean(isTrader),
+              xPath: ['Objects', idx, 'pos', 0],
+              yPath: ['Objects', idx, 'pos', 1],
+              zPath: ['Objects', idx, 'pos', 2],
+              arrayIndex: idx
+            });
+          }
+        });
+      }
+
       // 2. SafeZones
       if (filePath.toLowerCase().endsWith('settings/safezonesettings.json')) {
         if (Array.isArray(content.CircleZones)) {
           content.CircleZones.forEach((zone, idx) => {
-            if (Array.isArray(zone.Center)) {
+            const pos = Array.isArray(zone.Center) ? zone.Center : (Array.isArray(zone.Position) ? zone.Position : null);
+            const coordKey = Array.isArray(zone.Center) ? 'Center' : 'Position';
+            if (pos) {
               safezones.push({
                 id: `sz-circle-${idx}`,
                 filePath,
                 name: zone.Name || `SafeZone Circle #${idx + 1}`,
-                x: zone.Center[0],
-                z: zone.Center[2],
+                x: pos[0],
+                z: pos[2],
                 radius: zone.Radius || 100,
                 type: 'safezone',
-                xPath: ['CircleZones', idx, 'Center', 0],
-                zPath: ['CircleZones', idx, 'Center', 2],
+                xPath: ['CircleZones', idx, coordKey, 0],
+                zPath: ['CircleZones', idx, coordKey, 2],
                 arrayIndex: idx
               });
             }
@@ -1588,7 +1652,7 @@ export default function TacticalMap({
         const isActivePatrol = activePatrolDrawIndex === parseInt(pIdx);
         
         // Set faction coloring
-        const firstFile = configs['expansion/settings/AIPatrolSettings.json'];
+        const firstFile = configs[dynamicPatrolPath];
         const faction = (firstFile?.content?.Patrols[parseInt(pIdx)]?.Faction || 'West').toLowerCase();
         let factionColor = '#b2bec3';
         if (faction === 'west') factionColor = '#00cec9';
@@ -1688,25 +1752,66 @@ export default function TacticalMap({
     }
 
 
-    // Draw NPCs
-    if (layers.npcs) {
+    // Draw NPCs & Traders
+    if (layers.npcs && entities.npcs) {
       entities.npcs.forEach(npc => {
         const pos = gameToPixels(npc.x, npc.z);
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y - 8);
-        ctx.lineTo(pos.x - 6, pos.y + 6);
-        ctx.lineTo(pos.x + 6, pos.y + 6);
-        ctx.closePath();
-        ctx.fillStyle = '#a29bfe';
-        ctx.fill();
-        ctx.strokeStyle = '#070907';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        const isHovered = hoveredEntity && hoveredEntity.id === npc.id;
+        const isSelected = selectedEntity && selectedEntity.id === npc.id;
 
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
-        ctx.strokeStyle = 'rgba(162, 155, 254, 0.4)';
-        ctx.stroke();
+        if (npc.isTrader) {
+          // Trader marker (diamond with cart glow)
+          ctx.save();
+          if (isHovered || isSelected) {
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00d2d3';
+          }
+          ctx.beginPath();
+          ctx.moveTo(pos.x, pos.y - 9);
+          ctx.lineTo(pos.x + 9, pos.y);
+          ctx.lineTo(pos.x, pos.y + 9);
+          ctx.lineTo(pos.x - 9, pos.y);
+          ctx.closePath();
+          ctx.fillStyle = isSelected ? '#00d2d3' : '#0984e3';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // Outer ring
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, 12, 0, 2 * Math.PI);
+          ctx.strokeStyle = 'rgba(9, 132, 227, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Label
+          if (scale > 1.2) {
+            ctx.font = 'bold 10px "Share Tech Mono", monospace';
+            ctx.fillStyle = '#00d2d3';
+            ctx.fillText(npc.name, pos.x + 14, pos.y + 3);
+          }
+          ctx.restore();
+        } else {
+          // Standard Quest / Object NPC
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(pos.x, pos.y - 8);
+          ctx.lineTo(pos.x - 6, pos.y + 6);
+          ctx.lineTo(pos.x + 6, pos.y + 6);
+          ctx.closePath();
+          ctx.fillStyle = isSelected ? '#ffffff' : '#a29bfe';
+          ctx.fill();
+          ctx.strokeStyle = '#070907';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
+          ctx.strokeStyle = 'rgba(162, 155, 254, 0.4)';
+          ctx.stroke();
+          ctx.restore();
+        }
       });
     }
 
@@ -3075,7 +3180,7 @@ export default function TacticalMap({
       if (hit) return; // Ignore double clicks on existing waypoints
       
       const game = pixelsToGame(mouseX, mouseY);
-      const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
+      const patrolConfigPath = dynamicPatrolPath;
       const patrolFile = configs[patrolConfigPath];
       if (patrolFile?.success && Array.isArray(patrolFile.content.Patrols)) {
         const patrol = patrolFile.content.Patrols[activePatrolDrawIndex];
@@ -3204,7 +3309,7 @@ export default function TacticalMap({
   };
 
   const handleDeleteWaypoint = (patrolIdx, wpIdx) => {
-    const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
+    const patrolConfigPath = dynamicPatrolPath;
     const file = configs[patrolConfigPath];
     if (file?.success && Array.isArray(file.content.Patrols)) {
       const patrol = file.content.Patrols[patrolIdx];
@@ -3236,7 +3341,7 @@ export default function TacticalMap({
   const handleMergePatrols = () => {
     if (activePatrolDrawIndex === -1 || mergeTargetPatrolIndex === -1) return;
     
-    const patrolConfigPath = 'expansion/settings/AIPatrolSettings.json';
+    const patrolConfigPath = dynamicPatrolPath;
     const patrolFile = configs[patrolConfigPath];
     if (!patrolFile?.success || !Array.isArray(patrolFile.content.Patrols)) return;
     
@@ -3359,7 +3464,7 @@ export default function TacticalMap({
       }
     } else if (spawnType === 'nogo_area') {
       // Append to AILocationSettings.json NoGoAreas array
-      const filePath = 'expansion/settings/AILocationSettings.json';
+      const filePath = dynamicLocationPath;
       const file = configs[filePath];
       if (file?.success && file.content) {
         const currentAreas = Array.isArray(file.content.NoGoAreas) ? file.content.NoGoAreas : [];
@@ -3374,7 +3479,7 @@ export default function TacticalMap({
       }
     } else if (spawnType === 'roaming_location') {
       // Append to AILocationSettings.json RoamingLocations array
-      const filePath = Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/ailocationsettings.json')) || 'expansion/settings/AILocationSettings.json';
+      const filePath = Object.keys(configs).find(p => p.toLowerCase().endsWith('settings/ailocationsettings.json')) || dynamicLocationPath;
       const file = configs[filePath];
       if (file?.success && file.content) {
         const currentLocs = Array.isArray(file.content.RoamingLocations) ? file.content.RoamingLocations : [];
@@ -3738,7 +3843,7 @@ export default function TacticalMap({
                   style={{ fontSize: '11px', padding: '4px', width: '100%' }}
                 >
                   <option value={-1}>-- {t('map_select_patrol_ph')} --</option>
-                  {(configs['expansion/settings/AIPatrolSettings.json']?.content?.Patrols || []).map((patrol, idx) => (
+                  {(configs[dynamicPatrolPath]?.content?.Patrols || []).map((patrol, idx) => (
                     <option key={idx} value={idx}>
                       #{idx + 1}: {patrol.Name || `Patrol #${idx + 1}`} ({patrol.Faction})
                     </option>
@@ -3774,7 +3879,7 @@ export default function TacticalMap({
                         style={{ fontSize: '11px', padding: '4px', flex: 1, minWidth: 0 }}
                       >
                         <option value={-1}>-- {t('map_merge_with')} --</option>
-                        {(configs['expansion/settings/AIPatrolSettings.json']?.content?.Patrols || [])
+                        {(configs[dynamicPatrolPath]?.content?.Patrols || [])
                           .map((patrol, idx) => ({ patrol, idx }))
                           .filter(({ idx }) => idx !== activePatrolDrawIndex)
                           .map(({ patrol, idx }) => (
@@ -3873,23 +3978,23 @@ export default function TacticalMap({
                     letterSpacing: '1px'
                   }}
                 >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Ban size={12} /><span>{t('map_excluded_buildings')} ({configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings?.length || 0})</span></span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><Icon.Ban size={12} /><span>{t('map_excluded_buildings')} ({configs[dynamicLocationPath]?.content?.ExcludedRoamingBuildings?.length || 0})</span></span>
                   <span>{excludeCollapse ? '▼' : '►'}</span>
                 </div>
                 
                 {!excludeCollapse && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '120px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '4px', border: '1px solid var(--border-color)', borderRadius: '2px' }}>
-                      {(configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings || []).length === 0 ? (
+                      {(configs[dynamicLocationPath]?.content?.ExcludedRoamingBuildings || []).length === 0 ? (
                         <div style={{ fontSize: '10px', color: 'var(--text-dark)', padding: '4px', textAlign: 'center' }}>{t('map_no_exclusions')}</div>
                       ) : (
-                        (configs['expansion/settings/AILocationSettings.json']?.content?.ExcludedRoamingBuildings || []).map((b, bIdx) => (
+                        (configs[dynamicLocationPath]?.content?.ExcludedRoamingBuildings || []).map((b, bIdx) => (
                           <div key={bIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', padding: '2px 4px', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
                             <span style={{ fontFamily: 'var(--font-mono)', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', flex: 1, marginRight: '4px' }}>{b}</span>
                             <button 
                               className="btn btn-danger" 
                               onClick={() => {
-                                const filePath = 'expansion/settings/AILocationSettings.json';
+                                const filePath = dynamicLocationPath;
                                 const file = configs[filePath];
                                 const current = [...(file.content.ExcludedRoamingBuildings || [])];
                                 current.splice(bIdx, 1);
@@ -3915,7 +4020,7 @@ export default function TacticalMap({
                         className="btn btn-accent" 
                         onClick={() => {
                           if (!newExcludeInput.trim()) return;
-                          const filePath = 'expansion/settings/AILocationSettings.json';
+                          const filePath = dynamicLocationPath;
                           const file = configs[filePath];
                           const current = [...(file?.content?.ExcludedRoamingBuildings || [])];
                           if (!current.includes(newExcludeInput.trim())) {
@@ -4711,7 +4816,7 @@ export default function TacticalMap({
             {/* === MAP CONTEXT (no entity) === */}
             {!contextMenu.entity && (() => {
               const ru = lang === 'ru';
-              const patrolCfgPath = 'expansion/settings/AIPatrolSettings.json';
+              const patrolCfgPath = dynamicPatrolPath;
               const patrolFile = configs[patrolCfgPath];
               const patrols = patrolFile?.success && Array.isArray(patrolFile.content?.Patrols) ? patrolFile.content.Patrols : [];
 
@@ -4745,12 +4850,12 @@ export default function TacticalMap({
                   if (f?.success) { onChangeField(fp, ['CircleZones'], [...(f.content.CircleZones || []), { Center: [contextMenu.x, 0.0, contextMenu.z], Radius: radius, Name: name }]); toast.success(`Safezone "${name}" ${ru ? 'создана' : 'created'}`); }
                   else toast.error(ru ? 'SafeZoneSettings.json не найден' : 'SafeZoneSettings.json not found');
                 } else if (contextMenu.spawnType === 'roaming_location') {
-                  const fp = 'expansion/settings/AILocationSettings.json';
+                  const fp = dynamicLocationPath;
                   const f = configs[fp];
                   if (f?.success) { onChangeField(fp, ['RoamingLocations'], [...(f.content.RoamingLocations || []), { Name: name, Position: [contextMenu.x, 0.0, contextMenu.z], Radius: radius, Type: 'Village', Enabled: 1 }]); toast.success(`Roaming "${name}" ${ru ? 'создана' : 'created'}`); }
                   else toast.error(ru ? 'AILocationSettings.json не найден' : 'AILocationSettings.json not found');
                 } else if (contextMenu.spawnType === 'nogo_area') {
-                  const fp = 'expansion/settings/AILocationSettings.json';
+                  const fp = dynamicLocationPath;
                   const f = configs[fp];
                   if (f?.success) { onChangeField(fp, ['NoGoAreas'], [...(f.content.NoGoAreas || []), { Name: name, Position: [contextMenu.x, 0.0, contextMenu.z], Radius: radius }]); toast.success(`NoGo Area "${name}" ${ru ? 'создана' : 'created'}`); }
                   else toast.error(ru ? 'AILocationSettings.json не найден' : 'AILocationSettings.json not found');

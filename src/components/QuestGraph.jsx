@@ -127,7 +127,7 @@ function ItemAutocomplete({ suggestions, onAdd, label = "Add item", placeholder 
 }
 
 function AISpawnForm({ spawn, onChange, loadoutsList, t, setCoordinatePicker, setActiveTab, onPickWaypointCallback }) {
-  const factionOptions = ["West", "East", "Raiders", "Mercenaries", "Civilians", "Guards", "Passive", "Zombies", "Shamans"];
+  const factionOptions = ["West", "East", "Raiders", "Mercenaries", "Civilian", "Guards", "Passive", "Zombies", "Shamans"];
   const formationOptions = ["Vee", "File", "Wall", "Column", "Line", "StaggeredColumn"];
   const behaviourOptions = ["HALT_OR_LOOP", "WANDER", "PATROL"];
   const speedOptions = ["WALK", "JOG", "SPRINT", "RUN"];
