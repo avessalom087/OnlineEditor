@@ -429,6 +429,7 @@ function AppContent() {
   // ── File access state ─────────────────────────────────────────────────────
   const [hasAccess, setHasAccess]     = useState(false);
   const [folderName, setFolderName]   = useState('');
+  const [isZipMode, setIsZipMode]     = useState(false);
   const [savedHandle, setSavedHandle] = useState(null);
   const [loading, setLoading]         = useState(true);
 

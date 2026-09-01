@@ -67,10 +67,10 @@ export function validateBeforeExport(configs) {
   };
 
   Object.entries(configs).forEach(([path, file]) => {
-    if (!file.success || !file.content || !file.originalContent) return;
+    if (!file.success || !file.content) return;
 
-    // Only validate files that have been modified
-    const isDirty = file.isDirty;
+    // Only validate files that have been modified or newly created
+    const isDirty = file.isDirty !== false;
     if (!isDirty) return;
 
     const lp = path.toLowerCase();
