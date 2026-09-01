@@ -656,6 +656,47 @@ function AppContent() {
     });
   }, [fetchConfigs, t]);
 
+  // ── ZIP Archive Load & Export ─────────────────────────────────────────────
+  const handleSelectZip = async (file) => {
+    try {
+      setLoading(true);
+      const result = await fileService.readZipFile(file);
+      setConfigs(result.configs);
+      setSchemaReport(result.schemaReport);
+      setFolderName(result.folderName);
+      setIsZipMode(true);
+      setHasAccess(true);
+      setSavedHandle(null);
+      setLoading(false);
+      toast.success(lang === 'ru' ? `Архив ${file.name} успешно открыт!` : `Archive ${file.name} loaded successfully!`);
+    } catch (err) {
+      console.error('Failed to load zip', err);
+      toast.error(lang === 'ru' ? `Ошибка открытия ZIP: ${err.message}` : `ZIP load error: ${err.message}`);
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadZip = async () => {
+    try {
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const cleanName = (folderName || 'ServerConfigs').replace(/\.zip$/i, '');
+      const zipFileName = `${cleanName}_${dateStr}.zip`;
+      await fileService.exportConfigsToZip(configs, zipFileName);
+      // Reset dirty status
+      setConfigs(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(k => {
+          if (next[k]) next[k] = { ...next[k], isDirty: false };
+        });
+        return next;
+      });
+      toast.success(lang === 'ru' ? `Архив ${zipFileName} успешно скачан!` : `Archive ${zipFileName} downloaded!`);
+    } catch (err) {
+      console.error('Failed to export zip', err);
+      toast.error(`Export failed: ${err.message}`);
+    }
+  };
+
   // ── Folder selection / connection ─────────────────────────────────────────
   const handleSelectFolder = async () => {
     try {
@@ -708,6 +749,7 @@ function AppContent() {
     setSavedHandle(null);
     setFolderName('');
     setHasAccess(false);
+    setIsZipMode(false);
     setConfigs({});
     setSelectedFilePath(null);
     toast.info(t('toast_disconnected'));
@@ -1129,6 +1171,7 @@ function AppContent() {
         folderName={folderName}
         onRestoreAccess={handleRestoreAccess}
         onSelectFolder={handleSelectFolder}
+        onSelectZip={handleSelectZip}
         onLogout={handleLogout}
       />
     );
@@ -1177,6 +1220,17 @@ function AppContent() {
             <div className="header-status">
               <span className="header-status-label">{t('header_dir')}</span>
               <strong className="header-status-value" title={folderName.toUpperCase()}>{folderName.toUpperCase()}</strong>
+              {/* Quick ZIP Export / Backup Button */}
+              <button 
+                onClick={handleDownloadZip} 
+                className="header-status-btn" 
+                style={{ background: 'rgba(74,222,128,0.15)', borderColor: 'var(--accent-glow)', color: 'var(--accent-glow)', fontWeight: 'bold' }}
+                title={lang === 'ru' ? 'Скачать все текущие конфиги в виде .ZIP архива' : 'Download all current configs as .ZIP archive'}
+              >
+                <span>📥</span>
+                <span className="btn-text-responsive">{isZipMode ? (lang === 'ru' ? 'СКАЧАТЬ ZIP' : 'DOWNLOAD ZIP') : (lang === 'ru' ? 'БЭКАП (.ZIP)' : 'BACKUP (.ZIP)')}</span>
+              </button>
+
               <button onClick={handleDisconnect} className="header-status-btn" title={t('header_disconnect')}>
                 <span className="btn-text-responsive">{t('header_disconnect')}</span>
                 <span className="btn-icon-responsive">✖</span>

@@ -24,11 +24,53 @@ export function getExpansionModPrefix(configs) {
       return anyModKey.includes('\\') ? prefix.replace(/\//g, '\\') : prefix;
     }
   }
-  return '';
+  return 'ExpansionMod/';
+}
+
+export function getMarketPrefix(configs) {
+  const keys = Object.keys(configs || {});
+  // 1. If any category already exists, use its exact folder
+  const existingCat = keys.find(k => {
+    const l = k.toLowerCase().replace(/\\/g, '/');
+    return l.includes('market/') && configs[k]?.success;
+  });
+  if (existingCat) {
+    const normalized = existingCat.replace(/\\/g, '/');
+    const idx = normalized.toLowerCase().lastIndexOf('market/');
+    if (idx !== -1) {
+      const prefix = normalized.substring(0, idx + 'market/'.length);
+      return existingCat.includes('\\') ? prefix.replace(/\//g, '\\') : prefix;
+    }
+  }
+
+  // 2. Otherwise use ExpansionMod prefix
+  const modPrefix = getExpansionModPrefix(configs);
+  return `${modPrefix}Market/`;
+}
+
+export function getTradersPrefix(configs) {
+  const keys = Object.keys(configs || {});
+  // 1. If any trader already exists, use its exact folder
+  const existingTrader = keys.find(k => {
+    const l = k.toLowerCase().replace(/\\/g, '/');
+    return l.includes('traders/') && configs[k]?.success;
+  });
+  if (existingTrader) {
+    const normalized = existingTrader.replace(/\\/g, '/');
+    const idx = normalized.toLowerCase().lastIndexOf('traders/');
+    if (idx !== -1) {
+      const prefix = normalized.substring(0, idx + 'traders/'.length);
+      return existingTrader.includes('\\') ? prefix.replace(/\//g, '\\') : prefix;
+    }
+  }
+
+  // 2. Otherwise use ExpansionMod prefix
+  const modPrefix = getExpansionModPrefix(configs);
+  return `${modPrefix}Traders/`;
 }
 
 export function getExpansionPrefix(configs) {
-  const keys = Object.keys(configs);
+  const keys = Object.keys(configs || {});
   const key = keys.find(k => {
     const l = k.toLowerCase().replace(/\\/g, '/');
     return l.includes('settings/') || l.includes('traderzones/') || l.includes('missions/');
@@ -53,11 +95,11 @@ export function getExpansionPrefix(configs) {
       return anyExpKey.includes('\\') ? prefix.replace(/\//g, '\\') : prefix;
     }
   }
-  return '';
+  return 'expansion/';
 }
 
 export function getMpgSpawnerPrefix(configs) {
-  const keys = Object.keys(configs);
+  const keys = Object.keys(configs || {});
   const key = keys.find(k => {
     const l = k.toLowerCase().replace(/\\/g, '/');
     return l.includes('mpg_spawner/') || l.includes('points/');
@@ -82,5 +124,5 @@ export function getMpgSpawnerPrefix(configs) {
       return anyMpgKey.includes('\\') ? prefix.replace(/\//g, '\\') : prefix;
     }
   }
-  return '';
+  return 'mpg_spawner/';
 }

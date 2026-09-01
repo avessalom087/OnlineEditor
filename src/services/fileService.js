@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { cleanJsonComments } from '../utils/diagnostics';
 
 let activeDirHandle = null;
@@ -572,3 +573,98 @@ export async function loadCustomMap() {
   }
 }
 
+
+/**
+ * Reads and parses all configuration JSON files from a ZIP archive.
+ * @param {File|Blob} fileOrBlob 
+ * @returns {Promise<{ configs: object, schemaReport: object|null, folderName: string }>}
+ */
+export async function readZipFile(fileOrBlob) {
+  const zip = await JSZip.loadAsync(fileOrBlob);
+  const configs = {};
+  let schemaReport = null;
+
+  const fileEntries = Object.keys(zip.files).filter(p => !zip.files[p].dir);
+
+  for (const relativePath of fileEntries) {
+    const lower = relativePath.toLowerCase();
+
+    // Skip Mac OSX metadata and internal backup dirs
+    if (relativePath.includes('__MACOSX') || relativePath.startsWith('.') || lower.includes('/.pz_tool/')) {
+      continue;
+    }
+
+    if (lower.endsWith('schema_report.json')) {
+      try {
+        const text = await zip.files[relativePath].async('text');
+        schemaReport = JSON.parse(text);
+      } catch (e) {}
+      continue;
+    }
+
+    if (!lower.endsWith('.json')) {
+      continue;
+    }
+
+    try {
+      const text = await zip.files[relativePath].async('text');
+      const clean = cleanJsonComments(text);
+      const parsed = JSON.parse(clean);
+      configs[relativePath] = {
+        success: true,
+        content: parsed,
+        error: null,
+        raw: text
+      };
+    } catch (err) {
+      try {
+        const text = await zip.files[relativePath].async('text');
+        configs[relativePath] = {
+          success: false,
+          content: null,
+          error: err.message,
+          raw: text
+        };
+      } catch (e) {}
+    }
+  }
+
+  const baseName = (fileOrBlob.name || 'Server_Config_Archive').replace(/\.zip$/i, '');
+  return { configs, schemaReport, folderName: baseName };
+}
+
+/**
+ * Packs all current configs into a ZIP archive and triggers a browser download.
+ * @param {object} configs 
+ * @param {string} zipFileName 
+ * @returns {Promise<boolean>}
+ */
+export async function exportConfigsToZip(configs, zipFileName = 'ProjectZero_ServerConfigs.zip') {
+  const zip = new JSZip();
+
+  for (const [filePath, fileData] of Object.entries(configs || {})) {
+    if (!fileData) continue;
+    if (fileData.success && fileData.content !== undefined) {
+      const jsonStr = JSON.stringify(fileData.content, null, 2);
+      zip.file(filePath, jsonStr);
+    } else if (fileData.raw) {
+      zip.file(filePath, fileData.raw);
+    }
+  }
+
+  const blob = await zip.generateAsync({
+    type: 'blob',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 }
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = zipFileName.endsWith('.zip') ? zipFileName : `${zipFileName}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  return true;
+}

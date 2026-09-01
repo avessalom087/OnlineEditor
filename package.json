@@ -10,6 +10,7 @@
     "check-configs": "node scripts/validate_configs.js"
   },
   "dependencies": {
+    "jszip": "^3.10.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

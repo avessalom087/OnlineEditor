@@ -9,7 +9,7 @@ import { translateStrKey } from '../utils/strKeys';
 import { useTranslation } from '../utils/localization';
 import HelpIcon from './HelpIcon';
 import { AutocompleteWorkerWrapper } from '../utils/autocompleteWorker';
-import { getExpansionModPrefix, getExpansionPrefix } from '../utils/pathUtils';
+import { getExpansionModPrefix, getExpansionPrefix, getMarketPrefix, getTradersPrefix } from '../utils/pathUtils';
 
 
 // ─── EditableCell ─────────────────────────────────────────────────────────────
@@ -526,8 +526,8 @@ export default function EconomyEditor({
 
     let cloneIndex = 1;
     let candidateName = `${baseName}_copy`;
-    const expPrefix = getExpansionPrefix(configs);
-    while (configs[`${expPrefix}market/${candidateName}.json`]) {
+    const dir = catPath.substring(0, catPath.lastIndexOf('/') + 1);
+    while (configs[`${dir}${candidateName}.json`]) {
       cloneIndex++;
       candidateName = `${baseName}_copy${cloneIndex}`;
     }
@@ -583,8 +583,8 @@ export default function EconomyEditor({
       setSubTab('traders');
       toast.success(lang === 'ru' ? `Торговец успешно клонирован: ${cleanFileName}.json` : `Trader cloned: ${cleanFileName}.json`);
     } else if (type === 'category') {
-      const expPrefix = getExpansionPrefix(configs);
-      const newPath = `${expPrefix}market/${cleanFileName}.json`;
+      const dir = sourcePath.substring(0, sourcePath.lastIndexOf('/') + 1) || getMarketPrefix(configs);
+      const newPath = `${dir}${cleanFileName}.json`;
       if (configs[newPath]) {
         toast.error(lang === 'ru' ? 'Категория с таким именем файла уже существует!' : 'Category file already exists!');
         return;
@@ -978,12 +978,9 @@ export default function EconomyEditor({
       return;
     }
     const cleanFilename = newCategoryName.trim().replace(/\.json$/i, '');
-    // Prefer ExpansionMod/Market/ (modern) over expansion/market/ (legacy)
-    const modPrefix = getExpansionModPrefix(configs);
-    const expPrefix = getExpansionPrefix(configs);
-    const prefix = modPrefix || expPrefix;
-    const marketDir = modPrefix ? 'Market' : 'market';
-    const path = `${prefix}${marketDir}/${cleanFilename}.json`;
+    // Always write to Market prefix (ExpansionMod/Market/ or server folder)
+    const marketPrefix = getMarketPrefix(configs);
+    const path = `${marketPrefix}${cleanFilename}.json`;
     if (configs[path]) {
       toast.error(lang === 'ru' ? 'Категория с таким именем уже существует' : 'Category already exists');
       return;
@@ -5068,9 +5065,9 @@ export default function EconomyEditor({
                         return;
                       }
 
-                      const prefix = getExpansionModPrefix(configs);
+                      const tradersPrefix = getTradersPrefix(configs);
                       const cleanTraderName = wizardFilename.toLowerCase().trim();
-                      const finalFilename = `${prefix}Traders/${cleanTraderName}.json`;
+                      const finalFilename = `${tradersPrefix}${cleanTraderName}.json`;
                       const newTraderConfig = {
                         m_Version: 13,
                         DisplayName: wizardDisplayName,
