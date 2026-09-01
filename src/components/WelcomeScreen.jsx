@@ -60,6 +60,10 @@ export default function WelcomeScreen({ savedHandle, folderName, onRestoreAccess
         animation: 'toastIn 0.3s ease-out',
         textAlign: 'center',
       }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+          <img src="./favicon.svg" alt="Project Zero" style={{ width: '72px', height: '72px', filter: 'drop-shadow(0 0 16px rgba(74,222,128,0.45))' }} />
+        </div>
+
         <div style={{
           fontSize: '11px',
           color: 'var(--text-secondary)',

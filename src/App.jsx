@@ -1165,7 +1165,8 @@ function AppContent() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="header" style={{ flexShrink: 0 }}>
         <div className="header-left">
-          <div className="header-title">
+          <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img src="./favicon.svg" alt="Project Zero" style={{ width: '22px', height: '22px', filter: 'drop-shadow(0 0 6px rgba(74,222,128,0.5))' }} />
             <h1 className="header-title-main">
               {t('header_control_center')}
               <span className="header-title-version">v1.2.0 (ONLINE)</span>
