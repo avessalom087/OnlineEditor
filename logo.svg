@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Smooth background gradient -->
+    <radialGradient id="darkBg" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#0e1f13"/>
+      <stop offset="65%" stop-color="#08100a"/>
+      <stop offset="100%" stop-color="#030504"/>
+    </radialGradient>
+
+    <!-- Emerald core gradient -->
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#86efac"/>
+      <stop offset="50%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+
+    <!-- Ring gradient -->
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#16a34a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark Rounded Squircle Base -->
+  <rect width="512" height="512" rx="120" fill="url(#darkBg)"/>
+  <rect x="12" y="12" width="488" height="488" rx="108" fill="none" stroke="#22c55e" stroke-width="2" stroke-opacity="0.3"/>
+
+  <!-- Outer Precision Reticle Ring -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="#22c55e" stroke-width="3" stroke-opacity="0.25"/>
+
+  <!-- 4 Minimalist Aperture Arcs (Target / Zero) -->
+  <!-- Top-Right Arc -->
+  <path d="M 286 128 A 136 136 0 0 1 384 226" fill="none" stroke="url(#ringGrad)" stroke-width="28" stroke-linecap="round"/>
+  <!-- Bottom-Right Arc -->
+  <path d="M 384 286 A 136 136 0 0 1 286 384" fill="none" stroke="url(#ringGrad)" stroke-width="28" stroke-linecap="round"/>
+  <!-- Bottom-Left Arc -->
+  <path d="M 226 384 A 136 136 0 0 1 128 286" fill="none" stroke="url(#ringGrad)" stroke-width="28" stroke-linecap="round"/>
+  <!-- Top-Left Arc -->
+  <path d="M 128 226 A 136 136 0 0 1 226 128" fill="none" stroke="url(#ringGrad)" stroke-width="28" stroke-linecap="round"/>
+
+  <!-- 4 Precision Crosshair Guides -->
+  <line x1="256" y1="64" x2="256" y2="108" stroke="#4ade80" stroke-width="5" stroke-linecap="round"/>
+  <line x1="256" y1="404" x2="256" y2="448" stroke="#4ade80" stroke-width="5" stroke-linecap="round"/>
+  <line x1="64" y1="256" x2="108" y2="256" stroke="#4ade80" stroke-width="5" stroke-linecap="round"/>
+  <line x1="404" y1="256" x2="448" y2="256" stroke="#4ade80" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Radiant Center Core (The Zero Focal Point) -->
+  <circle cx="256" cy="256" r="48" fill="url(#emeraldGrad)"/>
+  <circle cx="256" cy="256" r="22" fill="#040805"/>
+  <circle cx="256" cy="256" r="10" fill="#86efac"/>
+  <circle cx="256" cy="256" r="4" fill="#ffffff"/>
+</svg>
