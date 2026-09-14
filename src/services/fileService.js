@@ -80,7 +80,28 @@ async function scanDir(dirHandle, pathArray = [], configs = {}) {
       const rootLower = currentPath[0].toLowerCase();
       const isConfigPath = rootLower === 'expansion' || rootLower === 'expansionmod' || rootLower === 'mpg_spawner' || rootLower === 'searchforloot';
       
-      if (isConfigPath && entry.name.toLowerCase().endsWith('.json')) {
+      if (isConfigPath && (entry.name.toLowerCase().endsWith('.json') || entry.name.toLowerCase().endsWith('.map'))) {
+        if (entry.name.toLowerCase().endsWith('.map')) {
+          try {
+            const file = await entry.getFile();
+            const rawText = await file.text();
+            configs[relPath] = {
+              success: true,
+              isMap: true,
+              content: rawText,
+              raw: rawText,
+              sizeBytes: file.size
+            };
+          } catch (e) {
+            configs[relPath] = {
+              success: false,
+              isMap: true,
+              error: e.message,
+              sizeBytes: 0
+            };
+          }
+          continue;
+        }
         try {
           const file = await entry.getFile();
           const rawText = await file.text();
@@ -287,7 +308,8 @@ export async function saveFile(filePath, content) {
   const sanitized = sanitizeContent(filePath, content);
   const fileHandle = await getFileHandleFromPath(activeDirHandle, filePath, { create: true });
   const writable = await fileHandle.createWritable();
-  await writable.write(JSON.stringify(sanitized, null, 4));
+  const dataToWrite = typeof sanitized === 'string' ? sanitized : JSON.stringify(sanitized, null, 4);
+  await writable.write(dataToWrite);
   await writable.close();
 
   // Rotate old backups
@@ -317,7 +339,8 @@ export async function saveAll(files) {
     const sanitized = sanitizeContent(file.filePath, file.content);
     const fileHandle = await getFileHandleFromPath(activeDirHandle, file.filePath, { create: true });
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(sanitized, null, 4));
+    const dataToWrite = typeof sanitized === 'string' ? sanitized : JSON.stringify(sanitized, null, 4);
+    await writable.write(dataToWrite);
     await writable.close();
   }
 
@@ -602,6 +625,25 @@ export async function readZipFile(fileOrBlob) {
       continue;
     }
 
+    if (lower.endsWith('.map')) {
+      try {
+        const text = await zip.files[relativePath].async('text');
+        configs[relativePath] = {
+          success: true,
+          isMap: true,
+          content: text,
+          raw: text
+        };
+      } catch (err) {
+        configs[relativePath] = {
+          success: false,
+          isMap: true,
+          error: err.message
+        };
+      }
+      continue;
+    }
+
     if (!lower.endsWith('.json')) {
       continue;
     }
@@ -635,21 +677,43 @@ export async function readZipFile(fileOrBlob) {
 
 /**
  * Packs all current configs into a ZIP archive and triggers a browser download.
+/**
+ * Exports configs into a structured turnkey ZIP archive.
  * @param {object} configs 
  * @param {string} zipFileName 
- * @returns {Promise<boolean>}
+ * @param {object} options - { onlyDirty?: boolean, specificFiles?: string[] }
+ * @returns {Promise<{ success: boolean, exportedCount: number }>}
  */
-export async function exportConfigsToZip(configs, zipFileName = 'ProjectZero_ServerConfigs.zip') {
+export async function exportConfigsToZip(configs, zipFileName = 'ProjectZero_ServerConfigs.zip', options = {}) {
   const zip = new JSZip();
+  let exportedCount = 0;
 
-  for (const [filePath, fileData] of Object.entries(configs || {})) {
+  let entries = Object.entries(configs || {});
+  if (options.onlyDirty) {
+    entries = entries.filter(([_, f]) => f && f.isDirty);
+  } else if (Array.isArray(options.specificFiles)) {
+    const filterSet = new Set(options.specificFiles.map(p => p.toLowerCase()));
+    entries = entries.filter(([p]) => filterSet.has(p.toLowerCase()));
+  }
+
+  for (const [filePath, fileData] of entries) {
     if (!fileData) continue;
-    if (fileData.success && fileData.content !== undefined) {
-      const jsonStr = JSON.stringify(fileData.content, null, 2);
+    if (fileData.isMap || filePath.toLowerCase().endsWith('.map')) {
+      const mapStr = typeof fileData.content === 'string' ? fileData.content : (fileData.raw || '');
+      zip.file(filePath, mapStr);
+      exportedCount++;
+    } else if (fileData.success && fileData.content !== undefined) {
+      const jsonStr = typeof fileData.content === 'string' ? fileData.content : JSON.stringify(fileData.content, null, 2);
       zip.file(filePath, jsonStr);
+      exportedCount++;
     } else if (fileData.raw) {
       zip.file(filePath, fileData.raw);
+      exportedCount++;
     }
+  }
+
+  if (exportedCount === 0) {
+    return { success: false, exportedCount: 0 };
   }
 
   const blob = await zip.generateAsync({
@@ -666,5 +730,5 @@ export async function exportConfigsToZip(configs, zipFileName = 'ProjectZero_Ser
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-  return true;
+  return { success: true, exportedCount };
 }

@@ -1,3 +1,12 @@
+import { runPreFlightCheck } from '../utils/preFlightInspector.js';
+import { inspectTraderHealth, healTraderConfig, EXPANSION_TRADER_ICONS } from '../utils/traderHealthUtils.js';
+import { findMarketDuplicates, autoResolveMarketDuplicates } from '../utils/marketAuditUtils';
+import { 
+  TRADER_OUTFIT_PRESETS, 
+  parseTraderMapContent, 
+  buildTraderMapLine, 
+  upsertTraderInMapContent 
+} from '../utils/traderMapUtils';
 import { detectCompatibleAttachments, addCustomAttachmentToWeapon, removeCustomAttachmentFromWeapon, resetCustomAttachmentsForWeapon } from '../utils/attachmentsMatrix';
 import { parseClassnamesFromText } from '../utils/classnamesParser';
 import { Icon } from './common/Icons';
@@ -120,6 +129,18 @@ export default function EconomyEditor({
     return !xmlItemsSet.has(cn.toLowerCase());
   }, [xmlItemsSet, xmlItems]);
 
+  // Case-sensitivity lookup map (lowercase -> official types.xml casing)
+  const xmlCaseMap = useMemo(() => {
+    const map = new Map();
+    if (xmlItems && Array.isArray(xmlItems)) {
+      xmlItems.forEach(item => {
+        if (typeof item === 'string') {
+          map.set(item.toLowerCase(), item);
+        }
+      });
+    }
+    return map;
+  }, [xmlItems]);
 
   // ─ Sub-tab / selection ────────────────────────────────────────────────────
   const [subTab,               setSubTab]               = useState(() => {
@@ -137,6 +158,9 @@ export default function EconomyEditor({
   const [bulkOp, setBulkOp] = useState('mult-buy');
   const [bulkVal, setBulkVal] = useState('1.1');
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showDuplicateAuditModal, setShowDuplicateAuditModal] = useState(false);
+  const [showPreFlightModal, setShowPreFlightModal] = useState(false);
+  const [duplicateSearchQuery, setDuplicateSearchQuery] = useState('');
 
   // ─ Trader Creation Wizard states ──────────────────────────────────────────
   const [showTraderWizard, setShowTraderWizard] = useState(false);
@@ -189,6 +213,16 @@ export default function EconomyEditor({
   // ─ Active config refs ─────────────────────────────────────────────────────
   const activeCategoryConfig = (selectedCategoryPath && configs) ? configs[selectedCategoryPath] : null;
   const activeTraderConfig   = (selectedTraderPath && configs)   ? configs[selectedTraderPath]   : null;
+
+  const handleFixItemCasing = useCallback((originalIndex, targetCasing) => {
+    if (!activeCategoryConfig?.content?.Items) return;
+    const items = [...activeCategoryConfig.content.Items];
+    if (items[originalIndex]) {
+      items[originalIndex] = { ...items[originalIndex], ClassName: targetCasing };
+      onChangeField(selectedCategoryPath, ['Items'], items);
+      toast.success(lang === 'ru' ? `Регистр исправлен на "${targetCasing}"` : `Fixed casing to "${targetCasing}"`);
+    }
+  }, [activeCategoryConfig, selectedCategoryPath, onChangeField, lang, toast]);
 
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -254,28 +288,6 @@ export default function EconomyEditor({
     return xmlItems.filter(item => item && typeof item === 'string' && !existingSet.has(item.toLowerCase()));
   }, [activeCategoryConfig, xmlItems]);
 
-  const priceData = useMemo(() => {
-    if (!activeCategoryConfig || !activeCategoryConfig.success || !activeCategoryConfig.content || !Array.isArray(activeCategoryConfig.content.Items)) {
-      return null;
-    }
-    const items = activeCategoryConfig.content.Items
-      .filter(i => i && typeof i.ClassName === 'string' && typeof i.MaxPriceThreshold === 'number')
-      .map(i => ({
-        name: i.ClassName,
-        max: i.MaxPriceThreshold,
-        min: i.MinPriceThreshold || 0
-      }))
-      .sort((a, b) => b.max - a.max);
-    
-    if (items.length === 0) return null;
-
-    const avgMax = Math.round(items.reduce((sum, i) => sum + i.max, 0) / items.length);
-    const avgMin = Math.round(items.reduce((sum, i) => sum + i.min, 0) / items.length);
-    const peakMax = Math.max(...items.map(i => i.max));
-    
-    return { items, avgMax, avgMin, peakMax };
-  }, [activeCategoryConfig]);
-
   const [xmlFilteredItems, setXmlFilteredItems] = useState([]);
   const [xmlWorker, setXmlWorker] = useState(null);
 
@@ -319,7 +331,7 @@ export default function EconomyEditor({
     if (!configs) return [];
     const paths = Object.keys(configs).filter(p => {
       const lp = p.toLowerCase();
-      return (lp.includes('/market/') || lp.includes('market/')) && configs[p]?.success;
+      return (lp.includes('/market/') || lp.includes('market/')) && lp.endsWith('.json') && configs[p]?.success;
     });
     paths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
     return paths;
@@ -327,7 +339,7 @@ export default function EconomyEditor({
 
   const traderPaths = useMemo(() => {
     if (!configs) return [];
-    const paths = Object.keys(configs).filter(p => p.toLowerCase().includes('traders/') && configs[p]?.success);
+    const paths = Object.keys(configs).filter(p => p.toLowerCase().includes('traders/') && p.toLowerCase().endsWith('.json') && configs[p]?.success);
     paths.sort((a, b) => a.split('/').pop().localeCompare(b.split('/').pop()));
     return paths;
   }, [configs]);
@@ -346,9 +358,15 @@ export default function EconomyEditor({
   const [hoveredRowCat, setHoveredRowCat] = useState(null);
   const [hoveredColTrader, setHoveredColTrader] = useState(null);
   const [overrideSearchQuery, setOverrideSearchQuery] = useState('');
+  const [traderSectionTab, setTraderSectionTab] = useState('general'); // 'general' | 'categories' | 'appearance'
   const [expandedOverrideCats, setExpandedOverrideCats] = useState(new Set());
   const [npcCoords, setNpcCoords] = useState([7500.0, 0.0, 7500.0]);
   const [npcModel, setNpcModel] = useState('ExpansionTraderSurvivorM');
+  const [npcYaw, setNpcYaw] = useState(0);
+  const [npcClothing, setNpcClothing] = useState([]);
+  const [customClothInput, setCustomClothInput] = useState('');
+  const [targetMapFileName, setTargetMapFileName] = useState('');
+  const [isLocalTraderDirty, setIsLocalTraderDirty] = useState(false);
   const [selectedSafezonePath, setSelectedSafezonePath] = useState('');
 
   // ─ Context Menu & Safe Operations states ──────────────────────────────────
@@ -356,11 +374,35 @@ export default function EconomyEditor({
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState(null);
   const [cloneDialog, setCloneDialog] = useState(null);
 
-  // 📍 Two-way sync: Auto-load NPC coordinates from expansion/objects or traderzones
+  // 📍 Two-way sync: Auto-load NPC coordinates, Yaw, Model, and Clothing when selecting a trader
   useEffect(() => {
     if (!selectedTraderPath || !configs) return;
     const prefix = getExpansionPrefix(configs);
     const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
+    
+    // 0. Primary Check: Scan all .map files in expansion/traders/ or root
+    let foundInMap = false;
+    for (const [mapPath, mapFile] of Object.entries(configs)) {
+      if (mapPath.toLowerCase().endsWith('.map') && mapFile && mapFile.success) {
+        const text = typeof mapFile.content === 'string' ? mapFile.content : (mapFile.raw || '');
+        const entries = parseTraderMapContent(text);
+        const match = entries.find(e => e.traderName.toLowerCase() === traderName.toLowerCase());
+        if (match) {
+          if (Array.isArray(match.pos) && match.pos.length === 3) setNpcCoords(match.pos);
+          setNpcYaw(match.yaw || 0);
+          if (match.npcModel) setNpcModel(match.npcModel);
+          setNpcClothing(match.clothing || []);
+          setTargetMapFileName(mapPath.split('/').pop());
+          foundInMap = true;
+          break;
+        }
+      }
+    }
+
+    if (!foundInMap) {
+      setNpcClothing([]);
+      setNpcYaw(0);
+    }
     
     // 1. Try finding in expansion/objects/
     const possibleObjectPaths = [
@@ -430,18 +472,26 @@ export default function EconomyEditor({
 
     if (matchedZone) {
       setSelectedSafezonePath(matchedZone);
+      if (!foundInMap) {
+        const zoneBase = matchedZone.split('/').pop().replace('_zone.json', '').replace('.json', '');
+        setTargetMapFileName(`${zoneBase}_Traders.map`);
+      }
       if (!foundObjectPos && Array.isArray(configs[matchedZone].content?.Position)) {
         if (Array.isArray(configs[matchedZone]?.content?.Position)) foundObjectPos = [...configs[matchedZone].content.Position];
       }
     } else {
       setSelectedSafezonePath('');
+      if (!foundInMap) {
+        setTargetMapFileName(`${traderName}_Traders.map`);
+      }
     }
 
     if (foundObjectPos) {
       setNpcCoords(foundObjectPos);
       if (foundModel) setNpcModel(foundModel);
     }
-  }, [selectedTraderPath, configs]);
+    setIsLocalTraderDirty(false);
+  }, [selectedTraderPath]);
 
   // Close context menu on global click or Escape key
   useEffect(() => {
@@ -460,7 +510,6 @@ export default function EconomyEditor({
   }, [contextMenu]);
 
   // ─ Category UI states ───────────────────────────────────────────────────
-  const [showPriceChart, setShowPriceChart] = useState(false);
   const [showTraderLinksDrawer, setShowTraderLinksDrawer] = useState(false);
   const [showBulkPasteModal, setShowBulkPasteModal] = useState(false);
   const [smartAttachmentsModal, setSmartAttachmentsModal] = useState(null);
@@ -562,26 +611,46 @@ export default function EconomyEditor({
       
       onCreateFile(newPath, clonedContent);
 
-      // Safe clone 3D object with +2m offset if requested
-      if (shiftCoords) {
-        const expPrefix = getExpansionPrefix(configs);
-        const newObjPath = `${expPrefix}objects/${cleanFileName}_npc.json`;
-        const newPos = [npcCoords[0] + 2.0, npcCoords[1], npcCoords[2]];
-        const objContent = {
-          Objects: [
-            {
-              name: npcModel || 'ExpansionTraderSurvivorM',
-              pos: newPos,
-              ypr: [0.0, 0.0, 0.0]
-            }
-          ]
-        };
-        onCreateFile(newObjPath, objContent);
+      // 1. Duplicate .map spawn with +2m offset
+      const expPrefix = getExpansionPrefix(configs);
+      const cleanMapName = (targetMapFileName || `${sourcePath.split('/').pop().replace('.json', '')}_Traders.map`).trim();
+      const finalMapFileName = cleanMapName.endsWith('.map') ? cleanMapName : `${cleanMapName}.map`;
+      const mapFilePath = `${expPrefix}traders/${finalMapFileName}`;
+
+      const newPos = [npcCoords[0] + 2.0, npcCoords[1], npcCoords[2]];
+      const existingMapText = configs[mapFilePath]?.content || configs[mapFilePath]?.raw || '';
+      const updatedMapText = upsertTraderInMapContent(existingMapText, {
+        npcModel: npcModel || 'ExpansionTraderSurvivorM',
+        traderName: cleanFileName,
+        pos: newPos,
+        ypr: [Number(npcYaw) || 0, 0, 0],
+        clothing: npcClothing
+      });
+
+      if (configs[mapFilePath]) {
+        onChangeField(mapFilePath, [], updatedMapText);
+        if (onSaveFile) onSaveFile(mapFilePath, updatedMapText);
+      } else {
+        onCreateFile(mapFilePath, updatedMapText);
       }
 
+      // 2. Duplicate SafeZone with +2m offset
+      const safezoneFileName = `${expPrefix}traderzones/${cleanFileName}_zone.json`;
+      const newZoneContent = {
+        m_Version: 6,
+        m_DisplayName: `${newDisplayName.trim() || cleanFileName} SafeZone`,
+        Position: newPos,
+        Radius: 100.0,
+        BuyPricePercent: 100.0,
+        SellPricePercent: -1.0,
+        Stock: {}
+      };
+      onCreateFile(safezoneFileName, newZoneContent);
+
       setSelectedTraderPath(newPath);
+      setNpcCoords(newPos);
       setSubTab('traders');
-      toast.success(lang === 'ru' ? `Торговец успешно клонирован: ${cleanFileName}.json` : `Trader cloned: ${cleanFileName}.json`);
+      toast.success(lang === 'ru' ? `Торговец, .map спавн и SafeZone успешно клонированы: ${cleanFileName}` : `Trader, .map spawn and SafeZone cloned: ${cleanFileName}`);
     } else if (type === 'category') {
       const dir = sourcePath.substring(0, sourcePath.lastIndexOf('/') + 1) || getMarketPrefix(configs);
       const newPath = `${dir}${cleanFileName}.json`;
@@ -600,6 +669,108 @@ export default function EconomyEditor({
     }
 
     setCloneDialog(null);
+  };
+
+  // ── Native .map Trader Spawning & Wardrobe Handlers ───────────────────────
+  const handleApplyOutfitPreset = (presetKey) => {
+    const preset = TRADER_OUTFIT_PRESETS[presetKey];
+    if (preset && Array.isArray(preset.clothing)) {
+      setNpcClothing([...preset.clothing]);
+      setIsLocalTraderDirty(true);
+      toast.success(lang === 'ru' ? `Применен гардероб: ${preset.labelRu}` : `Applied outfit: ${preset.labelEn}`);
+    }
+  };
+
+  const handleAddClothItem = (item) => {
+    if (!item || !item.trim()) return;
+    const clean = item.trim();
+    if (!npcClothing.includes(clean)) {
+      setNpcClothing(prev => [...prev, clean]);
+      setIsLocalTraderDirty(true);
+    }
+    setCustomClothInput('');
+  };
+
+  const handleRemoveClothItem = (idx) => {
+    setNpcClothing(prev => prev.filter((_, i) => i !== idx));
+    setIsLocalTraderDirty(true);
+  };
+
+  // ── Unified Master Save for Complete Trader Ecosystem ─────────────────────
+  const handleSaveTraderMaster = async () => {
+    if (!selectedTraderPath || !configs) return;
+    const prefix = getExpansionPrefix(configs);
+    const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
+
+    // 1. Sync & Save Native .map File (expansion/traders/<Zone>_Traders.map)
+    const cleanMapName = (targetMapFileName || `${traderName}_Traders.map`).trim();
+    const finalMapFileName = cleanMapName.endsWith('.map') ? cleanMapName : `${cleanMapName}.map`;
+    const mapFilePath = `${prefix}traders/${finalMapFileName}`;
+
+    const existingMapContent = configs[mapFilePath]?.content || configs[mapFilePath]?.raw || '';
+    const updatedMapContent = upsertTraderInMapContent(existingMapContent, {
+      npcModel: npcModel || 'ExpansionTraderSurvivorM',
+      traderName,
+      pos: npcCoords,
+      ypr: [Number(npcYaw) || 0, 0, 0],
+      clothing: npcClothing
+    });
+
+    if (onSaveFile) {
+      await onSaveFile(mapFilePath, updatedMapContent);
+    }
+
+    // 2. If SafeZone exists/selected, update its position & save
+    if (selectedSafezonePath && configs[selectedSafezonePath]) {
+      const currentZone = configs[selectedSafezonePath].content || {};
+      const updatedZone = { ...currentZone, Position: [...npcCoords] };
+      if (onSaveFile) {
+        await onSaveFile(selectedSafezonePath, updatedZone);
+      }
+    }
+
+    // 3. Save the Trader JSON file (ExpansionMod/Traders/<Name>.json)
+    if (onSaveFile) {
+      await onSaveFile(selectedTraderPath);
+    }
+
+    setIsLocalTraderDirty(false);
+
+    toast.success(lang === 'ru'
+      ? `🎉 Торговец "${configs[selectedTraderPath]?.content?.DisplayName || traderName}" (.map спавн, гардероб и SafeZone) успешно сохранены!`
+      : `🎉 Trader "${configs[selectedTraderPath]?.content?.DisplayName || traderName}" (.map spawn, wardrobe & SafeZone) saved successfully!`
+    );
+  };
+
+  // Sync NPC 3D model with objects file
+  const handleUpdateNpcModel = (newModel) => {
+    const cleanModel = (newModel || '').trim() || 'ExpansionTraderSurvivorM';
+    setNpcModel(cleanModel);
+    setIsLocalTraderDirty(true);
+    if (!selectedTraderPath || !configs) return;
+
+    const prefix = getExpansionPrefix(configs);
+    const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
+    const objectFileName = `${prefix}objects/${traderName}_npc.json`;
+    const existingObj = configs[objectFileName];
+
+    if (existingObj && existingObj.success && existingObj.content?.Objects) {
+      const updatedObjs = [...existingObj.content.Objects];
+      if (updatedObjs.length > 0) {
+        updatedObjs[0] = { ...updatedObjs[0], name: cleanModel };
+      } else {
+        updatedObjs.push({ name: cleanModel, pos: npcCoords, ypr: [0.0, 0.0, 0.0] });
+      }
+      onChangeField(objectFileName, ['Objects'], updatedObjs);
+      toast.success(lang === 'ru' ? `Модель NPC сохранена: ${cleanModel}` : `NPC model saved: ${cleanModel}`);
+    } else {
+      onCreateFile(objectFileName, {
+        Objects: [
+          { name: cleanModel, pos: npcCoords, ypr: [0.0, 0.0, 0.0] }
+        ]
+      });
+      toast.success(lang === 'ru' ? `Создан 3D-объект спавна NPC: ${cleanModel}` : `Created NPC 3D spawn: ${cleanModel}`);
+    }
   };
 
   // Open Safe Delete Trader Dialog
@@ -1171,25 +1342,43 @@ export default function EconomyEditor({
     return list.sort((a, b) => a.id - b.id);
   }, [configs]);
 
-  // ─ Cross-category duplicate map (B9) ─────────────────────────────────────
-  const crossCatMap = useMemo(() => {
-    const map = new Map();
-    categoryPaths.forEach(p => {
-      const file = configs[p];
-      if (file?.success && Array.isArray(file.content?.Items)) {
-        const catName = p.split('/').pop().replace('.json', '');
-        file.content.Items.forEach(item => {
-          if (item.ClassName) {
-            const lower = item.ClassName.toLowerCase();
-            if (!map.has(lower)) map.set(lower, []);
-            map.get(lower).push(catName);
-          }
-        });
+  // ─ Pre-Flight Compatibility Inspector ───────────────────────────────────
+  const preFlightReport = useMemo(() => runPreFlightCheck(configs), [configs]);
+
+  // ─ Market Duplicate & Conflict Auditor ──────────────────────────────────
+  const marketAudit = useMemo(() => findMarketDuplicates(configs), [configs]);
+  const crossCatMap = marketAudit.duplicateMap;
+
+  const handleAutoResolveAllDuplicates = () => {
+    const { updatedConfigs, resolvedCount } = autoResolveMarketDuplicates(configs);
+    if (resolvedCount === 0) {
+      toast.info(lang === 'ru' ? 'Дубликаты не найдены!' : 'No duplicates found!');
+      return;
+    }
+    Object.entries(updatedConfigs).forEach(([p, f]) => {
+      if (f.isDirty && configs[p]) {
+        onChangeField(p, ['Items'], f.content.Items);
       }
     });
-    return map;
-  }, [configs, categoryPaths]);
+    setShowDuplicateAuditModal(false);
+    toast.success(lang === 'ru' 
+      ? `🎉 Устранено ${resolvedCount} дубликатов рынка! Сервер будет загружаться без ошибок.` 
+      : `🎉 Resolved ${resolvedCount} market duplicate collisions! Server will load error-free.`);
+  };
 
+  const handleResolveSingleDuplicate = (className) => {
+    const { updatedConfigs, resolvedCount } = autoResolveMarketDuplicates(configs, [className.toLowerCase()]);
+    if (resolvedCount > 0) {
+      Object.entries(updatedConfigs).forEach(([p, f]) => {
+        if (f.isDirty && configs[p]) {
+          onChangeField(p, ['Items'], f.content.Items);
+        }
+      });
+      toast.success(lang === 'ru' ? `Дубликат ${className} устранен!` : `Resolved duplicate for ${className}!`);
+    }
+  };
+
+  // ─ Cross-category duplicate map (B9) ─────────────────────────────────────
   const isDuplicate = (cn) => { if (!cn) return false; const cats = crossCatMap.get(cn.toLowerCase()); return cats && cats.length > 1; };
   const getDupCats  = (cn) => { if (!cn) return []; return crossCatMap.get(cn.toLowerCase()) || []; };
 
@@ -1410,10 +1599,165 @@ export default function EconomyEditor({
     ? JSON.stringify(activeCategoryConfig.content) !== JSON.stringify(activeCategoryConfig.originalContent) : false;
   const isTraderDirty = activeTraderConfig && activeTraderConfig.success && activeTraderConfig.content
     ? JSON.stringify(activeTraderConfig.content) !== JSON.stringify(activeTraderConfig.originalContent) : false;
+  const isTraderFullyDirty = isTraderDirty || isLocalTraderDirty;
+
+  // ─ Trader Health Diagnostics ──────────────────────────────────────────────
+  const traderHealth = useMemo(() => {
+    if (!selectedTraderPath || !activeTraderConfig?.content) return null;
+    return inspectTraderHealth(activeTraderConfig.content, selectedTraderPath, configs);
+  }, [activeTraderConfig?.content, selectedTraderPath, configs]);
+
+  const handleHealCurrentTrader = async () => {
+    if (!selectedTraderPath || !configs) return;
+    const currentConfig = activeTraderConfig?.content;
+    if (!currentConfig) return;
+
+    // 1. Heal trader JSON (standardize to m_Version 13 & strip broken categories)
+    const healedConfig = healTraderConfig(currentConfig, selectedTraderPath, configs, { stripBrokenCategories: true });
+    onChangeField(selectedTraderPath, [], healedConfig);
+
+    // 2. Ensure native .map line exists
+    const prefix = getExpansionPrefix(configs);
+    const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
+    const cleanMapName = (targetMapFileName || `${traderName}_Traders.map`).trim();
+    const finalMapFileName = cleanMapName.endsWith('.map') ? cleanMapName : `${cleanMapName}.map`;
+    const mapFilePath = `${prefix}traders/${finalMapFileName}`;
+
+    const existingMapText = configs[mapFilePath]?.content || configs[mapFilePath]?.raw || '';
+    const updatedMapText = upsertTraderInMapContent(existingMapText, {
+      npcModel: npcModel || 'ExpansionTraderSurvivorM',
+      traderName,
+      pos: npcCoords,
+      ypr: [Number(npcYaw) || 0, 0, 0],
+      clothing: npcClothing
+    });
+
+    if (onSaveFile) {
+      await onSaveFile(mapFilePath, updatedMapText);
+      await onSaveFile(selectedTraderPath, healedConfig);
+    }
+
+    setIsLocalTraderDirty(false);
+    toast.success(lang === 'ru' 
+      ? `✨ Торговец "${healedConfig.DisplayName}" успешно исцелен и приведен к стандарту DayZ Expansion (m_Version: 13)!` 
+      : `✨ Trader "${healedConfig.DisplayName}" healed and normalized to DayZ Expansion standard (m_Version: 13)!`);
+  };
 
   // ─ Trader computed ────────────────────────────────────────────────────────
+  const totalTraderItemsCount = useMemo(() => {
+    if (!activeTraderConfig?.content?.Categories) return 0;
+    let count = 0;
+    activeTraderConfig.content.Categories.forEach(catEntry => {
+      const { name } = parseTraderCategory(catEntry);
+      const catPath = categoryPaths.find(p => p.toLowerCase().endsWith(`/${name.toLowerCase()}.json`));
+      if (catPath && configs[catPath]?.content?.Items) {
+        count += configs[catPath].content.Items.length;
+      }
+    });
+    return count;
+  }, [activeTraderConfig, categoryPaths, configs]);
+
   const traderItemsList     = activeTraderConfig?.content?.Items ? Object.entries(activeTraderConfig.content.Items) : [];
   const filteredTraderItems = traderItemsList.filter(([name]) => name.toLowerCase().includes(traderItemQuery.toLowerCase()));
+
+  // ⚡ Quick Batch Price Modifier & Margin Calculator
+  const handleQuickPriceScale = (multiplier) => {
+    if (!activeCategoryConfig?.content?.Items) return;
+    const items = [...activeCategoryConfig.content.Items];
+    const targetIndices = selectedItems.size > 0 
+      ? Array.from(selectedItems) 
+      : items.map((_, i) => i);
+
+    if (targetIndices.length === 0) return;
+
+    targetIndices.forEach(idx => {
+      const item = items[idx];
+      if (!item) return;
+      const oldMin = item.MinPriceThreshold ?? 10;
+      const oldMax = item.MaxPriceThreshold ?? 20;
+
+      let newMin = Math.max(1, Math.round(oldMin * multiplier));
+      let newMax = Math.max(1, Math.round(oldMax * multiplier));
+
+      // Guarantee Min <= Max
+      if (newMax < newMin) newMax = newMin;
+
+      items[idx] = {
+        ...item,
+        MinPriceThreshold: newMin,
+        MaxPriceThreshold: newMax
+      };
+    });
+
+    onChangeField(selectedCategoryPath, ['Items'], items);
+    const sign = multiplier >= 1 ? '+' : '';
+    const pct = Math.round((multiplier - 1) * 100);
+    toast.success(lang === 'ru' 
+      ? `Цены обновлены (${sign}${pct}%) для ${targetIndices.length} тов.`
+      : `Prices updated (${sign}${pct}%) for ${targetIndices.length} items`);
+  };
+
+  const handleQuickPriceRound = (roundBase) => {
+    if (!activeCategoryConfig?.content?.Items) return;
+    const items = [...activeCategoryConfig.content.Items];
+    const targetIndices = selectedItems.size > 0 
+      ? Array.from(selectedItems) 
+      : items.map((_, i) => i);
+
+    if (targetIndices.length === 0) return;
+
+    targetIndices.forEach(idx => {
+      const item = items[idx];
+      if (!item) return;
+      const oldMin = item.MinPriceThreshold ?? 10;
+      const oldMax = item.MaxPriceThreshold ?? 20;
+
+      let newMin = Math.max(roundBase, Math.round(oldMin / roundBase) * roundBase);
+      let newMax = Math.max(roundBase, Math.round(oldMax / roundBase) * roundBase);
+
+      if (newMax < newMin) newMax = newMin;
+
+      items[idx] = {
+        ...item,
+        MinPriceThreshold: newMin,
+        MaxPriceThreshold: newMax
+      };
+    });
+
+    onChangeField(selectedCategoryPath, ['Items'], items);
+    toast.success(lang === 'ru' 
+      ? `Цены округлены до ${roundBase}$ (${targetIndices.length} тов.)`
+      : `Prices rounded to nearest ${roundBase}$ (${targetIndices.length} items)`);
+  };
+
+  const handleNormalizePrices = () => {
+    if (!activeCategoryConfig?.content?.Items) return;
+    const items = [...activeCategoryConfig.content.Items];
+    let fixedCount = 0;
+
+    items.forEach((item, idx) => {
+      let min = item.MinPriceThreshold ?? 1;
+      let max = item.MaxPriceThreshold ?? 2;
+      let sellPct = item.SellPricePercent ?? -1;
+
+      let modified = false;
+      if (min < 1) { min = 1; modified = true; }
+      if (max < min) { max = Math.max(min, Math.round(min * 1.5)); modified = true; }
+      if (sellPct > 100) { sellPct = -1; modified = true; }
+
+      if (modified) {
+        items[idx] = { ...item, MinPriceThreshold: min, MaxPriceThreshold: max, SellPricePercent: sellPct };
+        fixedCount++;
+      }
+    });
+
+    if (fixedCount > 0) {
+      onChangeField(selectedCategoryPath, ['Items'], items);
+      toast.success(lang === 'ru' ? `Нормализовано ${fixedCount} цен (Min <= Max)` : `Normalized ${fixedCount} item prices`);
+    } else {
+      toast.info(lang === 'ru' ? 'Все цены категории уже корректны' : 'All category prices are already valid');
+    }
+  };
 
   // ─ Category handlers ──────────────────────────────────────────────────────
   const handleAddItem = (classname) => {
@@ -1630,6 +1974,77 @@ export default function EconomyEditor({
             {isSidebarCollapsed ? '▶' : '◀'} {lang === 'ru' ? 'Панель' : 'Sidebar'}
           </button>
         )}
+        {/* 🚀 Pre-Flight Compatibility Inspector Button */}
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setShowPreFlightModal(true)}
+          style={{
+            padding: '6px 14px',
+            fontSize: '11px',
+            letterSpacing: '0.5px',
+            fontWeight: 'bold',
+            background: preFlightReport.isReady ? 'rgba(74,222,128,0.12)' : 'rgba(251,191,36,0.15)',
+            border: preFlightReport.isReady ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(251,191,36,0.4)',
+            color: preFlightReport.isReady ? '#4ade80' : '#fde047',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: 'pointer'
+          }}
+          title={lang === 'ru' ? 'Комплексная диагностика совместимости сервера перед запуском' : 'Holistic pre-flight server readiness check'}
+        >
+          <span>{preFlightReport.isReady ? '🚀' : '⚠️'}</span>
+          <span>{lang === 'ru' ? `ПРОВЕРКА СЕРВЕРА (${preFlightReport.readinessScore}%)` : `SERVER CHECK (${preFlightReport.readinessScore}%)`}</span>
+        </button>
+
+        {/* 🛡️ Market Duplicate Resolver Button */}
+        {marketAudit.duplicatesCount > 0 ? (
+          <button 
+            className="btn" 
+            onClick={() => setShowDuplicateAuditModal(true)} 
+            style={{ 
+              padding: '6px 14px', 
+              fontSize: '11px', 
+              letterSpacing: '0.5px', 
+              fontWeight: 'bold', 
+              background: 'rgba(239,68,68,0.18)', 
+              border: '1px solid #ef4444', 
+              color: '#fca5a5', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 0 10px rgba(239,68,68,0.3)'
+            }}
+            title={lang === 'ru' ? 'Обнаружены дубликаты предметов в категориях рынка, вызывающие критическую ошибку сервера!' : 'Market duplicate collisions detected!'}
+          >
+            <span>⚠️ {lang === 'ru' ? `ДУБЛИКАТЫ РЫНКА (${marketAudit.duplicatesCount})` : `MARKET DUPLICATES (${marketAudit.duplicatesCount})`}</span>
+            <span style={{ background: '#ef4444', color: '#fff', padding: '1px 6px', borderRadius: '3px', fontSize: '10px' }}>
+              {lang === 'ru' ? 'УСТРАНИТЬ' : 'RESOLVE'}
+            </span>
+          </button>
+        ) : (
+          <button 
+            className="btn" 
+            onClick={() => setShowDuplicateAuditModal(true)} 
+            style={{ 
+              padding: '6px 12px', 
+              fontSize: '11px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              color: '#4ade80',
+              background: 'rgba(74,222,128,0.08)',
+              border: '1px solid rgba(74,222,128,0.25)',
+              cursor: 'pointer'
+            }}
+            title={lang === 'ru' ? 'Все предметы рынка уникальны. Дубликатов нет.' : 'All market items are unique.'}
+          >
+            <span>✓ {lang === 'ru' ? 'Аудит дубликатов' : 'Duplicate Audit'}</span>
+          </button>
+        )}
+
         <button 
           className="btn" 
           onClick={() => setShowHelpModal(true)} 
@@ -2419,15 +2834,7 @@ export default function EconomyEditor({
                     <span>{lang === 'ru' ? 'Связи с торговцами' : 'Trader Links'}</span>
                   </button>
 
-                  <button
-                    className={`btn ${showPriceChart ? 'btn-accent' : ''}`}
-                    onClick={() => setShowPriceChart(prev => !prev)}
-                    style={{ padding: '5px 9px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}
-                    title={t('econ_btn_price_chart')}
-                  >
-                    <Icon.Chart size={12} />
-                    <span>{t('econ_btn_price_chart')}</span>
-                  </button>
+
 
                   <button
                     className={`btn ${selectedItems.size > 0 || showBulkDrawer ? 'btn-warning' : ''}`}
@@ -2436,6 +2843,66 @@ export default function EconomyEditor({
                   >
                     <Icon.Sliders size={12} />
                     <span>{t('econ_bulk_drawer_title')} {selectedItems.size > 0 ? `(${selectedItems.size})` : ''}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ⚡ Quick Batch Price & Margin Calculator Bar */}
+              <div style={{ padding: '6px 20px', background: 'rgba(74,222,128,0.03)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>⚡ {lang === 'ru' ? 'Быстрая наценка:' : 'Quick Margin:'}</span>
+                    <HelpIcon tip={lang === 'ru' ? 'Массово умножает цены покупки и продажи для выбранных товаров или всей категории.' : 'Multiplies buy and sell prices for selected or all items.'} />
+                  </span>
+                  {selectedItems.size > 0 && (
+                    <span style={{ fontSize: '10px', background: 'rgba(74,222,128,0.15)', color: '#4ade80', padding: '1px 6px', borderRadius: '3px', fontWeight: 'bold' }}>
+                      {lang === 'ru' ? `Выбрано: ${selectedItems.size}` : `Selected: ${selectedItems.size}`}
+                    </span>
+                  )}
+                  {[
+                    { label: '+10%', mult: 1.10 },
+                    { label: '+25%', mult: 1.25 },
+                    { label: '+50%', mult: 1.50 },
+                    { label: '-10%', mult: 0.90 },
+                    { label: '-25%', mult: 0.75 },
+                    { label: 'x2', mult: 2.00 },
+                    { label: '/2', mult: 0.50 },
+                  ].map(btn => (
+                    <button
+                      key={btn.label}
+                      type="button"
+                      className="btn"
+                      onClick={() => handleQuickPriceScale(btn.mult)}
+                      style={{ padding: '2px 7px', fontSize: '10px', fontFamily: 'var(--font-mono)' }}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Округлить:' : 'Round:'}
+                  </span>
+                  {[10, 50, 100].map(base => (
+                    <button
+                      key={base}
+                      type="button"
+                      className="btn"
+                      onClick={() => handleQuickPriceRound(base)}
+                      style={{ padding: '2px 6px', fontSize: '10px', fontFamily: 'var(--font-mono)' }}
+                    >
+                      ~${base}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-accent"
+                    onClick={handleNormalizePrices}
+                    style={{ padding: '2px 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    title={lang === 'ru' ? 'Гарантирует, что MaxPrice >= MinPrice и исключает ошибки рынка' : 'Enforces MaxPrice >= MinPrice'}
+                  >
+                    🛡️ {lang === 'ru' ? 'Нормализовать (Min <= Max)' : 'Normalize Min<=Max'}
                   </button>
                 </div>
               </div>
@@ -2463,70 +2930,7 @@ export default function EconomyEditor({
                 </div>
               )}
 
-              {/* ── Collapsible Price Distribution Chart ─────────────────── */}
-              {showPriceChart && priceData && (
-                <div style={{ padding: '12px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
-                  <div className="economy-chart-card" style={{ margin: 0 }}>
-                    <div className="economy-chart-header" style={{ marginBottom: '8px' }}>
-                      <div className="economy-chart-title" style={{ fontSize: '12px' }}>
-                        📊 {lang === 'ru' ? "Распределение цен категории" : "Category Price Distribution"}
-                      </div>
-                      <div className="economy-chart-summary" style={{ fontSize: '11px' }}>
-                        <div>{lang === 'ru' ? "Ср. покупка: " : "Avg Buy: "}<strong style={{ color: 'var(--accent-glow)' }}>{priceData.avgMax}$</strong></div>
-                        <div>{lang === 'ru' ? "Ср. продажа: " : "Avg Sell: "}<strong style={{ color: 'var(--warning-color)' }}>{priceData.avgMin}$</strong></div>
-                        <div>{lang === 'ru' ? "Пик: " : "Peak: "}<strong style={{ color: 'var(--danger-color)' }}>{priceData.peakMax}$</strong></div>
-                        <div>{lang === 'ru' ? "Товаров: " : "Items: "}<strong style={{ color: 'var(--text-glow)' }}>{priceData.items.length}</strong></div>
-                      </div>
-                    </div>
-                    <div className="economy-chart-svg-container" style={{ height: '110px' }}>
-                      <svg width="100%" height="100%" viewBox="0 0 600 120" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-                        <line x1="40" y1="20" x2="580" y2="20" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
-                        <line x1="40" y1="60" x2="580" y2="60" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
-                        <line x1="40" y1="100" x2="580" y2="100" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="3 3" />
-                        
-                        {(() => {
-                          const total = priceData.items.length;
-                          const peak = priceData.peakMax || 1;
-                          
-                          const maxPoints = priceData.items.map((item, idx) => {
-                            const x = (idx / Math.max(1, total - 1)) * 540 + 40;
-                            const y = 100 - (item.max / peak) * 80 + 10;
-                            return `${x},${y}`;
-                          }).join(' ');
-
-                          const minPoints = priceData.items.map((item, idx) => {
-                            const x = (idx / Math.max(1, total - 1)) * 540 + 40;
-                            const y = 100 - (item.min / peak) * 80 + 10;
-                            return `${x},${y}`;
-                          }).join(' ');
-
-                          const areaPoints = `40,110 ${maxPoints} 580,110`;
-
-                          return (
-                            <>
-                              <polygon points={areaPoints} fill="rgba(149, 192, 149, 0.06)" />
-                              <polyline points={maxPoints} fill="none" stroke="var(--accent-glow)" strokeWidth="2.5" />
-                              <polyline points={minPoints} fill="none" stroke="var(--warning-color)" strokeWidth="1.5" strokeDasharray="4 2" />
-                            </>
-                          );
-                        })()}
-
-                        <line x1="40" y1="10" x2="40" y2="110" stroke="var(--border-color)" strokeWidth="1" />
-                        <line x1="40" y1="110" x2="580" y2="110" stroke="var(--border-color)" strokeWidth="1" />
-
-                        <text x="32" y="23" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">{priceData.peakMax}</text>
-                        <text x="32" y="63" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">{Math.round(priceData.peakMax / 2)}</text>
-                        <text x="32" y="103" fill="var(--text-secondary)" fontSize="9" textAnchor="end" fontFamily="var(--font-mono)">0</text>
-                        
-                        <text x="40" y="120" fill="var(--text-secondary)" fontSize="8" textAnchor="start" fontFamily="var(--font-mono)">{priceData.items[0]?.name || ''}</text>
-                        <text x="580" y="120" fill="var(--text-secondary)" fontSize="8" textAnchor="end" fontFamily="var(--font-mono)">{priceData.items[priceData.items.length - 1]?.name || ''}</text>
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Collapsible Bulk Actions Drawer ──────────────────────── */}
+                            {/* ── Collapsible Bulk Actions Drawer ──────────────────────── */}
               {(showBulkDrawer || selectedItems.size > 0) && (
                 <div style={{ padding: '8px 20px', background: 'rgba(251,191,36,0.06)', borderBottom: '1px solid rgba(251,191,36,0.25)', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '11px' }}>
                   <span style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '10px', letterSpacing: '1px', whiteSpace: 'nowrap' }}>
@@ -2908,6 +3312,35 @@ export default function EconomyEditor({
                                             ⚠️ {t('econ_badge_missing_xml')}
                                           </span>
                                         )}
+                                        {(() => {
+                                          const origCase = xmlCaseMap.get(item.ClassName?.toLowerCase());
+                                          if (origCase && origCase !== item.ClassName) {
+                                            return (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleFixItemCasing(item.originalIndex, origCase)}
+                                                style={{
+                                                  background: 'rgba(250,204,21,0.12)',
+                                                  border: '1px solid rgba(250,204,21,0.35)',
+                                                  color: '#fde047',
+                                                  fontSize: '9px',
+                                                  padding: '1px 6px',
+                                                  borderRadius: '2px',
+                                                  cursor: 'pointer',
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  gap: '3px',
+                                                  marginLeft: '6px',
+                                                  fontFamily: 'var(--font-mono)'
+                                                }}
+                                                title={lang === 'ru' ? `В types.xml зарегистрирован регистр: "${origCase}". Нажмите для автоисправления.` : `Click to fix casing to "${origCase}"`}
+                                              >
+                                                💡 {origCase}
+                                              </button>
+                                            );
+                                          }
+                                          return null;
+                                        })()}
                                       </div>
                                     </td>
                                     {/* B10: error highlights on min>max cells */}
@@ -3211,91 +3644,474 @@ export default function EconomyEditor({
                     <div style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '1px' }}>{t('econ_trader_editing_label')}</div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: '16px', color: 'var(--text-glow)', fontWeight: 'bold', marginTop: '2px' }}>{selectedTraderPath.split('/').pop()}</div>
                   </div>
-                  <button className={`btn ${isTraderDirty ? 'btn-accent' : ''}`} onClick={() => onSaveFile(selectedTraderPath)} disabled={!isTraderDirty} style={{ opacity: isTraderDirty ? 1 : 0.5, cursor: isTraderDirty ? 'pointer' : 'not-allowed' }}>
-                    {t('econ_trader_save_btn')}
+                  <button 
+                    className={`btn ${isTraderFullyDirty ? 'btn-accent' : ''}`} 
+                    onClick={handleSaveTraderMaster} 
+                    style={{ 
+                      padding: '8px 18px', 
+                      fontSize: '12px', 
+                      fontWeight: 'bold', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px',
+                      boxShadow: isTraderFullyDirty ? '0 0 15px rgba(74,222,128,0.45)' : 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    💾 {t('econ_trader_save_btn')} {isTraderFullyDirty ? '⚡' : ''}
                   </button>
                 </div>
 
-                {/* Grid */}
-                <div className="trader-grid-responsive">
+                {/* 🛡️ Trader Health Diagnostics & Auto-Healing Card */}
+                {traderHealth && (
+                  <div style={{
+                    background: traderHealth.isHealthy ? 'rgba(74,222,128,0.06)' : 'rgba(239,68,68,0.08)',
+                    border: traderHealth.isHealthy ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(239,68,68,0.4)',
+                    borderRadius: '4px',
+                    padding: '14px 18px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    boxShadow: traderHealth.isHealthy ? 'none' : '0 0 15px rgba(239,68,68,0.15)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '18px' }}>{traderHealth.isHealthy ? '🟢' : '🛡️'}</span>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 'bold', color: traderHealth.isHealthy ? '#4ade80' : '#fca5a5', fontFamily: 'var(--font-heading)' }}>
+                            {traderHealth.isHealthy 
+                              ? (lang === 'ru' ? '✓ ТОРГОВЕЦ 100% ВАЛИДЕН И ГОТОВ К СЕРВЕРУ' : '✓ TRADER IS 100% HEALTHY & SERVER-READY')
+                              : (lang === 'ru' ? `⚠️ ОБНАРУЖЕНЫ ОШИБКИ КОНФИГУРАЦИИ (ЗДОРОВЬЕ: ${traderHealth.healthScore}%)` : `⚠️ CONFIGURATION ISSUES DETECTED (HEALTH: ${traderHealth.healthScore}%)`)}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {traderHealth.isHealthy
+                              ? (lang === 'ru' ? 'Схема JSON (m_Version: 13), категории, валюта и строка .map спавна в порядке.' : 'JSON schema (m_Version: 13), categories, currency, and .map spawn are validated.')
+                              : (lang === 'ru' ? 'Конфиг содержит несоответствия или битые ссылки, которые вызовут сбой на сервере.' : 'Config contains errors that may cause server crashes or missing NPCs.')}
+                          </div>
 
-                  {/* General settings */}
-                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>{t('trader_general_params')}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      {[
-                        { label: t('trader_label_name'),          key: 'DisplayName',        type: 'text',   ph: '' },
-                        { label: t('trader_label_icon'),          key: 'TraderIcon',         type: 'text',   ph: '' },
-                        { label: t('trader_label_min_rep'),       key: 'MinRequiredReputation', type: 'number', ph: '0' },
-                        { label: t('trader_label_max_rep'),       key: 'MaxRequiredReputation', type: 'number', ph: '2147483647' },
-                        { label: t('trader_label_faction'),       key: 'RequiredFaction',    type: 'text',   ph: 'e.g. InvincibleObservers' },
-                        { label: t('trader_label_currency_name'), key: 'DisplayCurrencyName', type: 'text', ph: 'Default' },
-                      ].map(({ label, key, type, ph }) => (
-                        <div key={key}>
-                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                            {label}
-                            {key === 'DisplayName' && activeTraderConfig.content[key] && activeTraderConfig.content[key].startsWith('#STR_') && (
-                              <span style={{ color: 'var(--text-glow)', marginLeft: '6px', fontStyle: 'italic' }}>
-                                ({translateStrKey(activeTraderConfig.content[key])})
+                          {/* 📊 Trader Mini-Dashboard KPI Badges */}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                            <span style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '3px', border: '1px solid var(--border-color)', color: 'var(--text-glow)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              📦 <strong>{activeTraderConfig.content.Categories?.length || 0}</strong> {lang === 'ru' ? 'категорий' : 'categories'}
+                            </span>
+                            <span style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '3px', border: '1px solid var(--border-color)', color: '#4ade80', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              🛒 <strong>{totalTraderItemsCount}</strong> {lang === 'ru' ? 'товаров на рынке' : 'market items'}
+                            </span>
+                            <span style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '3px', border: '1px solid var(--border-color)', color: selectedSafezonePath ? '#4ade80' : 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              🛡️ <strong>{selectedSafezonePath ? `${configs[selectedSafezonePath]?.content?.Radius ?? 100}м SafeZone` : (lang === 'ru' ? 'Без SafeZone' : 'No SafeZone')}</strong>
+                            </span>
+                            <span style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '3px', border: '1px solid var(--border-color)', color: '#82b4f5', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              👔 <strong>{npcClothing.length}</strong> {lang === 'ru' ? 'вещей в гардеробе' : 'clothing items'}
+                            </span>
+                            <span style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '3px', border: '1px solid var(--border-color)', color: '#fbbf24', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              📜 <strong>{targetMapFileName || '.map синхронизирован'}</strong>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {!traderHealth.isHealthy && (
+                        <button
+                          type="button"
+                          className="btn btn-accent"
+                          onClick={handleHealCurrentTrader}
+                          style={{
+                            padding: '8px 16px',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            background: '#22c55e',
+                            borderColor: '#16a34a',
+                            color: '#fff',
+                            boxShadow: '0 0 12px rgba(34,197,94,0.4)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✨ {lang === 'ru' ? 'ИСЦЕЛИТЬ И ИСПРАВИТЬ ВСЕ ОШИБКИ' : 'AUTO-HEAL & FIX ALL ISSUES'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Issues details list */}
+                    {traderHealth.issues.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'var(--bg-primary)', padding: '10px 14px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
+                        {traderHealth.issues.map((issue, idx) => (
+                          <div key={idx} style={{ fontSize: '11px', display: 'flex', alignItems: 'flex-start', gap: '8px', color: issue.severity === 'error' ? '#fca5a5' : '#fde047' }}>
+                            <span>{issue.severity === 'error' ? '❌' : '⚠️'}</span>
+                            <span style={{ lineHeight: '1.4' }}>{issue.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 📑 Compact Trader Navigation Sub-Tabs */}
+                <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className={`btn ${traderSectionTab === 'general' ? 'btn-accent' : ''}`}
+                    onClick={() => setTraderSectionTab('general')}
+                    style={{ padding: '7px 16px', fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    🏪 {lang === 'ru' ? '1. ОСНОВНОЕ И БЕЗОПАСНОСТЬ' : '1. GENERAL & SAFEZONE'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${traderSectionTab === 'categories' ? 'btn-accent' : ''}`}
+                    onClick={() => setTraderSectionTab('categories')}
+                    style={{ padding: '7px 16px', fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    📦 {lang === 'ru' ? `2. АССОРТИМЕНТ И КАТЕГОРИИ (${activeTraderConfig.content.Categories?.length || 0})` : `2. CATEGORIES (${activeTraderConfig.content.Categories?.length || 0})`}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${traderSectionTab === 'appearance' ? 'btn-accent' : ''}`}
+                    onClick={() => setTraderSectionTab('appearance')}
+                    style={{ padding: '7px 16px', fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    👔 {lang === 'ru' ? '3. ВНЕШНИЙ ВИД И СПАВН' : '3. APPEARANCE & SPAWN'}
+                  </button>
+                </div>
+
+                {/* ── TAB 1: GENERAL & SAFEZONE ──────────────────────────────── */}
+                {traderSectionTab === 'general' && (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(430px, 1fr))',
+                    gap: '18px',
+                    alignItems: 'start',
+                    paddingBottom: '24px'
+                  }}>
+                    {/* 📍 LEFT COLUMN: PARAMETERS, ACCESS & REPUTATION */}
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '15px',
+                      background: 'var(--bg-primary)',
+                      padding: '18px',
+                      borderRadius: '5px',
+                      border: '1px solid var(--border-color)',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+                    }}>
+                      <div style={{ fontSize: '13px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>🏪 {t('trader_general_params')}</span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        {/* Name */}
+                        <div style={{ gridColumn: 'span 2' }}>
+                          <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{t('trader_label_name')}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'Имя торговца над головой NPC и в заголовке окна торговли.' : 'Trader display name above NPC and in market menu.'} />
+                            {activeTraderConfig.content.DisplayName && activeTraderConfig.content.DisplayName.startsWith('#STR_') && (
+                              <span style={{ color: 'var(--text-glow)', marginLeft: 'auto', fontStyle: 'italic', fontSize: '11px' }}>
+                                ({translateStrKey(activeTraderConfig.content.DisplayName)})
                               </span>
                             )}
                           </label>
-                          <input type={type} value={activeTraderConfig.content[key] ?? (type === 'number' ? 0 : '')} onChange={e => onChangeField(selectedTraderPath, [key], type === 'number' ? Number(e.target.value) : e.target.value)} placeholder={ph} />
+                          <input
+                            type="text"
+                            value={activeTraderConfig.content.DisplayName || ''}
+                            onChange={e => onChangeField(selectedTraderPath, ['DisplayName'], e.target.value)}
+                            style={{ width: '100%', height: '34px', padding: '6px 10px', fontSize: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-glow)' }}
+                          />
                         </div>
-                      ))}
 
-                      <div>
-                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('trader_label_quest_req')}</label>
-                        <select value={activeTraderConfig.content.RequiredCompletedQuestID ?? -1} onChange={e => onChangeField(selectedTraderPath, ['RequiredCompletedQuestID'], Number(e.target.value))} style={{ fontSize: '12px', padding: '6px' }}>
-                          <option value={-1}>{t('trader_quest_none')}</option>
-                          {questsList.map(q => <option key={q.id} value={q.id}>ID {q.id}: {q.title}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('trader_label_currency_val')}</label>
-                        <select value={activeTraderConfig.content.DisplayCurrencyValue ?? 1} onChange={e => onChangeField(selectedTraderPath, ['DisplayCurrencyValue'], Number(e.target.value))} style={{ fontSize: '12px', padding: '6px' }}>
-                          <option value={1}>{t('trader_show_val')}</option>
-                          <option value={0}>{t('trader_hide_val')}</option>
-                        </select>
-                      </div>
-                      <div style={{ gridColumn: 'span 2' }}>
-                        <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>{t('trader_label_sort_order')}</label>
-                        <select value={activeTraderConfig.content.UseCategoryOrder ?? 0} onChange={e => onChangeField(selectedTraderPath, ['UseCategoryOrder'], Number(e.target.value))} style={{ fontSize: '12px', padding: '6px' }}>
-                          <option value={0}>{t('trader_sort_standard')}</option>
-                          <option value={1}>{t('trader_sort_ascending')}</option>
-                        </select>
+                        {/* Dedicated Valid Trader Icon Selector */}
+                        <div style={{ gridColumn: 'span 2' }}>
+                          <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{lang === 'ru' ? 'Иконка торговца (DayZ Expansion):' : 'Trader Icon (DayZ Expansion):'}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'Официальная иконка DayZ Expansion для маркера на карте и 3D метки.' : 'Official DayZ Expansion marker icon texture.'} />
+                          </label>
+                          <select
+                            value={activeTraderConfig.content.TraderIcon || 'Trader'}
+                            onChange={e => onChangeField(selectedTraderPath, ['TraderIcon'], e.target.value)}
+                            style={{ width: '100%', height: '34px', fontSize: '12px', padding: '6px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                          >
+                            {EXPANSION_TRADER_ICONS.map(ic => (
+                              <option key={ic.id} value={ic.id}>
+                                {ic.emoji} {ic.id} — {lang === 'ru' ? ic.labelRu : ic.labelEn}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Min Required Rep */}
+                        <div>
+                          <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{t('trader_label_min_rep')}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'Минимальная репутация игрока для доступа к торговцу (мод Expansion Hardline). 0 = без ограничений.' : 'Minimum reputation required (Expansion Hardline). 0 = none.'} />
+                          </label>
+                          <input
+                            type="number"
+                            value={activeTraderConfig.content.MinRequiredReputation ?? 0}
+                            onChange={e => onChangeField(selectedTraderPath, ['MinRequiredReputation'], Number(e.target.value))}
+                            style={{ width: '100%', height: '34px', padding: '6px 10px', fontSize: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+
+                        {/* Max Required Rep */}
+                        <div>
+                          <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{t('trader_label_max_rep')}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'Максимальная репутация для доступа к торговцу (2147483647 = без ограничений).' : 'Maximum reputation required.'} />
+                          </label>
+                          <input
+                            type="number"
+                            value={activeTraderConfig.content.MaxRequiredReputation ?? 2147483647}
+                            onChange={e => onChangeField(selectedTraderPath, ['MaxRequiredReputation'], Number(e.target.value))}
+                            style={{ width: '100%', height: '34px', padding: '6px 10px', fontSize: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+
+                        {/* Faction */}
+                        <div>
+                          <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{t('trader_label_faction')}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'Имя фракции eAI/Expansion (оставьте пустым для общего доступа).' : 'Faction required to trade (empty = all players).'} />
+                          </label>
+                          <input
+                            type="text"
+                            value={activeTraderConfig.content.RequiredFaction || ''}
+                            onChange={e => onChangeField(selectedTraderPath, ['RequiredFaction'], e.target.value)}
+                            placeholder="e.g. InvincibleObservers"
+                            style={{ width: '100%', height: '34px', padding: '6px 10px', fontSize: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                          />
+                        </div>
+
+                        {/* Quest Requirement */}
+                        <div>
+                          <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{t('trader_label_quest_req')}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'ID квеста для открытия торговца (-1 = без квеста).' : 'Quest ID required (-1 = none).'} />
+                          </label>
+                          <select
+                            value={activeTraderConfig.content.RequiredCompletedQuestID ?? -1}
+                            onChange={e => onChangeField(selectedTraderPath, ['RequiredCompletedQuestID'], Number(e.target.value))}
+                            style={{ width: '100%', height: '34px', fontSize: '12px', padding: '6px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                          >
+                            <option value={-1}>{t('trader_quest_none')}</option>
+                            {questsList.map(q => <option key={q.id} value={q.id}>ID {q.id}: {q.title}</option>)}
+                          </select>
+                        </div>
+
+                        {/* Currency Name & Value */}
+                        <div>
+                          <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{t('trader_label_currency_val')}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'Отображать ли баланс валюты игрока в правом верхнем углу меню торговли.' : 'Show currency amount in trade UI.'} />
+                          </label>
+                          <select
+                            value={activeTraderConfig.content.DisplayCurrencyValue ?? 1}
+                            onChange={e => onChangeField(selectedTraderPath, ['DisplayCurrencyValue'], Number(e.target.value))}
+                            style={{ width: '100%', height: '34px', fontSize: '12px', padding: '6px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                          >
+                            <option value={1}>{t('trader_show_val')}</option>
+                            <option value={0}>{t('trader_hide_val')}</option>
+                          </select>
+                        </div>
+
+                        {/* Category Order */}
+                        <div>
+                          <label style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                            <span>{t('trader_label_sort_order')}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'Порядок отображения вкладок категорий: 0 = как в списке, 1 = по алфавиту.' : 'Category display sorting mode in menu.'} />
+                          </label>
+                          <select
+                            value={activeTraderConfig.content.UseCategoryOrder ?? 0}
+                            onChange={e => onChangeField(selectedTraderPath, ['UseCategoryOrder'], Number(e.target.value))}
+                            style={{ width: '100%', height: '34px', fontSize: '12px', padding: '6px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                          >
+                            <option value={0}>{t('trader_sort_standard')}</option>
+                            <option value={1}>{t('trader_sort_ascending')}</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Currencies */}
-                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>{t('trader_currency_accepted')}</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '8px', border: '1px solid var(--border-color)' }}>
-                      {(activeTraderConfig.content.Currencies || []).length === 0 ? (
-                        <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '8px', textAlign: 'center' }}>{t('trader_no_currencies')}</div>
-                      ) : (
-                        (activeTraderConfig.content.Currencies || []).map((cur, idx) => (
-                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 8px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {cur}
-                              {isItemMissing(cur) && <span title={t('econ_item_missing_trader_tooltip')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
-                            </span>
-                            <button className="btn btn-danger" onClick={() => handleTraderRemoveCurrency(idx)} style={{ padding: '2px 6px', fontSize: '10px' }}>×</button>
+                    {/* 🛡️ RIGHT COLUMN: CURRENCIES & SAFEZONE */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                      {/* Currencies Box */}
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        background: 'var(--bg-primary)',
+                        padding: '18px',
+                        borderRadius: '5px',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+                      }}>
+                        <div style={{ fontSize: '13px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>🪙 {t('trader_currency_accepted')}</span>
+                          <HelpIcon tip={lang === 'ru' ? 'Список принимаемых валют. По умолчанию: expansionbanknotehryvnia (гривны).' : 'Accepted currency item classnames.'} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '130px', overflowY: 'auto', background: 'var(--bg-secondary)', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '3px' }}>
+                          {(activeTraderConfig.content.Currencies || []).length === 0 ? (
+                            <div style={{ fontSize: '11px', color: 'var(--text-dark)', padding: '8px', textAlign: 'center' }}>{t('trader_no_currencies')}</div>
+                          ) : (
+                            (activeTraderConfig.content.Currencies || []).map((cur, idx) => (
+                              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '4px 8px', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                <span style={{ fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {cur}
+                                  {isItemMissing(cur) && <span title={t('econ_item_missing_trader_tooltip')} style={{ color: 'var(--warning-color)', cursor: 'help' }}>⚠️</span>}
+                                </span>
+                                <button className="btn btn-danger" onClick={() => handleTraderRemoveCurrency(idx)} style={{ padding: '2px 6px', fontSize: '10px' }}>×</button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <AutocompleteInput suggestions={suggestions} placeholder={t('trader_search_class')} onSelect={handleTraderAddCurrency} style={{ flex: 1 }} />
+                        </div>
+                      </div>
+
+                      {/* SafeZone Box */}
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        background: 'var(--bg-primary)',
+                        padding: '18px',
+                        borderRadius: '5px',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+                      }}>
+                        <div style={{ fontSize: '13px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>🛡️ {lang === 'ru' ? 'Безопасная зона (SafeZone)' : 'SafeZone Protection'}</span>
+                          <HelpIcon tip={lang === 'ru' ? 'Защитный купол бессмертия вокруг торговца. Внутри зоны отключается урон и стрельба.' : 'SafeZone circle where players and traders cannot be harmed.'} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select
+                            value={selectedSafezonePath || ''}
+                            onChange={e => setSelectedSafezonePath(e.target.value)}
+                            style={{ fontSize: '12px', padding: '6px 10px', height: '34px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)', flex: 1, borderRadius: '3px' }}
+                          >
+                            <option value="">-- {t('econ_trader_safezone_none')} --</option>
+                            {safezonePaths.map(p => (
+                              <option key={p} value={p}>{configs[p]?.content?.m_DisplayName || p.split('/').pop().replace('.json', '')}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="btn btn-accent"
+                            onClick={handleCreateSafezoneForTrader}
+                            style={{ padding: '6px 12px', height: '34px', fontSize: '11px', fontWeight: 'bold' }}
+                          >
+                            + {lang === 'ru' ? 'Создать SafeZone' : 'Create SafeZone'}
+                          </button>
+                        </div>
+
+                        {selectedSafezonePath && configs[selectedSafezonePath]?.content && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                            <div>
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
+                                {lang === 'ru' ? 'Радиус купола (м):' : 'Zone Radius (m):'}
+                              </label>
+                              <input
+                                type="number"
+                                step="5"
+                                min="10"
+                                max="5000"
+                                value={configs[selectedSafezonePath]?.content?.Radius ?? 100}
+                                onChange={e => onChangeField(selectedSafezonePath, ['Radius'], Number(e.target.value) || 50)}
+                                style={{ width: '100%', height: '32px', padding: '4px 8px', fontSize: '12px', fontFamily: 'var(--font-mono)', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 'bold' }}>
+                                {lang === 'ru' ? 'Имя зоны:' : 'Display Name:'}
+                              </label>
+                              <input
+                                type="text"
+                                value={configs[selectedSafezonePath]?.content?.m_DisplayName ?? ''}
+                                onChange={e => onChangeField(selectedSafezonePath, ['m_DisplayName'], e.target.value)}
+                                style={{ width: '100%', height: '32px', padding: '4px 8px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-primary)' }}
+                                placeholder="SafeZone Name"
+                              />
+                            </div>
+                            {/* 🎯 SafeZone Distance & Desync Sentinel */}
+                            {(() => {
+                              const szPos = configs[selectedSafezonePath]?.content?.Position;
+                              const szRadius = configs[selectedSafezonePath]?.content?.Radius ?? 100;
+                              if (szPos && Array.isArray(szPos) && szPos.length >= 3 && npcCoords && npcCoords.length >= 3) {
+                                const dx = (npcCoords[0] || 0) - (szPos[0] || 0);
+                                const dz = (npcCoords[2] || 0) - (szPos[2] || 0);
+                                const dist = Math.round(Math.sqrt(dx * dx + dz * dz));
+                                const isDesynced = dist > 50;
+
+                                return (
+                                  <div style={{
+                                    gridColumn: 'span 2',
+                                    background: isDesynced ? 'rgba(239,68,68,0.08)' : 'rgba(74,222,128,0.06)',
+                                    border: isDesynced ? '1px solid rgba(239,68,68,0.35)' : '1px solid rgba(74,222,128,0.25)',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '8px',
+                                    flexWrap: 'wrap'
+                                  }}>
+                                    <div style={{ fontSize: '11px', color: isDesynced ? '#fca5a5' : '#4ade80', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span>{isDesynced ? '⚠️' : '✓'}</span>
+                                      <span>
+                                        {isDesynced
+                                          ? (lang === 'ru'
+                                              ? `Купол SafeZone смещен на ${dist}м от NPC (Радиус: ${szRadius}м). Торговец может быть уязвим!`
+                                              : `SafeZone center offset by ${dist}m from NPC (Radius: ${szRadius}m). Trader might be vulnerable!`)
+                                          : (lang === 'ru'
+                                              ? `Центр SafeZone совмещен с NPC (дистанция: ${dist}м, радиус: ${szRadius}м)`
+                                              : `SafeZone center aligned with NPC (${dist}m offset, ${szRadius}m radius)`)}
+                                      </span>
+                                    </div>
+                                    {isDesynced && (
+                                      <span style={{ fontSize: '10px', color: '#fca5a5', fontStyle: 'italic' }}>
+                                        {lang === 'ru' ? 'Рекомендуется синхронизировать центр зоны' : 'Sync recommended'}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+
+                            <div style={{ gridColumn: 'span 2', marginTop: '2px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-accent"
+                                onClick={() => {
+                                  onChangeField(selectedSafezonePath, ['Position'], [...npcCoords]);
+                                  toast.success(lang === 'ru' ? 'Координаты зоны синхронизированы с NPC!' : 'Zone coordinates synced with NPC!');
+                                }}
+                                style={{ padding: '6px 12px', fontSize: '11px', width: '100%', fontWeight: 'bold' }}
+                                title={lang === 'ru' ? 'Установить центр зоны точно в координаты NPC' : 'Set zone center exactly to NPC position'}
+                              >
+                                🎯 {lang === 'ru' ? 'Синхронизировать координаты зоны с NPC' : 'Sync Pos with NPC'}
+                              </button>
+                            </div>
                           </div>
-                        ))
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{t('trader_add_currency')}</span>
-                      <AutocompleteInput suggestions={suggestions} placeholder={t('trader_search_class')} onSelect={handleTraderAddCurrency} style={{ flex: 1 }} />
+                        )}
+                      </div>
+
                     </div>
                   </div>
-                </div>
+                )}
+
+                                {/* ── TAB 2: CATEGORIES & OVERRIDES ─────────────────────────── */}
+                {traderSectionTab === 'categories' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 {/* Trader Categories */}
                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>{t('trader_market_categories')}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>📦 {t('trader_market_categories')}</span>
+                    <HelpIcon tip={lang === 'ru' ? 'Категории товаров, привязанные к этому торговцу. Режим: 3 = купля и продажа, 1 = только продажа игроку, 2 = только скупка у игрока, 0 = отключено.' : 'Assigned market categories. Mode: 3 = Buy & Sell, 1 = Only Buy from Trader, 2 = Only Sell to Trader, 0 = Disabled.'} />
+                  </div>
                   <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     <table className="table-tactical">
                       <thead><tr><th>{t('trader_th_category')}</th><th style={{ width: '30%', textAlign: 'center' }}>{t('trader_select_cat_override')}</th><th style={{ width: '10%', textAlign: 'center' }}>{t('trader_th_action')}</th></tr></thead>
@@ -3360,7 +4176,10 @@ export default function EconomyEditor({
 
                 {/* Item Overrides */}
                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>{t('trader_item_overrides')}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>⚙️ {t('trader_item_overrides')}</span>
+                    <HelpIcon tip={lang === 'ru' ? 'Индивидуальные оверрайды: позволяют переопределить режим торговли для конкретного товара у этого торговца в обход категории.' : 'Item-specific mode overrides for this trader.'} />
+                  </div>
                   <div style={{ width: '250px', position: 'relative' }}>
                     <input type="text" placeholder={t('econ_filter_overrides')} value={traderItemQuery} onChange={e => setTraderItemQuery(e.target.value)} style={{ fontSize: '11px', padding: '6px 12px 6px 24px' }} />
                     <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '10px' }}>▶</span>
@@ -3576,246 +4395,485 @@ export default function EconomyEditor({
                   </div>
                 </div>
 
-                {/* Stage 3: World, NPC & SafeZone Binding */}
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '2px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-glow)', fontWeight: 'bold', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', letterSpacing: '1px' }}>
-                    🌐 {t('econ_trader_world_title')}
                   </div>
+                )}
 
-                  {/* SafeZone Row */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        🛡️ {t('econ_trader_safezone_label')}
-                        {selectedSafezonePath && (
-                          <span style={{ fontSize: '10px', color: 'var(--text-glow)', background: 'rgba(74,222,128,0.1)', padding: '2px 6px', borderRadius: '2px' }}>
-                            {selectedSafezonePath.split('/').pop()}
-                          </span>
-                        )}
-                      </span>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <select
-                          value={selectedSafezonePath}
-                          onChange={e => setSelectedSafezonePath(e.target.value)}
-                          style={{ fontSize: '12px', padding: '4px 8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)', width: '220px' }}
-                        >
-                          <option value="">-- {t('econ_trader_safezone_none')} --</option>
-                          {safezonePaths.map(p => (
-                            <option key={p} value={p}>{configs[p]?.content?.m_DisplayName || p.split('/').pop().replace('.json', '')}</option>
-                          ))}
-                        </select>
-                        {selectedSafezonePath && configs[selectedSafezonePath]?.content?.Position && onNavigateToMap && (
-                          <button
-                            type="button"
-                            className="btn btn-accent"
-                            onClick={() => onNavigateToMap(configs[selectedSafezonePath]?.content?.Position)}
-                            style={{ padding: '4px 10px', fontSize: '11px' }}
-                            title={t('econ_trader_show_map')}
-                          >
-                            📍 {t('econ_trader_show_map')}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={handleCreateSafezoneForTrader}
-                          style={{ padding: '4px 10px', fontSize: '11px' }}
-                        >
-                          + {lang === 'ru' ? 'Создать SafeZone' : 'Create SafeZone'}
-                        </button>
-                      </div>
-                    </div>
+                {/* ── TAB 3: APPEARANCE & 3D SPAWN ──────────────────────────── */}
+                {traderSectionTab === 'appearance' && (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(430px, 1fr))',
+                    gap: '18px',
+                    alignItems: 'start',
+                    paddingBottom: '24px'
+                  }}>
+                    {/* 📍 LEFT COLUMN: SPAWN, 3D MODEL, COORDS, YAW & .MAP FILE */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-                    {/* Interactive SafeZone Config Panel */}
-                    {selectedSafezonePath && configs[selectedSafezonePath]?.content && (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', background: 'var(--bg-secondary)', padding: '12px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
-                        <div>
-                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                            {lang === 'ru' ? 'Радиус зоны (Radius, м):' : 'Zone Radius (m):'}
-                          </label>
-                          <input
-                            type="number"
-                            step="5"
-                            min="10"
-                            max="5000"
-                            value={configs[selectedSafezonePath]?.content?.Radius ?? 100}
-                            onChange={e => onChangeField(selectedSafezonePath, ['Radius'], Number(e.target.value) || 50)}
-                            style={{ width: '100%', padding: '4px 8px', fontSize: '12px', fontFamily: 'var(--font-mono)' }}
-                          />
-                        </div>
+                      {/* 1. 🧍 NPC 3D Model, Coordinates & Yaw Rotation */}
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '15px',
+                        background: 'var(--bg-primary)',
+                        padding: '18px',
+                        borderRadius: '5px',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+                      }}>
+                        {/* 3D Model Section */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <span style={{ fontSize: '13px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>🧍 {t('econ_trader_npc_model')} (3D Модель / ClassName)</span>
+                              <HelpIcon tip={lang === 'ru' ? 'Класснейм 3D-модели торговца (человек, NPC-бот, банкомат или доска).' : '3D Model classname for trader.'} />
+                            </span>
+                            
+                            {/* Quick Presets Dropdown */}
+                            <select
+                              value={['ExpansionTraderSurvivorM', 'ExpansionTraderSurvivorF', 'ExpansionTraderCivilianM', 'ExpansionTraderPriest', 'ExpansionTraderPolice', 'ExpansionTraderMirek', 'ExpansionTraderBoris', 'SurvivorM_Taiki', 'SurvivorF_Linda', 'SurvivorM_Mirek', 'SurvivorF_Eva'].includes(npcModel) ? npcModel : 'custom'}
+                              onChange={e => {
+                                if (e.target.value !== 'custom') {
+                                  handleUpdateNpcModel(e.target.value);
+                                }
+                              }}
+                              style={{
+                                fontSize: '12px',
+                                padding: '5px 10px',
+                                height: '33px',
+                                background: 'var(--bg-secondary)',
+                                border: '1px solid var(--border-color)',
+                                color: 'var(--text-primary)',
+                                borderRadius: '3px',
+                                maxWidth: '260px'
+                              }}
+                            >
+                              <option value="ExpansionTraderSurvivorM">Survivor (Male) [ExpansionTraderSurvivorM]</option>
+                              <option value="ExpansionTraderSurvivorF">Survivor (Female) [ExpansionTraderSurvivorF]</option>
+                              <option value="ExpansionTraderBoris">Boris (Military) [ExpansionTraderBoris]</option>
+                              <option value="ExpansionTraderMirek">Mirek (Trader) [ExpansionTraderMirek]</option>
+                              <option value="ExpansionTraderCivilianM">Civilian [ExpansionTraderCivilianM]</option>
+                              <option value="ExpansionTraderPriest">Priest [ExpansionTraderPriest]</option>
+                              <option value="ExpansionTraderPolice">Police Officer [ExpansionTraderPolice]</option>
+                              <option value="SurvivorM_Taiki">Survivor Taiki [SurvivorM_Taiki]</option>
+                              <option value="SurvivorM_Mirek">Survivor Mirek [SurvivorM_Mirek]</option>
+                              <option value="SurvivorF_Eva">Survivor Eva [SurvivorF_Eva]</option>
+                              <option value="SurvivorF_Linda">Survivor Linda [SurvivorF_Linda]</option>
+                              <option value="ExpansionExchangeMachine">🏧 {lang === 'ru' ? 'Банкомат / Обменник валют' : 'ATM / Currency Exchange'}</option>
+                              <option value="ExpansionTraderBoard">📋 {lang === 'ru' ? 'Интерактивная доска торговли' : 'Trader Board'}</option>
+                              <option value="custom">-- {lang === 'ru' ? 'Свой класснейм (Custom)' : 'Custom ClassName'} --</option>
+                            </select>
+                          </div>
 
-                        <div>
-                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                            {lang === 'ru' ? 'Имя зоны (Display Name):' : 'Display Name:'}
-                          </label>
+                          {/* Direct Free ClassName Input */}
                           <input
                             type="text"
-                            value={configs[selectedSafezonePath]?.content?.m_DisplayName ?? ''}
-                            onChange={e => onChangeField(selectedSafezonePath, ['m_DisplayName'], e.target.value)}
-                            style={{ width: '100%', padding: '4px 8px', fontSize: '12px' }}
-                            placeholder="SafeZone Name"
+                            value={npcModel}
+                            onChange={e => setNpcModel(e.target.value)}
+                            onBlur={e => handleUpdateNpcModel(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleUpdateNpcModel(e.target.value);
+                            }}
+                            placeholder="ExpansionTraderSurvivorM, SurvivorM_Taiki, CustomNPC..."
+                            style={{
+                              width: '100%',
+                              fontSize: '12px',
+                              padding: '6px 10px',
+                              height: '34px',
+                              background: 'var(--bg-secondary)',
+                              border: '1px solid var(--border-color)',
+                              color: 'var(--text-glow)',
+                              fontFamily: 'var(--font-mono)',
+                              borderRadius: '3px'
+                            }}
+                            title={lang === 'ru' ? 'Введите любой класснейм 3D-модели' : 'Enter any 3D model classname'}
                           />
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                        {/* Coordinates & Map Picking */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>📍 {t('econ_trader_npc_coords')} [X, Y, Z]</span>
+                              <HelpIcon tip={lang === 'ru' ? 'Точные 3D координаты спавна торговца в мире DayZ. Можно выбрать прямо кликом на карте.' : 'Exact 3D world coordinates for trader spawn.'} />
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              {setCoordinatePicker && setActiveTab && (
+                                <button
+                                  type="button"
+                                  className="btn btn-accent"
+                                  onClick={() => {
+                                    setCoordinatePicker({
+                                      active: true,
+                                      returnTab: 'economy',
+                                      callback: ({ x, z }) => {
+                                        const newPos = [Number(x.toFixed(2)), 0.0, Number(z.toFixed(2))];
+                                        setNpcCoords(newPos);
+                                        toast.success(lang === 'ru' ? `Координаты выбраны: [${newPos[0]}, ${newPos[2]}]` : `Coordinates picked: [${newPos[0]}, ${newPos[2]}]`);
+                                      }
+                                    });
+                                    setActiveTab('map');
+                                  }}
+                                  style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}
+                                >
+                                  🗺️ {lang === 'ru' ? 'ЗАДАТЬ НА КАРТЕ' : 'PICK FROM MAP'}
+                                </button>
+                              )}
+                              {onNavigateToMap && (
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => onNavigateToMap(npcCoords)}
+                                  style={{ padding: '4px 10px', fontSize: '11px' }}
+                                >
+                                  📍 {t('econ_trader_show_map')}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                            {['X', 'Y', 'Z'].map((axis, i) => (
+                              <div key={axis} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-secondary)', padding: '5px 8px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{axis}:</span>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={npcCoords[i] ?? 0}
+                                  onChange={e => {
+                                    const val = Number(e.target.value);
+                                    setNpcCoords(prev => {
+                                      const n = [...prev];
+                                      n[i] = isNaN(val) ? 0 : val;
+                                      return n;
+                                    });
+                                  }}
+                                  style={{ border: 'none', background: 'transparent', width: '100%', fontSize: '12px', padding: '2px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Yaw Rotation Angle */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>🧭 {lang === 'ru' ? 'Угол поворота тела и лица (Yaw):' : 'Orientation / Yaw Angle:'}</span>
+                              <HelpIcon tip={lang === 'ru' ? 'Направление взгляда NPC в градусах (0° = Север, 90° = Восток, 180° = Юг, -90° = Запад).' : 'Facing orientation angle in degrees.'} />
+                            </span>
+                            <span style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', color: 'var(--text-glow)', fontWeight: 'bold' }}>
+                              {npcYaw}°
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <input
+                              type="range"
+                              min="-180"
+                              max="180"
+                              step="1"
+                              value={npcYaw}
+                              onChange={e => setNpcYaw(Number(e.target.value))}
+                              style={{ flex: 1, height: '6px', accentColor: '#4ade80', cursor: 'pointer' }}
+                            />
+                            <input
+                              type="number"
+                              min="-180"
+                              max="360"
+                              value={npcYaw}
+                              onChange={e => setNpcYaw(Number(e.target.value))}
+                              style={{ width: '70px', height: '32px', fontSize: '12px', padding: '3px 6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', textAlign: 'center', borderRadius: '3px' }}
+                            />
+                          </div>
+
+                          {/* Quick Cardinal Direction Buttons */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginTop: '2px' }}>
+                            <button type="button" className="btn" onClick={() => setNpcYaw(0)} style={{ padding: '5px 8px', fontSize: '11px', justifyContent: 'center', fontWeight: '500' }}>⬆️ С (0°)</button>
+                            <button type="button" className="btn" onClick={() => setNpcYaw(90)} style={{ padding: '5px 8px', fontSize: '11px', justifyContent: 'center', fontWeight: '500' }}>➡️ В (90°)</button>
+                            <button type="button" className="btn" onClick={() => setNpcYaw(180)} style={{ padding: '5px 8px', fontSize: '11px', justifyContent: 'center', fontWeight: '500' }}>⬇️ Ю (180°)</button>
+                            <button type="button" className="btn" onClick={() => setNpcYaw(-90)} style={{ padding: '5px 8px', fontSize: '11px', justifyContent: 'center', fontWeight: '500' }}>⬅️ З (-90°)</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 📜 Native DayZ Expansion .map Spawn Sync */}
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        background: 'var(--bg-primary)',
+                        padding: '18px',
+                        borderRadius: '5px',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                          <span style={{ fontSize: '13px', color: 'var(--text-glow)', fontWeight: 'bold' }}>
+                            📜 {lang === 'ru' ? 'Нативный спавн торговца (expansion/traders/*.map)' : 'Native Trader Spawn (expansion/traders/*.map)'}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                          {lang === 'ru' 
+                            ? 'Официальный формат спавна DayZ Expansion. Сервер автоматически читает этот файл из миссии, спавнит NPC, поворачивает его лицом и одевает в гардероб.'
+                            : 'Official DayZ Expansion spawn format. Server automatically reads this file from mission, spawns NPC, rotates, and equips wardrobe.'}
+                        </div>
+
+                        {/* Map File Name Target */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                            📁 {lang === 'ru' ? 'Файл миссии:' : 'Mission File:'}
+                          </span>
+                          <input
+                            type="text"
+                            value={targetMapFileName}
+                            onChange={e => setTargetMapFileName(e.target.value)}
+                            placeholder="GreenMountain_Traders.map"
+                            style={{
+                              flex: 1,
+                              fontSize: '12px',
+                              padding: '6px 10px',
+                              height: '34px',
+                              background: 'var(--bg-secondary)',
+                              border: '1px solid var(--border-color)',
+                              color: 'var(--text-glow)',
+                              fontFamily: 'var(--font-mono)',
+                              borderRadius: '3px'
+                            }}
+                          />
+                        </div>
+
+                        {/* Live .map string visual preview */}
+                        <div style={{
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '3px',
+                          padding: '10px 12px',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '11px',
+                          color: '#86efac',
+                          overflowX: 'auto',
+                          whiteSpace: 'nowrap',
+                          lineHeight: '1.4'
+                        }}>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '9px', marginBottom: '3px', letterSpacing: '0.5px' }}>// LIVE .MAP STRING PREVIEW:</div>
+                          {buildTraderMapLine({
+                            npcModel,
+                            traderName: selectedTraderPath.split('/').pop().replace('.json', ''),
+                            pos: npcCoords,
+                            ypr: [Number(npcYaw) || 0, 0, 0],
+                            clothing: npcClothing
+                          })}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', paddingTop: '2px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            <span>⚡</span>
+                            <span>{lang === 'ru' ? 'Сохраняется автоматически при нажатии «СОХРАНИТЬ ДАННЫЕ ТОРГОВЦА»' : 'Auto-saved on "SAVE TRADER" button'}</span>
+                          </div>
+
                           <button
                             type="button"
                             className="btn btn-accent"
                             onClick={() => {
-                              onChangeField(selectedSafezonePath, ['Position'], [...npcCoords]);
-                              toast.success(lang === 'ru' ? 'Координаты зоны синхронизированы с NPC!' : 'Zone coordinates synced with NPC!');
+                              const str = buildTraderMapLine({
+                                npcModel,
+                                traderName: selectedTraderPath.split('/').pop().replace('.json', ''),
+                                pos: npcCoords,
+                                ypr: [Number(npcYaw) || 0, 0, 0],
+                                clothing: npcClothing
+                              });
+                              navigator.clipboard.writeText(str);
+                              toast.success(lang === 'ru' ? 'Строка .map скопирована в буфер!' : '.map string copied to clipboard!');
                             }}
-                            style={{ padding: '6px 10px', fontSize: '11px', width: '100%' }}
-                            title={lang === 'ru' ? 'Установить центр зоны точно в координаты NPC' : 'Set zone center exactly to NPC position'}
+                            style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 'bold' }}
                           >
-                            🎯 {lang === 'ru' ? 'Синхронизировать с NPC' : 'Sync Pos with NPC'}
+                            📋 {lang === 'ru' ? 'Скопировать строку .map' : 'Copy .map String'}
                           </button>
                         </div>
                       </div>
-                    )}
-                  </div>
 
-                  {/* NPC Spawn Entity Row */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
-                        🧍 {t('econ_trader_npc_model')}
-                      </span>
-                      <select
-                        value={npcModel}
-                        onChange={e => setNpcModel(e.target.value)}
-                        style={{ fontSize: '12px', padding: '4px 8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)', width: '250px' }}
-                      >
-                        <option value="ExpansionTraderSurvivorM">ExpansionTraderSurvivorM (Male Survivor)</option>
-                        <option value="ExpansionTraderSurvivorF">ExpansionTraderSurvivorF (Female Survivor)</option>
-                        <option value="ExpansionTraderCivilianM">ExpansionTraderCivilianM (Civilian)</option>
-                        <option value="ExpansionTraderPriest">ExpansionTraderPriest (Priest)</option>
-                        <option value="ExpansionTraderPolice">ExpansionTraderPolice (Police Officer)</option>
-                        <option value="ExpansionTraderMirek">ExpansionTraderMirek (Mirek)</option>
-                        <option value="ExpansionTraderBoris">ExpansionTraderBoris (Boris)</option>
-                      </select>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
-                          📍 {t('econ_trader_npc_coords')}
-                        </span>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          {setCoordinatePicker && setActiveTab && (
-                            <button
-                              type="button"
-                              className="btn btn-accent"
-                              onClick={() => {
-                                setCoordinatePicker({
-                                  active: true,
-                                  returnTab: 'economy',
-                                  callback: ({ x, z }) => {
-                                    const newPos = [Number(x.toFixed(2)), 0.0, Number(z.toFixed(2))];
-                                    setNpcCoords(newPos);
-                                    if (selectedTraderPath && configs) {
-                                      const prefix = getExpansionPrefix(configs);
-                                      const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
-                                      const objectFileName = `${prefix}objects/${traderName}_npc.json`;
-                                      const existingObj = configs[objectFileName];
-                                      if (existingObj && existingObj.success && existingObj.content?.Objects) {
-                                        const updatedObjs = [...existingObj.content.Objects];
-                                        if (updatedObjs.length > 0) {
-                                          updatedObjs[0] = { ...updatedObjs[0], pos: newPos };
-                                        } else {
-                                          updatedObjs.push({ name: npcModel || 'ExpansionTraderSurvivorM', pos: newPos, ypr: [0.0, 0.0, 0.0] });
-                                        }
-                                        onChangeField(objectFileName, ['Objects'], updatedObjs);
-                                      } else {
-                                        onCreateFile(objectFileName, {
-                                          Objects: [
-                                            { name: npcModel || 'ExpansionTraderSurvivorM', pos: newPos, ypr: [0.0, 0.0, 0.0] }
-                                          ]
-                                        });
-                                      }
-                                      toast.success(lang === 'ru' ? `Координаты торговца обновлены: [${newPos[0]}, ${newPos[2]}]` : `Trader position updated: [${newPos[0]}, ${newPos[2]}]`);
+                    {/* 👔 RIGHT COLUMN: WARDROBE, OUTFIT PRESETS, SLOTS & EQUIPPED ITEMS */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '15px',
+                        background: 'var(--bg-primary)',
+                        padding: '18px',
+                        borderRadius: '5px',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                          <span style={{ fontSize: '13px', color: 'var(--text-glow)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>👔 {lang === 'ru' ? 'Гардероб и Экипировка NPC' : 'Trader Wardrobe & Outfits'}</span>
+                            <HelpIcon tip={lang === 'ru' ? 'Одежда и экипировка, которая надевается на персонажа торговца при спавне.' : 'Clothing items equipped on trader NPC spawn.'} />
+                          </span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '2px 7px', borderRadius: '3px', border: '1px solid var(--border-color)' }}>
+                            {lang === 'ru' ? `Надето предметов: ${npcClothing.length}` : `Equipped: ${npcClothing.length}`}
+                          </span>
+                        </div>
+
+                        {/* Outfit Preset Quick Buttons */}
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
+                            {lang === 'ru' ? 'Быстрые пресеты стиля (в 1 клик):' : 'Quick Style Presets (1-Click):'}
+                          </span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                            {Object.values(TRADER_OUTFIT_PRESETS).map(preset => (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                className="btn"
+                                onClick={() => handleApplyOutfitPreset(preset.id)}
+                                style={{ padding: '5px 10px', fontSize: '11px', borderRadius: '3px' }}
+                              >
+                                {lang === 'ru' ? preset.labelRu : preset.labelEn}
+                              </button>
+                            ))}
+                            {npcClothing.length > 0 && (
+                              <button
+                                type="button"
+                                className="btn btn-danger"
+                                onClick={() => setNpcClothing([])}
+                                style={{ padding: '5px 10px', fontSize: '11px', borderRadius: '3px' }}
+                              >
+                                🧹 {lang === 'ru' ? 'Очистить одежду' : 'Clear All'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 🎽 Mannequin Slot Grid (2 columns of 4 slots = 8 slots) */}
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
+                            {lang === 'ru' ? 'Слоты экипировки (быстрый выбор):' : 'Equipment Slots (Quick select):'}
+                          </span>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            {[
+                              { icon: '🧢', label: lang === 'ru' ? 'Голова' : 'Head', items: ['FlatCap_BlackCheck', 'BaseballCap_Blue', 'CowboyHat_black', 'BeanieHat_Red', 'PilotkaCap', 'BallisticHelmet_Black', 'GorkaHelmet'] },
+                              { icon: '🥽', label: lang === 'ru' ? 'Маска / Очки' : 'Face / Mask', items: ['SurgicalMask', 'Balaclava3Holes_Black', 'AviatorGlasses', 'NioshFaceMask', 'GasMask'] },
+                              { icon: '🧥', label: lang === 'ru' ? 'Торс / Куртка' : 'Body / Jacket', items: ['M65Jacket_Khaki', 'HuntingJacket_Summer', 'GorkaEJacket_Flat', 'BomberJacket_Maroon', 'ManSuit_Blue', 'TacticalShirt_Black'] },
+                              { icon: '🦺', label: lang === 'ru' ? 'Жилет / Броня' : 'Vest / Armor', items: ['PoliceVest', 'UKAssVest_Black', 'ReflexVest', 'PlateCarrierVest', 'HighCapacityVest_Black'] },
+                              { icon: '🧤', label: lang === 'ru' ? 'Перчатки' : 'Gloves', items: ['WorkingGloves_Black', 'SurgicalGloves_Blue', 'NBCGlovesGray', 'TacticalGloves_Black'] },
+                              { icon: '👖', label: lang === 'ru' ? 'Штаны' : 'Pants', items: ['CargoPants_Black', 'HunterPants_Spring', 'GorkaPants_Flat', 'SlacksPants_Blue', 'Jeans_Blue'] },
+                              { icon: '🥾', label: lang === 'ru' ? 'Обувь / Берцы' : 'Boots', items: ['CombatBoots_Green', 'CombatBoots_Black', 'HikingBootsLow_Blue', 'DressShoes_Brown', 'MilitaryBoots_Black'] },
+                              { icon: '🎒', label: lang === 'ru' ? 'Рюкзак' : 'Backpack', items: ['HuntingBag', 'MountainBag_Blue', 'AssaultBag_Black', 'TaloonBag_Violet', 'CoyoteBag_Brown'] },
+                            ].map(slot => (
+                              <div key={slot.label} style={{ position: 'relative' }}>
+                                <select
+                                  onChange={e => {
+                                    if (e.target.value) {
+                                      handleAddClothItem(e.target.value);
+                                      e.target.value = '';
                                     }
-                                  }
-                                });
-                                setActiveTab('map');
-                              }}
-                              style={{ padding: '2px 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                              title={lang === 'ru' ? 'Кликнуть по карте для выбора координат спавна NPC' : 'Click on map to pick NPC spawn coordinates'}
-                            >
-                              🗺️ {lang === 'ru' ? 'ЗАДАТЬ НА КАРТЕ' : 'PICK FROM MAP'}
-                            </button>
-                          )}
-                          {onNavigateToMap && (
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => onNavigateToMap(npcCoords)}
-                              style={{ padding: '2px 8px', fontSize: '10px' }}
-                              title={lang === 'ru' ? 'Показать текущую позицию на карте' : 'Show current position on map'}
-                            >
-                              📍 {t('econ_trader_show_map')}
-                            </button>
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '6px 8px',
+                                    height: '34px',
+                                    fontSize: '11px',
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: '3px',
+                                    color: 'var(--text-primary)',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <option value="">{slot.icon} {slot.label}</option>
+                                  {slot.items.map(it => (
+                                    <option key={it} value={it}>{it}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Clothing Pill Tags */}
+                        <div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
+                            {lang === 'ru' ? 'Надетые вещи (активный гардероб):' : 'Equipped Items (Active Wardrobe):'}
+                          </span>
+                          {npcClothing.length > 0 ? (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '3px', border: '1px solid var(--border-color)', minHeight: '44px' }}>
+                              {npcClothing.map((item, idx) => (
+                                <span
+                                  key={idx}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'rgba(74,222,128,0.12)',
+                                    border: '1px solid rgba(74,222,128,0.3)',
+                                    color: 'var(--text-glow)',
+                                    padding: '3px 8px',
+                                    borderRadius: '3px',
+                                    fontSize: '11px',
+                                    fontFamily: 'var(--font-mono)'
+                                  }}
+                                >
+                                  {item}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveClothItem(idx)}
+                                    style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 0, fontSize: '13px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                                    title={lang === 'ru' ? 'Снять предмет' : 'Remove item'}
+                                  >
+                                    ✖
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: '3px' }}>
+                              {lang === 'ru' ? 'Одежда не выбрана (NPC спавнится в дефолтной одежде модели).' : 'No clothing selected (NPC spawns in default clothing).'}
+                            </div>
                           )}
                         </div>
-                      </div>
-                      <CoordinatesInput
-                        layout="row"
-                        position={npcCoords}
-                        onChange={pos => {
-                          setNpcCoords(pos);
-                          // Auto-persist into expansion/objects file
-                          if (selectedTraderPath && configs) {
-                            const prefix = getExpansionPrefix(configs);
-                            const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
-                            const objectFileName = `${prefix}objects/${traderName}_npc.json`;
-                            const existingObj = configs[objectFileName];
-                            if (existingObj && existingObj.success && existingObj.content?.Objects) {
-                              const updatedObjs = [...existingObj.content.Objects];
-                              if (updatedObjs.length > 0) {
-                                updatedObjs[0] = { ...updatedObjs[0], pos: [...pos] };
-                              } else {
-                                updatedObjs.push({ name: npcModel || 'ExpansionTraderSurvivorM', pos: [...pos], ypr: [0.0, 0.0, 0.0] });
-                              }
-                              onChangeField(objectFileName, ['Objects'], updatedObjs);
-                            } else {
-                              onCreateFile(objectFileName, {
-                                Objects: [
-                                  { name: npcModel || 'ExpansionTraderSurvivorM', pos: [...pos], ypr: [0.0, 0.0, 0.0] }
-                                ]
-                              });
-                            }
-                          }
-                        }}
-                        onPickFromMap={() => {
-                          if (setCoordinatePicker && setActiveTab) {
-                            setCoordinatePicker({
-                              active: true,
-                              returnTab: 'economy',
-                              callback: ({ x, z }) => {
-                                const newPos = [Number(x.toFixed(2)), 0.0, Number(z.toFixed(2))];
-                                setNpcCoords(newPos);
-                                if (selectedTraderPath && configs) {
-                                  const prefix = getExpansionPrefix(configs);
-                                  const traderName = selectedTraderPath.split('/').pop().replace('.json', '');
-                                  const objectFileName = `${prefix}objects/${traderName}_npc.json`;
-                                  onCreateFile(objectFileName, {
-                                    Objects: [
-                                      { name: npcModel || 'ExpansionTraderSurvivorM', pos: newPos, ypr: [0.0, 0.0, 0.0] }
-                                    ]
-                                  });
-                                }
-                              }
-                            });
-                            setActiveTab('map');
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
 
-              </div>
-            ) : (
+                        {/* Add Custom Clothing Item */}
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            value={customClothInput}
+                            onChange={e => setCustomClothInput(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleAddClothItem(customClothInput);
+                            }}
+                            placeholder="GorkaEJacket_Flat, CowboyHat_black, CombatBoots..."
+                            style={{
+                              flex: 1,
+                              fontSize: '12px',
+                              padding: '6px 10px',
+                              height: '34px',
+                              background: 'var(--bg-secondary)',
+                              border: '1px solid var(--border-color)',
+                              color: 'var(--text-primary)',
+                              fontFamily: 'var(--font-mono)',
+                              borderRadius: '3px'
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-accent"
+                            onClick={() => handleAddClothItem(customClothInput)}
+                            style={{ padding: '6px 12px', fontSize: '11px', height: '34px', whiteSpace: 'nowrap', fontWeight: 'bold' }}
+                          >
+                            + {lang === 'ru' ? 'Надеть предмет' : 'Equip Item'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+            </div>
+          ) : (
               <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
                 {t('econ_select_trader_label')}
               </div>
@@ -3823,6 +4881,311 @@ export default function EconomyEditor({
           )}
         </div>
       </div>
+
+      {/* 🛡️ Market Duplicate Auditor & 1-Click Auto-Resolver Modal */}
+      {showDuplicateAuditModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)', zIndex: 99996,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(3px)',
+        }}>
+          <div style={{
+            width: '800px',
+            maxHeight: '88vh',
+            background: 'var(--bg-secondary)',
+            border: marketAudit.duplicatesCount > 0 ? '1px solid #ef4444' : '1px solid var(--border-glow)',
+            borderRadius: '4px',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.9), 0 0 20px rgba(239,68,68,0.2)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            animation: 'toastIn 0.2s ease',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '16px 20px',
+              background: 'var(--bg-tertiary)',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px' }}>{marketAudit.duplicatesCount > 0 ? '⚠️' : '🛡️'}</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', color: marketAudit.duplicatesCount > 0 ? '#fca5a5' : 'var(--text-glow)', fontFamily: 'var(--font-heading)' }}>
+                    {lang === 'ru' ? 'АУДИТОР ДУБЛИКАТОВ РЫНКА (MARKET DUPLICATES)' : 'MARKET DUPLICATES RESOLVER'}
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {lang === 'ru' 
+                      ? 'В DayZ Expansion предмет не может находиться в двух категориях одновременно (вызывает ошибку MARKET CONFIGURATION ERROR).'
+                      : 'DayZ Expansion forbids items or variants from existing in multiple market categories.'}
+                  </div>
+                </div>
+              </div>
+              <button
+                className="btn"
+                onClick={() => setShowDuplicateAuditModal(false)}
+                style={{ padding: '4px 10px', fontSize: '14px', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {marketAudit.duplicatesCount > 0 ? (
+                <>
+                  {/* Master 1-Click Action Card */}
+                  <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#fca5a5' }}>
+                        {lang === 'ru' ? `Найдено конфликтов: ${marketAudit.duplicatesCount} предметов (${marketAudit.totalCollisions} дубликатов)` : `Found ${marketAudit.duplicatesCount} colliding items (${marketAudit.totalCollisions} duplicates)`}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                        {lang === 'ru' ? 'Удалит предмет из вторичных категорий, сохранив в первой.' : 'Keeps item in primary category and strips from secondary.'}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-accent"
+                      onClick={handleAutoResolveAllDuplicates}
+                      style={{ padding: '10px 20px', fontSize: '13px', fontWeight: 'bold', background: '#ef4444', borderColor: '#dc2626', color: '#fff', boxShadow: '0 0 15px rgba(239,68,68,0.5)' }}
+                    >
+                      ⚡ {lang === 'ru' ? 'УСТРАНИТЬ ВСЕ ДУБЛИКАТЫ В 1 КЛИК' : 'AUTO-RESOLVE ALL DUPLICATES'}
+                    </button>
+                  </div>
+
+                  {/* Filter input */}
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={duplicateSearchQuery}
+                      onChange={e => setDuplicateSearchQuery(e.target.value)}
+                      placeholder={lang === 'ru' ? '🔍 Фильтр по названию предмета...' : '🔍 Filter by item classname...'}
+                      style={{ flex: 1, padding: '6px 12px', fontSize: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-glow)', borderRadius: '3px' }}
+                    />
+                  </div>
+
+                  {/* Conflict items table */}
+                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '3px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+                    <table className="table-tactical" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-tertiary)' }}>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>{lang === 'ru' ? 'ПРЕДМЕТ / ВАРИАНТ' : 'ITEM / VARIANT'}</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>{lang === 'ru' ? 'ПЕРВИЧНАЯ КАТЕГОРИЯ' : 'PRIMARY CATEGORY'}</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>{lang === 'ru' ? 'КОНФЛИКТНЫЕ КАТЕГОРИИ' : 'CONFLICTING CATEGORIES'}</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'center', fontSize: '11px' }}>{lang === 'ru' ? 'ДЕЙСТВИЕ' : 'ACTION'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {marketAudit.duplicatesList
+                          .filter(d => !duplicateSearchQuery || d.className.toLowerCase().includes(duplicateSearchQuery.toLowerCase()))
+                          .map((dup, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <td style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#fca5a5', fontWeight: 'bold' }}>
+                                {dup.className}
+                              </td>
+                              <td style={{ padding: '8px 12px', fontSize: '11px' }}>
+                                <span style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.3)', padding: '2px 8px', borderRadius: '3px' }}>
+                                  ✓ {dup.occurrences[0].categoryFileName}
+                                </span>
+                              </td>
+                              <td style={{ padding: '8px 12px', fontSize: '11px' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                  {dup.occurrences.slice(1).map((occ, occIdx) => (
+                                    <span key={occIdx} style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)', padding: '2px 6px', borderRadius: '3px' }}>
+                                      {occ.categoryFileName} {occ.isVariant ? '(вариант)' : ''}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-accent"
+                                  onClick={() => handleResolveSingleDuplicate(dup.className)}
+                                  style={{ padding: '4px 10px', fontSize: '10px' }}
+                                >
+                                  {lang === 'ru' ? 'Устранить' : 'Resolve'}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '48px' }}>🎉</span>
+                  <div style={{ fontSize: '16px', color: '#4ade80', fontWeight: 'bold' }}>
+                    {lang === 'ru' ? 'Дубликатов рынка не обнаружено!' : 'No market duplicates detected!'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '450px', lineHeight: '1.5' }}>
+                    {lang === 'ru' 
+                      ? 'Все предметы и их варианты распределены по уникальным категориям. Сервер DayZ Expansion запустится без ошибок рынка.'
+                      : 'All items and variants are in unique category files. DayZ Expansion will initialize smoothly.'}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 Pre-Flight Server Readiness & Compatibility Inspector Modal */}
+      {showPreFlightModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)', zIndex: 99995,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(3px)',
+        }}>
+          <div style={{
+            width: '850px',
+            maxHeight: '90vh',
+            background: 'var(--bg-secondary)',
+            border: preFlightReport.isReady ? '1px solid rgba(74,222,128,0.4)' : '1px solid #fbbf24',
+            borderRadius: '4px',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.9), 0 0 25px rgba(0,0,0,0.5)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            animation: 'toastIn 0.2s ease',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '16px 20px',
+              background: 'var(--bg-tertiary)',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '22px' }}>{preFlightReport.isReady ? '🚀' : '⚠️'}</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', color: preFlightReport.isReady ? '#4ade80' : '#fde047', fontFamily: 'var(--font-heading)' }}>
+                    {lang === 'ru' ? 'ИНСПЕКТОР СОВМЕСТИМОСТИ И ГОТОВНОСТИ СЕРВЕРА (PRE-FLIGHT CHECK)' : 'PRE-FLIGHT SERVER READINESS INSPECTOR'}
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {lang === 'ru'
+                      ? 'Комплексная проверка всех связей рынка, торговцев, .map спавнов миссии и безопасных зон.'
+                      : 'Comprehensive verification of market categories, trader links, mission .map spawns, and safezones.'}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowPreFlightModal(false)}
+                style={{ padding: '4px 10px', fontSize: '14px', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Score card */}
+              <div style={{
+                background: preFlightReport.isReady ? 'rgba(74,222,128,0.08)' : 'rgba(251,191,36,0.08)',
+                border: preFlightReport.isReady ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(251,191,36,0.3)',
+                borderRadius: '4px',
+                padding: '16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: preFlightReport.isReady ? '#4ade80' : '#fde047' }}>
+                    {lang === 'ru' ? `ГОТОВНОСТЬ СЕРВЕРА К ЗАПУСКУ: ${preFlightReport.readinessScore}%` : `SERVER READINESS: ${preFlightReport.readinessScore}%`}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    {preFlightReport.isReady
+                      ? (lang === 'ru' ? '✓ Все файлы, категории, спавны и SafeZones согласованы. Ошибок не обнаружено.' : '✓ All market categories, traders, spawns and safezones are synchronized.')
+                      : (lang === 'ru' ? `Обнаружено ${preFlightReport.totalErrors} критических ошибок и ${preFlightReport.totalWarnings} предупреждений.` : `Found ${preFlightReport.totalErrors} critical errors and ${preFlightReport.totalWarnings} warnings.`)}
+                  </div>
+                </div>
+
+                {preFlightReport.marketReport.duplicatesCount > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-accent"
+                    onClick={handleAutoResolveAllDuplicates}
+                    style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 'bold', background: '#ef4444', borderColor: '#dc2626', color: '#fff' }}
+                  >
+                    ⚡ {lang === 'ru' ? 'Устранить дубликаты рынка' : 'Resolve Market Duplicates'}
+                  </button>
+                )}
+              </div>
+
+              {/* Breakdown Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', padding: '12px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'ДУБЛИКАТЫ РЫНКА' : 'MARKET CONFLICTS'}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: preFlightReport.marketReport.duplicatesCount === 0 ? '#4ade80' : '#ef4444', marginTop: '4px' }}>
+                    {preFlightReport.marketReport.duplicatesCount === 0 ? '✓ 0' : `⚠️ ${preFlightReport.marketReport.duplicatesCount}`}
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', padding: '12px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'ВАЛИДНЫЕ ТОРГОВЦЫ' : 'HEALTHY TRADERS'}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#4ade80', marginTop: '4px' }}>
+                    {preFlightReport.tradersReport.healthyTraders} / {preFlightReport.tradersReport.totalTraders}
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', padding: '12px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'БЕЗОПАСНЫЕ ЗОНЫ' : 'SAFEZONES'}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#4ade80', marginTop: '4px' }}>
+                    {preFlightReport.zonesReport.totalZones} {lang === 'ru' ? 'зон' : 'zones'}
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '3px', padding: '12px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{lang === 'ru' ? 'КВЕСТЫ (DAG)' : 'QUEST CHAINS'}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: preFlightReport.questsReport.issues.length === 0 ? '#4ade80' : '#ef4444', marginTop: '4px' }}>
+                    {preFlightReport.questsReport.issues.length === 0 ? '✓ В норме' : `⚠️ ${preFlightReport.questsReport.issues.length}`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Detailed Issues List */}
+              {preFlightReport.allIssues.length > 0 ? (
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '3px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+                  <div style={{ padding: '10px 14px', background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-color)', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-glow)' }}>
+                    {lang === 'ru' ? 'СПИСОК ОБНАРУЖЕННЫХ ПРОБЛЕМ:' : 'DETECTED ISSUES BREAKDOWN:'}
+                  </div>
+                  <div style={{ maxHeight: '250px', overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {preFlightReport.allIssues.map((iss, idx) => (
+                      <div key={idx} style={{ fontSize: '11px', display: 'flex', alignItems: 'flex-start', gap: '8px', color: iss.severity === 'error' ? '#fca5a5' : '#fde047' }}>
+                        <span>{iss.severity === 'error' ? '❌' : '⚠️'}</span>
+                        <span style={{ lineHeight: '1.4' }}>{iss.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '40px' }}>🎉</span>
+                  <div style={{ fontSize: '15px', color: '#4ade80', fontWeight: 'bold' }}>
+                    {lang === 'ru' ? 'Конфигурация полностью готова к заливке на сервер!' : 'Server configuration is 100% verified and ready!'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {lang === 'ru' ? 'Рынок, торговцы, миссия и спавны полностью соответствуют официальным стандартам DayZ Expansion.' : 'Market, traders, mission, and spawns match DayZ Expansion master standards.'}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 📥 types.xml Mass Import Modal */}
       {showXmlImportModal && (
@@ -4427,8 +5790,8 @@ export default function EconomyEditor({
                         cursor: 'pointer'
                       }}
                     >
-                      {['Shotgun', 'Car', 'Clothing', 'Melee', 'Medical', 'Food', 'Boats', 'Exchange', 'Deliver', 'Custom'].map(icon => (
-                        <option key={icon} value={icon}>{icon}</option>
+                      {EXPANSION_TRADER_ICONS.map(ic => (
+                        <option key={ic.id} value={ic.id}>{ic.emoji} {ic.id} — {lang === 'ru' ? ic.labelRu : ic.labelEn}</option>
                       ))}
                     </select>
                     {wizardIcon === 'Custom' && (
@@ -5109,8 +6472,32 @@ export default function EconomyEditor({
                         setSelectedSafezonePath(wizardSelectedZonePath);
                       }
 
-                      // 2. NPC 3D Model Object Spawner creation
+                      // 2. NPC 3D Model & Native .map Spawner creation
                       const chosenModel = wizardNpcModel === 'Custom' ? (wizardCustomNpcModel || 'ExpansionTraderSurvivorM') : wizardNpcModel;
+                      
+                      // 2a. Native .map spawn file (expansion/traders/<Zone>_Traders.map)
+                      const zoneBaseName = wizardZoneMode === 'new' 
+                        ? (wizardNewZoneName.trim() || `${cleanTraderName}_zone`).toLowerCase().replace('_zone', '').replace('.json', '')
+                        : (wizardSelectedZonePath ? wizardSelectedZonePath.split('/').pop().replace('_zone.json', '').replace('.json', '') : cleanTraderName);
+
+                      const mapFileName = `${expPrefix}traders/${zoneBaseName}_Traders.map`;
+                      const existingMapText = configs[mapFileName]?.content || configs[mapFileName]?.raw || '';
+                      const updatedMapText = upsertTraderInMapContent(existingMapText, {
+                        npcModel: chosenModel,
+                        traderName: cleanTraderName,
+                        pos: [...wizardNpcCoords],
+                        ypr: [0.0, 0.0, 0.0],
+                        clothing: []
+                      });
+
+                      if (configs[mapFileName]) {
+                        onChangeField(mapFileName, [], updatedMapText);
+                        if (onSaveFile) onSaveFile(mapFileName, updatedMapText);
+                      } else {
+                        onCreateFile(mapFileName, updatedMapText);
+                      }
+
+                      // 2b. Legacy objects/ fallback if toggled
                       if (wizardExportNpcObject) {
                         const objectFileName = `${expPrefix}objects/${cleanTraderName}_npc.json`;
                         const objectContent = {

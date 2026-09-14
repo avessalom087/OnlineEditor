@@ -432,6 +432,7 @@ function AppContent() {
   const [isZipMode, setIsZipMode]     = useState(false);
   const [savedHandle, setSavedHandle] = useState(null);
   const [loading, setLoading]         = useState(true);
+  const [showZipModal, setShowZipModal] = useState(false);
 
   // ── Navigation state ──────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState(
@@ -677,25 +678,46 @@ function AppContent() {
     }
   };
 
-  const handleDownloadZip = async () => {
+  const handleOpenZipModal = () => {
+    setShowZipModal(true);
+  };
+
+  const handleExecuteZipExport = async (mode = 'full') => {
     try {
       const dateStr = new Date().toISOString().slice(0, 10);
       const cleanName = (folderName || 'ServerConfigs').replace(/\.zip$/i, '');
-      const zipFileName = `${cleanName}_${dateStr}.zip`;
-      await fileService.exportConfigsToZip(configs, zipFileName);
-      // Reset dirty status
-      setConfigs(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach(k => {
-          if (next[k]) next[k] = { ...next[k], isDirty: false };
+      const prefix = mode === 'dirty' ? 'Patch_' : 'Full_';
+      const zipFileName = `${prefix}${cleanName}_${dateStr}.zip`;
+
+      const onlyDirty = mode === 'dirty';
+      const result = await fileService.exportConfigsToZip(configs, zipFileName, { onlyDirty });
+
+      if (result.success) {
+        // Reset dirty status for exported files
+        setConfigs(prev => {
+          const next = { ...prev };
+          Object.keys(next).forEach(k => {
+            if (next[k] && (!onlyDirty || next[k].isDirty)) {
+              next[k] = { ...next[k], isDirty: false };
+            }
+          });
+          return next;
         });
-        return next;
-      });
-      toast.success(lang === 'ru' ? `Архив ${zipFileName} успешно скачан!` : `Archive ${zipFileName} downloaded!`);
+        toast.success(lang === 'ru' 
+          ? `🎉 Скачан архив ${zipFileName} (${result.exportedCount} файлов)!` 
+          : `🎉 Downloaded ${zipFileName} (${result.exportedCount} files)!`);
+        setShowZipModal(false);
+      } else {
+        toast.warning(lang === 'ru' ? 'Нет файлов для экспорта в выбранном режиме.' : 'No files to export in chosen mode.');
+      }
     } catch (err) {
       console.error('Failed to export zip', err);
       toast.error(`Export failed: ${err.message}`);
     }
+  };
+
+  const handleDownloadZip = async () => {
+    handleOpenZipModal();
   };
 
   // ── Folder selection / connection ─────────────────────────────────────────
@@ -831,14 +853,53 @@ function AppContent() {
       .catch(err => console.error(err));
   }, [mapSize, isCustomPreset, customSizeStr, layers, lang, activeTab]);
 
-  const handleSaveFile = (filePath) => {
+  const handleSaveFile = (filePath, directContent) => {
     const file = configs[filePath];
-    if (!file || !file.success) return;
-    fileService.saveFile(filePath, file.content)
+    const contentToSave = directContent !== undefined ? directContent : file?.content;
+    if (contentToSave === undefined && (!file || !file.success)) return Promise.resolve();
+
+    const isMap = filePath.toLowerCase().endsWith('.map');
+    const isStr = typeof contentToSave === 'string';
+    const storedContent = isStr ? contentToSave : deepClone(contentToSave);
+
+    if (!fileService.hasDirectoryAccess()) {
+      // In-Memory / ZIP mode
+      setConfigs(prev => {
+        const f = prev[filePath] || { success: true };
+        return {
+          ...prev,
+          [filePath]: {
+            ...f,
+            success: true,
+            isMap,
+            content: storedContent,
+            raw: isStr ? contentToSave : f.raw,
+            originalContent: storedContent,
+            isDirty: false
+          }
+        };
+      });
+      toast.success(t('toast_file_saved', { file: filePath.split('/').pop() }));
+      persistSettings();
+      return Promise.resolve();
+    }
+
+    return fileService.saveFile(filePath, contentToSave)
       .then(() => {
         setConfigs(prev => {
-          const f = prev[filePath];
-          return { ...prev, [filePath]: { ...f, originalContent: deepClone(f.content), isDirty: false } };
+          const f = prev[filePath] || { success: true };
+          return {
+            ...prev,
+            [filePath]: {
+              ...f,
+              success: true,
+              isMap,
+              content: storedContent,
+              raw: isStr ? contentToSave : f.raw,
+              originalContent: storedContent,
+              isDirty: false
+            }
+          };
         });
         toast.success(t('toast_file_saved', { file: filePath.split('/').pop() }));
         persistSettings();
@@ -846,8 +907,23 @@ function AppContent() {
       .catch(err => toast.error(t('toast_save_failed', { error: err.message })));
   };
 
-  // ── Save all ──────────────────────────────────────────────────────────────
   const doSaveAll = useCallback((dirtyFilesList) => {
+    if (!fileService.hasDirectoryAccess()) {
+      setConfigs(prev => {
+        const updated = { ...prev };
+        dirtyFilesList.forEach(df => {
+          const f = updated[df.filePath];
+          if (f) {
+            updated[df.filePath] = { ...f, originalContent: deepClone(f.content), isDirty: false };
+          }
+        });
+        return updated;
+      });
+      toast.success(t('toast_package_exported', { count: dirtyFilesList.length }));
+      persistSettings();
+      return;
+    }
+
     fileService.saveAll(dirtyFilesList)
       .then(() => {
         setConfigs(prev => {
@@ -862,7 +938,7 @@ function AppContent() {
         persistSettings();
       })
       .catch(err => toast.error(t('toast_export_failed', { error: err.message })));
-  }, [toast, persistSettings]);
+  }, [toast, persistSettings, t]);
 
   const handleSaveAll = useCallback(() => {
     const dirtyFilesList = [];
@@ -937,13 +1013,18 @@ function AppContent() {
   const handleCreateFile = (filePath, content) => {
     fileService.saveFile(filePath, content)
       .then(() => {
-        const clonedContent = deepClone(content);
+        const isMapFile = filePath.toLowerCase().endsWith('.map');
+        const clonedContent = typeof content === 'string' ? content : deepClone(content);
         setConfigs(prev => ({
           ...prev,
           [filePath]: {
-            success: true, content: clonedContent,
-            originalContent: deepClone(content), isDirty: false,
-            sizeBytes: JSON.stringify(content).length,
+            success: true,
+            isMap: isMapFile,
+            content: clonedContent,
+            raw: typeof content === 'string' ? content : undefined,
+            originalContent: typeof content === 'string' ? content : deepClone(content),
+            isDirty: false,
+            sizeBytes: typeof content === 'string' ? content.length : JSON.stringify(content).length,
           },
         }));
         toast.success(t('toast_file_created', { file: filePath.split('/').pop() }));
@@ -1501,6 +1582,124 @@ function AppContent() {
           </>
         )}
       </main>
+
+      {/* 📦 Dual-Mode Turnkey ZIP Export Modal */}
+      {showZipModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)', zIndex: 99998,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(3px)',
+        }}>
+          <div style={{
+            width: '560px',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-glow)',
+            borderRadius: '4px',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.9), 0 0 20px rgba(74,222,128,0.2)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            animation: 'toastIn 0.2s ease',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '16px 20px',
+              background: 'var(--bg-tertiary)',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px' }}>📦</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', color: 'var(--text-glow)', fontFamily: 'var(--font-heading)' }}>
+                    {lang === 'ru' ? 'ЭКСПОРТ АРХИВА СЕРВЕРА (ZIP)' : 'EXPORT SERVER ARCHIVE (ZIP)'}
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {lang === 'ru' ? 'Выберите подходящий формат выгрузки файлов' : 'Choose desired export packaging mode'}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowZipModal(false)}
+                style={{ padding: '4px 10px', fontSize: '14px', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Option 1: Patch Only (Dirty files) */}
+              <div
+                onClick={() => dirtyFiles.size > 0 && handleExecuteZipExport('dirty')}
+                style={{
+                  background: dirtyFiles.size > 0 ? 'rgba(74,222,128,0.08)' : 'rgba(255,255,255,0.02)',
+                  border: dirtyFiles.size > 0 ? '1px solid rgba(74,222,128,0.4)' : '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  padding: '16px',
+                  cursor: dirtyFiles.size > 0 ? 'pointer' : 'not-allowed',
+                  opacity: dirtyFiles.size > 0 ? 1 : 0.6,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>⚡</span>
+                    <strong style={{ fontSize: '13px', color: dirtyFiles.size > 0 ? '#4ade80' : 'var(--text-secondary)' }}>
+                      {lang === 'ru' ? `ПАТЧ ИЗМЕНЕНИЙ (${dirtyFiles.size} файлов)` : `MODIFIED FILES PATCH (${dirtyFiles.size} files)`}
+                    </strong>
+                  </div>
+                  <span style={{ fontSize: '10px', background: 'rgba(74,222,128,0.15)', color: '#4ade80', padding: '2px 8px', borderRadius: '3px', fontWeight: 'bold' }}>
+                    {lang === 'ru' ? 'РЕКОМЕНДУЕТСЯ' : 'RECOMMENDED'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: '1.4' }}>
+                  {lang === 'ru'
+                    ? 'Содержит только файлы, измененные в этой сессии (сохраняя структуру profiles/ и mpmissions/). Идеально для быстрой заливки на работающий сервер без перезаписи лишних файлов.'
+                    : 'Packs only files modified in this session with full directory structure. Perfect for fast FTP deployment.'}
+                </div>
+                {dirtyFiles.size > 0 && (
+                  <div style={{ fontSize: '10px', color: 'var(--text-glow)', marginTop: '8px', fontFamily: 'var(--font-mono)', maxHeight: '60px', overflowY: 'auto' }}>
+                    {Array.from(dirtyFiles).map(f => f.split('/').pop()).join(', ')}
+                  </div>
+                )}
+              </div>
+
+              {/* Option 2: Full Server Snapshot */}
+              <div
+                onClick={() => handleExecuteZipExport('full')}
+                style={{
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  padding: '16px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>📦</span>
+                    <strong style={{ fontSize: '13px', color: 'var(--text-glow)' }}>
+                      {lang === 'ru' ? `ПОЛНЫЙ СНИМОК СЕРВЕРА (${Object.keys(configs).length} файлов)` : `FULL SERVER SNAPSHOT (${Object.keys(configs).length} files)`}
+                    </strong>
+                  </div>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: '1.4' }}>
+                  {lang === 'ru'
+                    ? 'Содержит абсолютно все конфигурации, категории, торговцев, спавнеры и зоны. Подходит для первоначальной настройки сервера или полного резервного копирования.'
+                    : 'Packs every single configuration file. Best for initial server setup or full backups.'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Floating Save Bar ───────────────────────────────────────────────── */}
       <FloatingSaveBar

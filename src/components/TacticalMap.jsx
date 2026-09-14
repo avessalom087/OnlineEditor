@@ -1,3 +1,4 @@
+import { parseTraderMapContent } from '../utils/traderMapUtils';
 import { Icon } from './common/Icons';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useToast } from './ToastManager';
@@ -933,6 +934,30 @@ export default function TacticalMap({
         });
       }
 
+      // 2c. Native .map Traders (expansion/traders/*.map)
+      if (filePath.toLowerCase().endsWith('.map') && (file.raw || typeof content === 'string')) {
+        const text = typeof content === 'string' ? content : (file.raw || '');
+        const entries = parseTraderMapContent(text);
+        entries.forEach((traderEntry, idx) => {
+          const shortFileName = filePath.split('/').pop();
+          npcs.push({
+            id: `${filePath}-trader-${idx}`,
+            filePath,
+            name: `🛒 Trader: ${traderEntry.traderName || 'Trader'}`,
+            model: traderEntry.npcModel,
+            x: traderEntry.pos[0],
+            y: traderEntry.pos[1],
+            z: traderEntry.pos[2],
+            yaw: traderEntry.yaw,
+            clothing: traderEntry.clothing,
+            type: 'npc',
+            isTrader: true,
+            isMapEntry: true,
+            mapIndex: idx
+          });
+        });
+      }
+
       // 2b. Trader 3D Objects & Map Objects
       if (filePath.toLowerCase().includes('objects/') && content && Array.isArray(content.Objects)) {
         content.Objects.forEach((obj, idx) => {
@@ -1784,6 +1809,24 @@ export default function TacticalMap({
           ctx.strokeStyle = 'rgba(9, 132, 227, 0.5)';
           ctx.lineWidth = 1;
           ctx.stroke();
+
+          // Directional Yaw pointer
+          if (npc.yaw !== undefined) {
+            const radAngle = (npc.yaw - 90) * (Math.PI / 180);
+            const tipX = pos.x + Math.cos(radAngle) * 16;
+            const tipY = pos.y + Math.sin(radAngle) * 16;
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            ctx.lineTo(tipX, tipY);
+            ctx.strokeStyle = '#00d2d3';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(tipX, tipY, 2.5, 0, 2 * Math.PI);
+            ctx.fillStyle = '#4ade80';
+            ctx.fill();
+          }
 
           // Label
           if (scale > 1.2) {

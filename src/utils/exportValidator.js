@@ -1,3 +1,4 @@
+import { findMarketDuplicates } from './marketAuditUtils.js';
 /**
  * Validates all dirty configuration files before export.
  * @param {Object} configs - The full configs map from App state.
@@ -5,6 +6,21 @@
  */
 export function validateBeforeExport(configs) {
   const issues = [];
+
+  // ─── Cross-Category Market Duplicates Check ─────────────────────────────────
+  const { duplicatesList } = findMarketDuplicates(configs);
+  duplicatesList.forEach(dup => {
+    const primaryCat = dup.occurrences[0].categoryFileName;
+    dup.occurrences.forEach((occ, idx) => {
+      if (idx > 0) {
+        issues.push({
+          filePath: occ.categoryPath,
+          severity: 'error',
+          message: `[MARKET CONFIG ERROR] Предмет "${dup.className}" в категории "${occ.categoryFileName}" уже присутствует в "${primaryCat}". Сервер выдаст фатальную ошибку рынка!`,
+        });
+      }
+    });
+  });
 
   // Extract all Quest IDs
   const allQuestsIds = new Set();

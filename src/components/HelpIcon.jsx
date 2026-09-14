@@ -10,7 +10,7 @@ import { useTranslation } from '../utils/localization';
  *   <HelpIcon tipKey="tip_accuracy_min" />
  *   <HelpIcon tipKey="tip_despawn_time" position="left" />
  */
-export default function HelpIcon({ tipKey, position = 'right', style = {} }) {
+export default function HelpIcon({ tipKey, tip, position = 'right', style = {} }) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -18,9 +18,9 @@ export default function HelpIcon({ tipKey, position = 'right', style = {} }) {
   const tooltipRef = useRef(null);
   const timerRef = useRef(null);
 
-  const text = t(tipKey);
-  // If there's no translation for this key, don't render
-  if (!text || text === tipKey) return null;
+  const text = tip || (tipKey ? t(tipKey) : null);
+  // If there's no text/translation, don't render
+  if (!text || (tipKey && text === tipKey && !tip)) return null;
 
   const show = useCallback(() => {
     clearTimeout(timerRef.current);

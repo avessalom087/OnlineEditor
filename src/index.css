@@ -558,6 +558,20 @@ select:focus {
   border: 1px solid var(--danger-color) !important;
   box-shadow: 0 0 4px rgba(235,103,103,0.3) !important;
 }
+
+/* ─── Sticky Table Headers ─────────────────────────────────────── */
+.table-container {
+  overflow-y: auto;
+  position: relative;
+}
+
+.table-tactical thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-tertiary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
 .dup-badge {
   display: inline-flex;
   align-items: center;
