@@ -1621,28 +1621,7 @@ input[type="range"]::-moz-range-thumb:hover {
   display: none;
 }
 
-/* SearchForLoot help panel animation (Transition-based) */
-.sfl-help-box {
-  max-height: 0;
-  opacity: 0;
-  padding: 0 16px;
-  margin-bottom: 0;
-  overflow: hidden;
-  transform: translateY(-8px);
-  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.25s ease,
-              padding 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              margin 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              transform 0.25s ease;
-}
 
-.sfl-help-box.open {
-  max-height: 150px;
-  opacity: 1;
-  padding: 12px 16px;
-  margin-bottom: 10px;
-  transform: translateY(0);
-}
 
 /* Trader Editor Responsive Grid */
 .trader-grid-responsive {

@@ -29,7 +29,7 @@ const AIBotsEditor     = lazy(() => import('./components/AIBotsEditor'));
 const SettingsEditor   = lazy(() => import('./components/SettingsEditor'));
 const TacticalMap      = lazy(() => import('./components/TacticalMap'));
 const MPGSpawnerEditor = lazy(() => import('./components/MPGSpawnerEditor'));
-const SearchForLootEditor = lazy(() => import('./components/SearchForLootEditor'));
+
 const RawJsonEditor    = lazy(() => import('./components/RawJsonEditor'));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1222,7 +1222,6 @@ function AppContent() {
   const dirtyAiBots   = dirtyFilesArr.filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
   const dirtySettings = dirtyFilesArr.filter(p => p.includes('settings')).length;
   const dirtySpawner  = dirtyFilesArr.filter(p => p.toLowerCase().includes('mpg_spawner/') || p.toLowerCase().includes('points/')).length;
-  const dirtySearchForLoot = dirtyFilesArr.filter(p => p.toLowerCase().includes('searchforloot/')).length;
 
   // ─── Count tab-specific syntax errors (files failing to parse) ───────────
   const errorFilesArr = Object.keys(configs).filter(p => !configs[p].success);
@@ -1231,7 +1230,6 @@ function AppContent() {
   const errorAiBots   = errorFilesArr.filter(p => p.includes('aipatrol') || p.includes('roaming')).length;
   const errorSettings = errorFilesArr.filter(p => p.includes('settings')).length;
   const errorSpawner  = errorFilesArr.filter(p => p.toLowerCase().includes('mpg_spawner/') || p.toLowerCase().includes('points/')).length;
-  const errorSearchForLoot = errorFilesArr.filter(p => p.toLowerCase().includes('searchforloot/')).length;
 
   // ── Password Auth Gate ────────────────────────────────────────────────────
   if (!isAuthenticated) {
@@ -1336,9 +1334,9 @@ function AppContent() {
 
           {/* Consolidated "More" Dropdown Menu */}
           {(() => {
-            const moreBadge = dirtySettings + dirtySpawner + dirtySearchForLoot;
-            const moreErrors = errorSettings + errorSpawner + errorSearchForLoot;
-            const isMoreActive = ['settings', 'spawner', 'searchforloot', 'raw_editor'].includes(activeTab);
+            const moreBadge = dirtySettings + dirtySpawner;
+            const moreErrors = errorSettings + errorSpawner;
+            const isMoreActive = ['settings', 'spawner', 'raw_editor'].includes(activeTab);
 
             return (
               <div 
@@ -1384,7 +1382,6 @@ function AppContent() {
                   <div className="dropdown-tabs-menu" onClick={() => setIsMoreOpen(false)}>
                     <TabBtn id="settings"   label={t('tab_settings')}   badge={dirtySettings}  errorCount={errorSettings} activeTab={activeTab} setActiveTab={setActiveTab} />
                     <TabBtn id="spawner"    label={t('tab_spawner')}    badge={dirtySpawner}   errorCount={errorSpawner}  activeTab={activeTab} setActiveTab={setActiveTab} />
-                    <TabBtn id="searchforloot" label={t('tab_searchforloot')} badge={dirtySearchForLoot} errorCount={errorSearchForLoot} activeTab={activeTab} setActiveTab={setActiveTab} />
                     <TabBtn id="raw_editor" label={t('tab_raw_editor')}                               activeTab={activeTab} setActiveTab={setActiveTab} />
                   </div>
                 )}
@@ -1554,15 +1551,6 @@ function AppContent() {
                         setSelectedSpawnerFilePath(null);
                         setSelectedSpawnerTriggerIdx(null);
                       }}
-                    />
-                  </ErrorBoundary>
-                )}
-
-                {activeTab === 'searchforloot' && (
-                  <ErrorBoundary key="searchforloot">
-                    <SearchForLootEditor
-                      configs={configs} onChangeField={handleChangeField}
-                      xmlItems={xmlItems}
                     />
                   </ErrorBoundary>
                 )}
