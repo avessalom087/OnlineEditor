@@ -386,7 +386,13 @@ export default function EconomyEditor({
       if (mapPath.toLowerCase().endsWith('.map') && mapFile && mapFile.success) {
         const text = typeof mapFile.content === 'string' ? mapFile.content : (mapFile.raw || '');
         const entries = parseTraderMapContent(text);
-        const match = entries.find(e => e.traderName.toLowerCase() === traderName.toLowerCase());
+        const match = entries.find(e => {
+          const tName = (e.traderName || '').toLowerCase();
+          const mModel = (e.npcModel || '').toLowerCase();
+          const target = traderName.toLowerCase();
+          const targetClean = target.replace(/^trader_?|_?trader$/g, '').replace(/^npc_?|_?npc$/g, '');
+          return tName === target || mModel === target || (targetClean && (tName.includes(targetClean) || mModel.includes(targetClean)));
+        });
         if (match) {
           if (Array.isArray(match.pos) && match.pos.length === 3) setNpcCoords(match.pos);
           setNpcYaw(match.yaw || 0);
@@ -405,16 +411,22 @@ export default function EconomyEditor({
     }
     
     // 1. Try finding in expansion/objects/
+    const tClean = traderName.replace(/^trader_?|_?trader$/i, '').replace(/^npc_?|_?npc$/i, '');
     const possibleObjectPaths = [
       `${prefix}objects/${traderName}_npc.json`,
+      `${prefix}objects/${traderName}_NPC.json`,
       `${prefix}objects/${traderName}.json`,
-      `${prefix}objects/trader_${traderName}.json`
+      `${prefix}objects/trader_${traderName}.json`,
+      `${prefix}objects/npc_${traderName}.json`,
+      `${prefix}objects/${tClean}_npc.json`,
+      `${prefix}objects/${tClean}_NPC.json`,
+      `${prefix}objects/${tClean}.json`
     ];
 
     let foundObjectPos = null;
     let foundModel = null;
     for (const objPath of possibleObjectPaths) {
-      const objFile = configs[objPath];
+      const objFile = configs[objPath] || Object.entries(configs).find(([k]) => k.toLowerCase() === objPath.toLowerCase())?.[1];
       if (objFile && objFile.success && objFile.content?.Objects?.[0]) {
         const firstObj = objFile.content.Objects[0];
         if (Array.isArray(firstObj.pos) && firstObj.pos.length === 3) {
@@ -427,12 +439,17 @@ export default function EconomyEditor({
 
     // 2. Fallback: Search in all objects files for matching trader name
     if (!foundObjectPos) {
+      const tLower = traderName.toLowerCase();
+      const tBase = tClean.toLowerCase();
       for (const [path, file] of Object.entries(configs)) {
         if (path.toLowerCase().includes('objects/') && file.success && file.content?.Objects) {
-          const matched = file.content.Objects.find(o => 
-            o.name && (o.name.toLowerCase().includes(traderName.toLowerCase()) || 
-            (path.toLowerCase().includes(traderName.toLowerCase())))
-          );
+          const pLower = path.toLowerCase();
+          const matched = file.content.Objects.find(o => {
+            const oName = (o.name || '').toLowerCase();
+            return oName.includes(tLower) || 
+                   pLower.includes(tLower) ||
+                   (tBase && (oName.includes(tBase) || pLower.includes(tBase)));
+          });
           if (matched && Array.isArray(matched.pos) && matched.pos.length === 3) {
             foundObjectPos = [...matched.pos];
             foundModel = matched.name;

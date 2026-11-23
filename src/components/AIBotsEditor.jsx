@@ -4,7 +4,7 @@ import AutocompleteInput from './shared/AutocompleteInput';
 import CoordinatesInput from './shared/CoordinatesInput';
 import HelpIcon from './HelpIcon';
 import { useTranslation } from '../utils/localization';
-import { getExpansionModPrefix } from '../utils/pathUtils';
+import { getExpansionModPrefix, getExpansionPrefix } from '../utils/pathUtils';
 
 
 const FACTIONS = ['West', 'East', 'Guards', 'Civilian', 'Passive', 'Aggressive', 'Shamans', 'Survivors', 'Raiders', 'Mercenaries', 'Zombies', 'PassiveZombies'];

@@ -962,10 +962,10 @@ export default function TacticalMap({
       if (filePath.toLowerCase().includes('objects/') && content && Array.isArray(content.Objects)) {
         content.Objects.forEach((obj, idx) => {
           if (obj && Array.isArray(obj.pos) && obj.pos.length === 3) {
-            const shortFileName = filePath.split('/').pop().replace('_npc.json', '').replace('.json', '');
+            const shortFileName = filePath.split('/').pop().replace(/_npc\.json$/i, '').replace(/\.json$/i, '');
             const isTrader = (obj.name && obj.name.toLowerCase().includes('trader')) || 
                              filePath.toLowerCase().includes('trader') || 
-                             filePath.toLowerCase().includes('_npc');
+                             filePath.toLowerCase().includes('npc');
             npcs.push({
               id: `${filePath}-obj-${idx}`,
               filePath,

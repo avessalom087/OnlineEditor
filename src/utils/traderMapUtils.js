@@ -127,8 +127,19 @@ export function parseTraderMapLine(line) {
 
   const header = parts[0].trim().replace(/^["']|["']$/g, '');
   const dotIndex = header.indexOf('.');
-  const npcModel = dotIndex !== -1 ? header.substring(0, dotIndex).trim() : header;
-  const traderName = dotIndex !== -1 ? header.substring(dotIndex + 1).trim() : '';
+  let npcModel = dotIndex !== -1 ? header.substring(0, dotIndex).trim() : header;
+  let traderName = dotIndex !== -1 ? header.substring(dotIndex + 1).trim() : '';
+
+  // If no dot was found (e.g. "001_NPC|..." or "ExpansionTraderDenis|...")
+  if (dotIndex === -1) {
+    if (/^expansiontrader/i.test(header)) {
+      npcModel = header;
+      traderName = header.replace(/^expansiontrader/i, '') || 'Trader';
+    } else {
+      traderName = header;
+      npcModel = 'ExpansionTraderSurvivorM';
+    }
+  }
 
   // Position
   const posParts = (parts[1] || '').trim().split(/\s+/).map(Number);
@@ -241,13 +252,21 @@ export function upsertTraderInMapContent(existingContent, traderData) {
 
   const lines = text.split(/\r?\n/);
   const targetTraderName = (traderData.traderName || '').toLowerCase();
+  const targetClean = targetTraderName.replace(/^trader_?|_?trader$/g, '').replace(/^npc_?|_?npc$/g, '');
   let found = false;
 
   const updatedLines = lines.map(line => {
     const parsed = parseTraderMapLine(line);
-    if (parsed && parsed.traderName.toLowerCase() === targetTraderName) {
-      found = true;
-      return newMapLine;
+    if (parsed) {
+      const pTrader = (parsed.traderName || '').toLowerCase();
+      const pModel = (parsed.npcModel || '').toLowerCase();
+      const match = pTrader === targetTraderName || 
+                    pModel === targetTraderName ||
+                    (targetClean && (pTrader.includes(targetClean) || pModel.includes(targetClean)));
+      if (match) {
+        found = true;
+        return newMapLine;
+      }
     }
     return line;
   });

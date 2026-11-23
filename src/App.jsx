@@ -1042,7 +1042,7 @@ function AppContent() {
       const expansionPrefix = getExpansionPrefix(configs);
       const mpgSpawnerPrefix = getMpgSpawnerPrefix(configs);
 
-      if (nameLower.includes('quest_') || nameLower.includes('npc_') || nameLower.includes('objective_')) {
+      if (nameLower.includes('quest') || nameLower.includes('npc') || nameLower.includes('objective')) {
         folder = `${expansionModPrefix}Quests/Imported`;
       } else if (nameLower.includes('settings')) {
         folder = `${expansionPrefix || expansionModPrefix}Settings`;

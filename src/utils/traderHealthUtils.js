@@ -122,7 +122,13 @@ export function inspectTraderHealth(traderConfig, traderPath, configs) {
     if (mapPath.toLowerCase().endsWith('.map') && mapFile?.success) {
       const text = typeof mapFile.content === 'string' ? mapFile.content : (mapFile.raw || '');
       const entries = parseTraderMapContent(text);
-      const match = entries.find(e => e.traderName.toLowerCase() === traderName.toLowerCase());
+      const match = entries.find(e => {
+        const tName = (e.traderName || '').toLowerCase();
+        const mModel = (e.npcModel || '').toLowerCase();
+        const target = traderName.toLowerCase();
+        const targetClean = target.replace(/^trader_?|_?trader$/g, '').replace(/^npc_?|_?npc$/g, '');
+        return tName === target || mModel === target || (targetClean && (tName.includes(targetClean) || mModel.includes(targetClean)));
+      });
       if (match) {
         foundInMap = true;
         matchingMapPath = mapPath;

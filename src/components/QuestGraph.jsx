@@ -596,10 +596,16 @@ export default function QuestGraph({
   // Load NPCs list for checkboxes
   const npcsList = [];
   Object.entries(configs).forEach(([p, file]) => {
-    if (file.success && file.content && p.toLowerCase().includes('quests/npcs/questnpc_') && file.content.ID !== undefined) {
+    const pLower = p.toLowerCase();
+    const isNpcPath = pLower.includes('quests/npcs/') || (pLower.includes('quests/') && (pLower.includes('npc') || pLower.includes('questnpc')));
+    const isNpcContent = file?.content && (file.content.ID !== undefined || file.content.NPCName !== undefined || file.content.ClassName !== undefined);
+    if (file.success && isNpcPath && isNpcContent) {
+      const fileName = p.split('/').pop().replace(/\.json$/i, '');
+      const parsedNum = parseInt(fileName.match(/\d+/)?.[0], 10);
+      const effectiveId = file.content.ID !== undefined ? file.content.ID : (!isNaN(parsedNum) ? parsedNum : npcsList.length + 1);
       npcsList.push({
-        id: file.content.ID,
-        name: file.content.NPCName || `NPC #${file.content.ID}`,
+        id: effectiveId,
+        name: file.content.NPCName || fileName || `NPC #${effectiveId}`,
         className: file.content.ClassName
       });
     }
@@ -5597,7 +5603,16 @@ function QuestNPCsManager({
   const npcs = useMemo(() => {
     const list = [];
     Object.entries(configs).forEach(([path, file]) => {
-      if (file.success && file.content && path.toLowerCase().includes('quests/npcs/questnpc_') && file.content.ID !== undefined) {
+      const pLower = path.toLowerCase();
+      const isNpcPath = pLower.includes('quests/npcs/') || (pLower.includes('quests/') && (pLower.includes('npc') || pLower.includes('questnpc')));
+      const isNpcContent = file?.content && (file.content.ID !== undefined || file.content.NPCName !== undefined || file.content.ClassName !== undefined);
+      if (file.success && isNpcPath && isNpcContent) {
+        const fileName = path.split('/').pop().replace(/\.json$/i, '');
+        const parsedNum = parseInt(fileName.match(/\d+/)?.[0], 10);
+        const effectiveId = file.content.ID !== undefined ? file.content.ID : (!isNaN(parsedNum) ? parsedNum : list.length + 1);
+        if (file.content.ID === undefined) {
+          file.content.ID = effectiveId;
+        }
         list.push({
           filePath: path,
           content: file.content
@@ -5650,7 +5665,8 @@ function QuestNPCsManager({
     const className = (npc.content.ClassName || '').toLowerCase();
     const id = String(npc.content.ID);
     const query = searchQuery.toLowerCase();
-    return name.includes(query) || className.includes(query) || id.includes(query);
+    const fileName = (npc.filePath || '').split('/').pop().toLowerCase();
+    return name.includes(query) || className.includes(query) || id.includes(query) || fileName.includes(query);
   });
 
   const handleCreateNpc = () => {

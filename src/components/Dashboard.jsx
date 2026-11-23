@@ -165,7 +165,7 @@ export default function Dashboard({
       if (lowerPath.includes('quests/quests/quest_') && content.ID !== undefined) {
         tQuests++;
       }
-      if (lowerPath.includes('quests/npcs/questnpc_')) {
+      if (lowerPath.includes('quests/npcs/') || (lowerPath.includes('quests/') && lowerPath.includes('npc'))) {
         tNPCs++;
       }
       if (lowerPath.includes('market/') && Array.isArray(content.Items)) {
